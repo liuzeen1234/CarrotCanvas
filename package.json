@@ -1,0 +1,17 @@
+{
+  "name": "carrot-canvas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CarrotCanvas - 本地 ComfyUI 生图/生视频工作台，无限画布节点编排",
+  "scripts": {
+    "dev": "pnpm --filter @carrot-canvas/backend dev",
+    "dev:web": "pnpm --filter @carrot-canvas/web dev",
+    "dev:all": "pnpm --parallel --filter @carrot-canvas/backend --filter @carrot-canvas/web dev",
+    "build": "pnpm --filter @carrot-canvas/web build && pnpm --filter @carrot-canvas/backend build",
+    "start": "pnpm --filter @carrot-canvas/backend start"
+  },
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

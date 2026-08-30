@@ -1,0 +1,27 @@
+# 项目文档目录
+
+本目录是 **CarrotCanvas 所有文档的统一存放位置**。后续涉及的架构、技术选型、开发规划、接口说明、部署、里程碑等文档一律放在这里，按主题分文件，不堆在项目根目录。
+
+## 文档索引
+
+| 文档 | 内容 |
+|---|---|
+| [PROJECT-SUMMARY.md](./PROJECT-SUMMARY.md) | 项目现状总结（技术栈、结构、运行状态、已解决问题） |
+
+> 新增文档时，请在此表登记一行索引，并遵循下述命名与组织约定。
+
+## 命名约定
+
+- 用大写下划线风格，语义化描述内容，例如：`ARCHITECTURE.md`、`API-SPEC.md`、`AI-DEV-PLAN.md`
+- 一个文档只讲一个主题，避免"大杂烩"
+- 已过时的内容用 `（已废弃）` 标注，或用 `archive/` 子目录归档
+
+## 建议的文档规划（按需创建）
+
+- `ARCHITECTURE.md` — 系统整体架构与模块划分
+- `TECH-DECISIONS.md` — 关键决策记录（为何选 pnpm、端口、web 优先、单文件打包等）
+- `API-SPEC.md` — 后端接口定义
+- `DB-SCHEMA.md` — 数据库表结构
+- `AI-DEV-PLAN.md` — 开发计划与里程碑
+- `COMFYUI-INTEGRATION.md` — ComfyUI 对接方案
+- `DEPLOYMENT.md` — 交付与部署（单文件打包）

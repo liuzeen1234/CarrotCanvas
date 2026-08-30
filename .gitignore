@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.bun/
+
+# build output
+dist/
+build/
+output/
+
+# backend
+backend/dist/
+*.sqlite
+*.sqlite3
+*.db
+
+# web
+web/src/.umi/
+web/src/.umi-production/
+web/dist/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# runtime data
+data/
+assets/
+logs/
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# editor / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
