@@ -16,7 +16,9 @@ import {
   Alert,
   Descriptions,
   Card,
+  Tooltip,
 } from 'antd';
+import type { UploadFile, UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   PlusOutlined,
@@ -29,7 +31,7 @@ import {
 } from '@ant-design/icons';
 import { request } from 'umi';
 
-export interface Workflow {
+export interface ComfyUIAPI {
   id: string;
   name: string;
   category: string;
@@ -65,23 +67,24 @@ const CATEGORY_COLORS: Record<string, string> = {
   reference: 'gold',
 };
 
-let onView: (w: Workflow) => void = () => {};
-let onEdit: (w: Workflow) => void = () => {};
+let onView: (w: ComfyUIAPI) => void = () => {};
+let onEdit: (w: ComfyUIAPI) => void = () => {};
 let onDelete: (id: string) => void = () => {};
 
-export default function WorkflowManager() {
-  const [list, setList] = useState<Workflow[]>([]);
+export default function ComfyUIAPIManager() {
+  const [list, setList] = useState<ComfyUIAPI[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detail, setDetail] = useState<Workflow | null>(null);
+  const [detail, setDetail] = useState<ComfyUIAPI | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [editing, setEditing] = useState<Workflow | null>(null);
+  const [editing, setEditing] = useState<ComfyUIAPI | null>(null);
   const [editForm] = Form.useForm();
   const [importForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('file');
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [comfyuiUrl, setComfyuiUrl] = useState('http://localhost:8188');
   const [savingUrl, setSavingUrl] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -89,7 +92,7 @@ export default function WorkflowManager() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await request<Workflow[]>('/api/workflows');
+      const data = await request<ComfyUIAPI[]>('/api/workflows');
       setList(data);
     } finally {
       setLoading(false);
@@ -152,7 +155,7 @@ export default function WorkflowManager() {
     }
   };
 
-  const columns: ColumnsType<Workflow> = [
+  const columns: ColumnsType<ComfyUIAPI> = [
     {
       title: '名称',
       dataIndex: 'name',
@@ -192,23 +195,23 @@ export default function WorkflowManager() {
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 100,
       render: (_, record) => (
         <Space>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => onView(record)}>
-            查看
-          </Button>
-          <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record)}>
-            编辑
-          </Button>
+          <Tooltip title="查看">
+            <Button size="small" icon={<EyeOutlined />} onClick={() => onView(record)} />
+          </Tooltip>
+          <Tooltip title="编辑">
+            <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record)} />
+          </Tooltip>
           <Popconfirm
-            title="确认删除该工作流？"
+            title="确认删除该 ComfyUI API？"
             onConfirm={() => onDelete(record.id)}
             okButtonProps={{ danger: true }}
           >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
+            <Tooltip title="删除">
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -253,6 +256,7 @@ export default function WorkflowManager() {
       message.success('导入成功');
       setImportOpen(false);
       importForm.resetFields();
+      setFileList([]);
       load();
     } catch (e: any) {
       if (e?.response?.data?.message) {
@@ -268,13 +272,14 @@ export default function WorkflowManager() {
     }
   };
 
-  const handleFile = (file: File) => {
+  const handleFile: UploadProps['beforeUpload'] = (file) => {
     const reader = new FileReader();
     reader.onload = () => {
       importForm.setFieldValue('jsonText', String(reader.result));
       message.success('已读取文件内容');
     };
     reader.readAsText(file);
+    setFileList([file as unknown as UploadFile]);
     return false;
   };
 
@@ -306,7 +311,7 @@ export default function WorkflowManager() {
     }
   };
 
-  const preview = (w: Workflow) => (
+  const preview = (w: ComfyUIAPI) => (
     <Descriptions column={1} size="small" bordered>
       <Descriptions.Item label="名称">{w.name}</Descriptions.Item>
       <Descriptions.Item label="类型">
@@ -355,7 +360,7 @@ export default function WorkflowManager() {
 
       <Space style={{ marginBottom: 16 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
-          导入工作流
+          导入 ComfyUI API
         </Button>
         <Button onClick={load}>刷新</Button>
       </Space>
@@ -376,9 +381,9 @@ export default function WorkflowManager() {
       />
 
       <Modal
-        title="导入工作流"
+        title="导入 ComfyUI API"
         open={importOpen}
-        onCancel={() => setImportOpen(false)}
+        onCancel={() => { setImportOpen(false); setFileList([]); }}
         onOk={handleImport}
         confirmLoading={importing}
         okText="导入并保存"
@@ -386,18 +391,18 @@ export default function WorkflowManager() {
       >
         <Form form={importForm} layout="vertical" initialValues={{ name: '', tags: [] }}>
           <Form.Item
-            label="工作流名称"
+            label="API 名称"
             name="name"
             rules={[{ required: true, message: '请输入名称' }]}
           >
             <Input placeholder="例如：文生图基础流程" />
           </Form.Item>
           <Form.Item
-            label="工作流类型"
+            label="API 类型"
             name="category"
             rules={[{ required: true, message: '请选择类型' }]}
           >
-            <Select placeholder="选择工作流类型">
+            <Select placeholder="选择 API 类型">
               {categories.map((c) => (
                 <Select.Option key={c.value} value={c.value}>
                   {c.label}
@@ -422,7 +427,16 @@ export default function WorkflowManager() {
           >
             <Tabs activeKey={activeTab} onChange={setActiveTab}>
               <Tabs.TabPane key="file" tab="上传文件" forceRender>
-                <Upload.Dragger beforeUpload={handleFile} showUploadList={false} maxCount={1}>
+                <Upload.Dragger
+                  beforeUpload={handleFile}
+                  fileList={fileList}
+                  onChange={({ fileList: newFileList }) => setFileList(newFileList)}
+                  maxCount={1}
+                  onRemove={() => {
+                    setFileList([]);
+                    importForm.setFieldValue('jsonText', '');
+                  }}
+                >
                   <p className="ant-upload-drag-icon">
                     <UploadOutlined />
                   </p>
@@ -443,7 +457,7 @@ export default function WorkflowManager() {
       </Modal>
 
       <Modal
-        title="工作流详情"
+        title="ComfyUI API 详情"
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
         footer={null}
@@ -453,7 +467,7 @@ export default function WorkflowManager() {
       </Modal>
 
       <Modal
-        title="编辑工作流"
+        title="编辑 ComfyUI API"
         open={editOpen}
         onCancel={() => setEditOpen(false)}
         onOk={handleEditSave}

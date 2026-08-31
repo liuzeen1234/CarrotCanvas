@@ -47,7 +47,7 @@ export class WorkflowsService {
   async findOne(id: string): Promise<WorkflowResponse> {
     const workflow = await this.repo.findOne({ where: { id } });
     if (!workflow) {
-      throw new NotFoundException(`工作流 ${id} 不存在`);
+      throw new NotFoundException(`ComfyUI API ${id} 不存在`);
     }
     return this.serialize(workflow);
   }
@@ -56,7 +56,7 @@ export class WorkflowsService {
     const category = this.validateCategory(dto.category);
     const { apiJson } = this.validateContent(dto.content);
     const workflow = this.repo.create({
-      name: (dto.name || '未命名工作流').trim(),
+      name: (dto.name || '未命名 ComfyUI API').trim(),
       category,
       description: dto.description ?? null,
       tags: dto.tags?.length ? dto.tags : null,
@@ -73,7 +73,7 @@ export class WorkflowsService {
   ): Promise<WorkflowResponse> {
     const workflow = await this.repo.findOne({ where: { id } });
     if (!workflow) {
-      throw new NotFoundException(`工作流 ${id} 不存在`);
+      throw new NotFoundException(`ComfyUI API ${id} 不存在`);
     }
 
     if (dto.name !== undefined) workflow.name = dto.name.trim();
@@ -93,19 +93,19 @@ export class WorkflowsService {
   async remove(id: string): Promise<void> {
     const workflow = await this.repo.findOne({ where: { id } });
     if (!workflow) {
-      throw new NotFoundException(`工作流 ${id} 不存在`);
+      throw new NotFoundException(`ComfyUI API ${id} 不存在`);
     }
     await this.repo.remove(workflow);
   }
 
   private validateCategory(category?: WorkflowCategory): WorkflowCategory {
     if (!category) {
-      throw new BadRequestException('缺少工作流类型');
+      throw new BadRequestException('缺少 API 类型');
     }
     const valid = WORKFLOW_CATEGORIES.some((c) => c.value === category);
     if (!valid) {
       throw new BadRequestException(
-        `无效的工作流类型"${category}"，可选值：${WORKFLOW_CATEGORIES.map((c) => c.value).join('、')}`,
+        `无效的 API 类型"${category}"，可选值：${WORKFLOW_CATEGORIES.map((c) => c.value).join('、')}`,
       );
     }
     return category;
