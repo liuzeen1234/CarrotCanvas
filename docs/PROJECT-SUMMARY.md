@@ -60,7 +60,7 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
    ├─ src/
    │  ├─ pages/index.tsx        # 首页
    │  ├─ pages/canvas.tsx       # 无限画布（@xyflow/react 骨架）
-   │  ├─ pages/settings/index.tsx # 设置页（侧边栏：工作流管理 / ComfyUI 连接占位）
+   │  ├─ pages/settings/index.tsx # 设置页（工作流管理 + ComfyUI 地址配置）
    │  ├─ components/settings/WorkflowManager.tsx # 工作流列表 + 导入/编辑
    │  ├─ layouts/index.tsx      # 布局（AntD ConfigProvider）
    └─ package.json              # @carrot-canvas/web
@@ -117,7 +117,7 @@ pnpm start     # 生产运行后端（需先 build）
 - [ ] SQLite 数据表补全：generation_runs / assets / canvas_docs
 - [ ] 画布自定义节点：提示词、ComfyUI 生成、结果预览（从已导入工作流渲染节点）
 - [ ] 生成任务队列与进度展示
-- [ ] ComfyUI 配置界面（地址、密钥）
+- [x] ComfyUI 配置界面（服务地址）
 - [ ] 前端产物由 NestJS 静态托管（单端口）
 - [ ] 单文件 exe 打包（bun build --compile / pkg）
 - [ ] 一键启动脚本（start.bat 固化两端启动）

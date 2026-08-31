@@ -3,9 +3,10 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { WorkflowsModule } from './workflows/workflows.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
-  imports: [DatabaseModule, WorkflowsModule],
+  imports: [DatabaseModule, WorkflowsModule, SettingsModule],
   controllers: [AppController],
   providers: [AppService],
 })

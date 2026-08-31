@@ -71,9 +71,9 @@ CarrotCanvas/
 ## 开发计划（TODO）
 
 - [x] ComfyUI 工作流导入与管理（设置页，含 API 格式校验）
+- [x] ComfyUI 连接配置（服务地址）
 - [ ] ComfyUI 客户端（HTTP + WebSocket 任务监听）
 - [ ] SQLite 数据表补全：generation_runs / assets / canvas_docs
 - [ ] 画布自定义节点（提示词、生成、结果预览）
 - [ ] 生成任务队列与进度
-- [ ] ComfyUI 连接配置（地址、密钥）
 - [ ] 静态托管前端产物 + 单文件打包（交付形态）

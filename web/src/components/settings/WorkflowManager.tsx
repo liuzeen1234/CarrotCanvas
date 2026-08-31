@@ -15,6 +15,7 @@ import {
   Typography,
   Alert,
   Descriptions,
+  Card,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -23,6 +24,8 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
+  SaveOutlined,
+  ApiOutlined,
 } from '@ant-design/icons';
 import { request } from 'umi';
 
@@ -79,6 +82,9 @@ export default function WorkflowManager() {
   const [editForm] = Form.useForm();
   const [importForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('file');
+  const [comfyuiUrl, setComfyuiUrl] = useState('http://localhost:8188');
+  const [savingUrl, setSavingUrl] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,7 +104,53 @@ export default function WorkflowManager() {
   useEffect(() => {
     load();
     loadCategories();
+    loadComfyuiUrl();
   }, [load, loadCategories]);
+
+  const loadComfyuiUrl = useCallback(async () => {
+    try {
+      const data = await request<{ key: string; value: string | null }>('/api/settings/comfyui-url');
+      if (data.value) {
+        setComfyuiUrl(data.value);
+      }
+    } catch {
+      // settings table may not exist yet, use default
+    }
+  }, []);
+
+  const saveComfyuiUrl = async () => {
+    setSavingUrl(true);
+    try {
+      await request('/api/settings/comfyui-url', {
+        method: 'PUT',
+        data: { value: comfyuiUrl },
+      });
+      message.success('ComfyUI 地址已保存');
+    } catch (e: any) {
+      message.error('保存失败');
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
+  const testComfyuiConnection = async () => {
+    setTesting(true);
+    try {
+      const result = await request<{ ok: boolean; error?: string }>('/api/settings/test-connection', {
+        method: 'POST',
+        data: { url: comfyuiUrl },
+      });
+      if (result.ok) {
+        message.success('连接成功');
+      } else {
+        message.warning(`连接失败：${result.error || '未知错误'}`);
+      }
+    } catch (e) {
+      message.error('连接失败：无法访问 ComfyUI 服务');
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const columns: ColumnsType<Workflow> = [
     {
@@ -280,6 +332,27 @@ export default function WorkflowManager() {
 
   return (
     <div>
+      <Card
+        size="small"
+        title={<><ApiOutlined /> ComfyUI 服务地址</>}
+        style={{ marginBottom: 16 }}
+      >
+        <Space.Compact style={{ width: '100%' }}>
+          <Input
+            value={comfyuiUrl}
+            onChange={(e) => setComfyuiUrl(e.target.value)}
+            placeholder="http://localhost:8188"
+            addonBefore="地址"
+          />
+          <Button onClick={testComfyuiConnection} loading={testing}>
+            测试连接
+          </Button>
+          <Button type="primary" icon={<SaveOutlined />} onClick={saveComfyuiUrl} loading={savingUrl}>
+            保存
+          </Button>
+        </Space.Compact>
+      </Card>
+
       <Space style={{ marginBottom: 16 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
           导入工作流
