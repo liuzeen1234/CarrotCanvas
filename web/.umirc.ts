@@ -14,17 +14,16 @@ export default defineConfig({
     { path: '/welcome', component: './index', name: '首页', icon: 'HomeOutlined' },
     { path: '/canvas', component: './canvas', name: '画布', icon: 'DashboardOutlined' },
     {
+      path: '/comfyui-api',
+      component: './settings/comfyui-api',
+      name: 'ComfyUI API',
+      icon: 'ApiOutlined',
+    },
+    {
       path: '/settings',
       component: './settings',
       name: '设置',
       icon: 'SettingOutlined',
-      routes: [
-        {
-          path: '/settings/comfyui-api',
-          component: './settings/comfyui-api',
-          name: 'ComfyUI API 管理',
-        },
-      ],
     },
   ],
   proxy: {

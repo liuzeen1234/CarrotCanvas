@@ -17,6 +17,10 @@ import {
   Descriptions,
   Card,
   Tooltip,
+  Segmented,
+  Empty,
+  Row,
+  Col,
 } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -28,6 +32,9 @@ import {
   EyeOutlined,
   SaveOutlined,
   ApiOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons';
 import { request } from 'umi';
 
@@ -88,6 +95,8 @@ export default function ComfyUIAPIManager() {
   const [comfyuiUrl, setComfyuiUrl] = useState('http://localhost:8188');
   const [savingUrl, setSavingUrl] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -335,6 +344,64 @@ export default function ComfyUIAPIManager() {
     </Descriptions>
   );
 
+  const filteredList = categoryFilter === 'all'
+    ? list
+    : list.filter((w) => w.category === categoryFilter);
+
+  const renderCard = (w: ComfyUIAPI) => (
+    <Card
+      key={w.id}
+      size="small"
+      hoverable
+      style={{ marginBottom: 16 }}
+      onClick={() => onView(w)}
+      actions={[
+        <Tooltip title="查看" key="view">
+          <EyeOutlined />
+        </Tooltip>,
+        <Tooltip title="编辑" key="edit">
+          <EditOutlined onClick={(e) => { e.stopPropagation(); onEdit(w); }} />
+        </Tooltip>,
+        <Tooltip title="运行（待实现）" key="run">
+          <PlayCircleOutlined onClick={(e) => { e.stopPropagation(); message.info('运行面板将在后续步骤实现'); }} />
+        </Tooltip>,
+        <Popconfirm
+          title="确认删除该 ComfyUI API？"
+          onConfirm={() => onDelete(w.id)}
+          okButtonProps={{ danger: true }}
+          key="delete"
+        >
+          <Tooltip title="删除">
+            <DeleteOutlined onClick={(e) => e.stopPropagation()} />
+          </Tooltip>
+        </Popconfirm>,
+      ]}
+    >
+      <Card.Meta
+        title={
+          <Space>
+            {w.name}
+            <Tag color={CATEGORY_COLORS[w.category] || 'default'}>{w.categoryLabel}</Tag>
+          </Space>
+        }
+        description={
+          <div>
+            <div style={{ minHeight: 40, color: '#555', fontSize: 12, marginBottom: 8 }}>
+              {w.description || '暂无描述'}
+            </div>
+            {w.tags?.length ? (
+              <Space size={[0, 4]} wrap>
+                {w.tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>)}
+              </Space>
+            ) : (
+              <span style={{ color: '#999', fontSize: 11 }}>无标签</span>
+            )}
+          </div>
+        }
+      />
+    </Card>
+  );
+
   return (
     <div>
       <Card
@@ -358,11 +425,30 @@ export default function ComfyUIAPIManager() {
         </Space.Compact>
       </Card>
 
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
           导入 ComfyUI API
         </Button>
         <Button onClick={load}>刷新</Button>
+        <Select
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          style={{ width: 160 }}
+          placeholder="按类型筛选"
+        >
+          <Select.Option value="all">全部类型</Select.Option>
+          {categories.map((c) => (
+            <Select.Option key={c.value} value={c.value}>{c.label}</Select.Option>
+          ))}
+        </Select>
+        <Segmented
+          value={viewMode}
+          onChange={(v) => setViewMode(v as 'card' | 'list')}
+          options={[
+            { value: 'card', label: '卡片', icon: <AppstoreOutlined /> },
+            { value: 'list', label: '列表', icon: <UnorderedListOutlined /> },
+          ]}
+        />
       </Space>
 
       <Alert
@@ -372,13 +458,27 @@ export default function ComfyUIAPIManager() {
         message="从 ComfyUI 导出的 API（Save (API Format)）JSON 可直接导入保存。保存时仅校验格式，实际与 ComfyUI 的连接在运行时检测。"
       />
 
-      <Table
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={list}
-        pagination={{ pageSize: 10 }}
-      />
+      {viewMode === 'card' ? (
+        filteredList.length ? (
+          <Row gutter={[16, 16]}>
+            {filteredList.map((w) => (
+              <Col xs={24} sm={12} md={8} lg={6} key={w.id}>
+                {renderCard(w)}
+              </Col>
+            ))}
+          </Row>
+        ) : (
+          <Empty description={loading ? '加载中…' : '暂无 ComfyUI API，点击上方“导入”添加'} />
+        )
+      ) : (
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={filteredList}
+          pagination={{ pageSize: 10 }}
+        />
+      )}
 
       <Modal
         title="导入 ComfyUI API"
