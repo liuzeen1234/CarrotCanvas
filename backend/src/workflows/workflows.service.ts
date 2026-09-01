@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Workflow } from './workflow.entity';
+import { Workflow, ExposureConfig } from './workflow.entity';
 import { ComfyUIValidator } from './comfyui-validator';
 import { WorkflowCategory, WORKFLOW_CATEGORIES, CATEGORY_LABEL_MAP } from './workflow-category';
 
@@ -11,6 +11,7 @@ export interface WorkflowMeta {
   description?: string;
   tags?: string[];
   thumbnailPath?: string;
+  exposureConfig?: ExposureConfig | null;
 }
 
 export interface ImportWorkflowDto extends WorkflowMeta {
@@ -28,6 +29,7 @@ export interface WorkflowResponse {
   tags: string[] | null;
   apiJson: unknown;
   thumbnailPath: string | null;
+  exposureConfig: ExposureConfig | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -62,6 +64,7 @@ export class WorkflowsService {
       tags: dto.tags?.length ? dto.tags : null,
       apiJson,
       thumbnailPath: dto.thumbnailPath ?? null,
+      exposureConfig: this.normalizeExposure(dto.exposureConfig),
     });
     const saved = await this.repo.save(workflow);
     return this.serialize(saved);
@@ -81,6 +84,9 @@ export class WorkflowsService {
     if (dto.description !== undefined) workflow.description = dto.description;
     if (dto.tags !== undefined) workflow.tags = dto.tags?.length ? dto.tags : null;
     if (dto.thumbnailPath !== undefined) workflow.thumbnailPath = dto.thumbnailPath;
+    if (dto.exposureConfig !== undefined) {
+      workflow.exposureConfig = this.normalizeExposure(dto.exposureConfig);
+    }
     if (dto.content !== undefined) {
       const { apiJson } = this.validateContent(dto.content);
       workflow.apiJson = apiJson;
@@ -111,6 +117,32 @@ export class WorkflowsService {
     return category;
   }
 
+  /** 规整暴露配置：去掉非法项，空列表/无效输入归一为 null（未配置） */
+  private normalizeExposure(
+    input: ExposureConfig | null | undefined,
+  ): ExposureConfig | null {
+    if (input === null || input === undefined) return null;
+    const fields = Array.isArray(input.fields) ? input.fields : [];
+    const valid = fields.filter(
+      (f) =>
+        f &&
+        typeof f.nodeId === 'string' &&
+        f.nodeId.length > 0 &&
+        typeof f.param === 'string' &&
+        f.param.length > 0,
+    );
+    if (!valid.length) return null;
+    // 去重
+    const seen = new Set<string>();
+    const deduped = valid.filter((f) => {
+      const key = `${f.nodeId}::${f.param}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return { version: 1, fields: deduped };
+  }
+
   private validateContent(content: string): { apiJson: string } {
     const parsed = ComfyUIValidator.parseJson(content);
     if (!parsed.ok) {
@@ -129,6 +161,7 @@ export class WorkflowsService {
       ...rest,
       categoryLabel: CATEGORY_LABEL_MAP[workflow.category] || workflow.category,
       apiJson: JSON.parse(apiJson),
+      exposureConfig: workflow.exposureConfig ?? null,
     };
   }
 }

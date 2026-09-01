@@ -61,6 +61,22 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
   - 节点 schema 随版本 / 自定义节点变化 → 缓存带 TTL 或启动刷新，未知类型降级 JSONText；
   - 非 widget 类型裸值 → 特殊处理或回退 JSONText。
 
+### 4.5 暴露字段配置（导入时勾选 + 运行面板分区，已拍板 2026-09-02）
+
+**动机**：schema 分析把「所有无连接 widget」全部平铺成表单（Z-Image 三视图实测 44 项），但用户实际只需填少数关键参数（如 4 张图 + 1 个提示词），其余都是默认值。ComfyUI 原生 `/object_info` 只有 `required/optional/hidden` 三档，**不提供「该不该暴露给终端用户」的语义**，因此这层必须在平台侧实现。
+
+**决策**：
+- 每张工作流持久化一份「暴露配置」`exposureConfig: { version, fields: [{nodeId, param}] }`（存**已暴露**列表，而非隐藏列表，默认收起以免回到 44 项）。存于 `workflows.exposure_config`（simple-json，nullable；`synchronize:true` 自动建列，无需迁移）。
+- **导入时勾选**：`从 ComfyUI 导入` 弹窗预览阶段展示按节点分组的字段勾选表（字段名 / 类型 / 当前值），确定后随导入一起入库。
+- **智能预勾**：默认勾选「图片上传（LoadImage）」与「多行提示词（multiline STRING）」，其余默认不勾 → 进高级区。用户可增删。后端 `suggestExposure` 计算建议，前端可覆盖。
+- **运行面板分区**：按 exposureConfig 把 schema 字段拆为「主区（暴露字段，直接展开）」与「高级参数（未暴露，Collapse 折叠，可展开微调）」。**exposureConfig 为空 → 全部归主区（回退平铺）**，不破坏老数据。
+- **事后可改**：编辑弹窗内置同一勾选表（走 `GET /workflows/:id/schema` + `PATCH /workflows/:id` 存 exposureConfig）。
+
+**接口变化**：
+- `POST /comfyui/workflows/preview` 增返 `schema`（字段分析）与 `suggestedExposure`（预勾建议）。
+- `POST /comfyui/workflows/import` body 增 `exposure` → 存 `exposureConfig`。
+- `POST /workflows`、`PATCH /workflows/:id` 支持 `exposureConfig`；`GET`/序列化返回 `exposureConfig`。
+
 ### 4.3 关键决策小结
 
 | 决策点 | 结论 |
@@ -71,6 +87,7 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 | schema 来源 | ComfyUI `/object_info`，缓存 + 降级 |
 | 工作流获取 | 8188 `/userdata` 官方端点拉取（免目录扫描、免手动导出） |
 | UI→API 转换 | 复刻官方前端 `graphToPrompt` 算法，转换后校验 + 手动上传兜底 |
+| 参数暴露 | 平台侧持久化 `exposureConfig`；导入时勾选（智能预勾图片+提示词）；运行面板主区/高级折叠分区；空配置回退平铺（见 §4.5） |
 
 ### 4.4 工作流导入方案（8188 拉取 + 复刻官方转换，已拍板 2026-09-01）
 
@@ -104,6 +121,7 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-02（实现）：新增「暴露字段配置」（§4.5）——`workflow` 实体加 `exposure_config`（simple-json，nullable，synchronize 自动建列）；`workflows.service` 透传 + `normalizeExposure`（去重、空归 null）；`comfyui.controller` preview 增返 `schema`/`suggestedExposure`（`suggestExposure`：图片 + 多行提示词预勾），import 接收 `exposure`。前端 `ComfyUIAPIManager.tsx`：可复用 `renderExposureSelector`（分组勾选表：字段名/类型/当前值 + 全选/全不选）接入「从 ComfyUI 导入」与「编辑」弹窗；运行面板 `splitByExposure` 拆主区/高级 Collapse，空配置回退平铺。后端 `tsc` 编译通过。
 - 2026-09-01（实现）：落地步骤④⑤⑥（入参动态表单 + 图片上传）——新增 `ComfyUISchemaService`（apiJson + /object_info → 表单描述，跳过连接输入，类型→控件映射）；`comfyui-client` 增加 /object_info 10min TTL 缓存与 /upload/image（FormData 转发）；controller 新增 GET /workflows/:id/schema、POST /upload/image；main.ts 引入 body-parser（JSON body 15mb）支持大图 base64；前端运行面板自动表单按节点分组渲染 + 值写回 + JSONText 双向切换 + LoadImage 上传/选择控件（flex 布局修复上传按钮不可见）；实测：schema 三工作流、改 filename_prefix 提交生效、465KB 图片上传被 ComfyUI 识别。
 - 2026-09-01（实现）：落地步骤②（工作流导入）与步骤③/⑦（运行执行）——新增 `backend/src/comfyui/` 模块（client / graph-converter / runner / controller）；复刻官方 graphToPrompt 并补充子图展开（subgraph 节点展开为 `父id:子id` 内部节点）与 Reroute 穿透；旧格式（位置 widgets_values）按 /object_info 映射；提交前展开 `%date%`/`%time%` 前端通配符；运行状态内存化 + 成功回写缩略图；前端接入「从 ComfyUI 导入」与运行面板。
 - 2026-09-01（补充）：新增「工作流导入」方案（§4.4）——通过 8188 官方 `/userdata` 端点直接拉取 ComfyUI 已保存工作流，后端复刻官方前端 `graphToPrompt` 算法做 UI→API 转换后入库，免去手动导出上传；落地步骤新增 ②。

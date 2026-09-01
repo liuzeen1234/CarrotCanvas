@@ -13,7 +13,7 @@ import { Readable } from 'stream';
 import { ComfyUIClientService } from './comfyui-client';
 import { ComfyUIGraphConverter } from './comfyui-graph-converter';
 import { ComfyUIRunnerService, RunState } from './comfyui-runner.service';
-import { ComfyUISchemaService } from './comfyui-schema.service';
+import { ComfyUISchemaService, SchemaAnalysis } from './comfyui-schema.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { ComfyUIValidator } from '../workflows/comfyui-validator';
 import { WorkflowCategory } from '../workflows/workflow-category';
@@ -28,6 +28,7 @@ interface ImportBody {
   category?: WorkflowCategory;
   description?: string;
   tags?: string[];
+  exposure?: { version: number; fields: { nodeId: string; param: string }[] } | null;
 }
 
 interface RunBody {
@@ -64,6 +65,17 @@ export class ComfyUIController {
     const objectInfo = await this.client.getObjectInfo();
     const result = ComfyUIGraphConverter.convert(uiJson, objectInfo);
 
+    // 分析可编辑字段 + 计算智能预勾建议（供导入弹窗勾选表使用）
+    const schema = result.apiJson
+      ? this.schemaService.analyze(
+          result.apiJson as Record<string, unknown>,
+          objectInfo,
+        )
+      : null;
+    const suggestedExposure = schema
+      ? this.suggestExposure(schema)
+      : { version: 1, fields: [] };
+
     const filename = body.filename.replace(/\.(json|bak)$/i, '');
     return {
       filename: body.filename,
@@ -75,6 +87,8 @@ export class ComfyUIController {
       warnings: result.warnings,
       nodeCount: result.nodeCount,
       format: this.detectFormat(uiJson),
+      schema,
+      suggestedExposure,
     };
   }
 
@@ -102,6 +116,7 @@ export class ComfyUIController {
       description: body.description,
       tags: body.tags,
       content: JSON.stringify(result.apiJson),
+      exposureConfig: body.exposure ?? null,
     });
     return { workflow: created, warnings: result.warnings, nodeCount: result.nodeCount };
   }
@@ -237,6 +252,25 @@ export class ComfyUIController {
   }
 
   // ---------- 辅助 ----------
+
+  /**
+   * 智能预勾建议：默认暴露"图片上传"与"多行提示词"字段，
+   * 其余字段进高级折叠区。用户可在导入弹窗里增删。
+   */
+  private suggestExposure(schema: SchemaAnalysis): {
+    version: number;
+    fields: { nodeId: string; param: string }[];
+  } {
+    const fields: { nodeId: string; param: string }[] = [];
+    for (const group of schema.groups) {
+      for (const f of group.fields) {
+        if (f.control === 'upload' || (f.control === 'textarea' && f.multiline)) {
+          fields.push({ nodeId: f.nodeId, param: f.param });
+        }
+      }
+    }
+    return { version: 1, fields };
+  }
 
   /** 按节点类型粗略推断分类 */
   private guessCategory(apiJson: Record<string, unknown> | undefined): WorkflowCategory {

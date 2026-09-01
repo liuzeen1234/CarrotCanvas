@@ -25,6 +25,8 @@ import {
   InputNumber,
   Switch,
   Divider,
+  Checkbox,
+  Collapse,
 } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -46,6 +48,16 @@ import {
 } from '@ant-design/icons';
 import { request } from 'umi';
 
+interface ExposedField {
+  nodeId: string;
+  param: string;
+}
+
+interface ExposureConfig {
+  version: number;
+  fields: ExposedField[];
+}
+
 export interface ComfyUIAPI {
   id: string;
   name: string;
@@ -55,6 +67,7 @@ export interface ComfyUIAPI {
   tags: string[] | null;
   apiJson: unknown;
   thumbnailPath: string | null;
+  exposureConfig: ExposureConfig | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -88,6 +101,8 @@ interface WorkflowPreview {
   warnings: string[];
   nodeCount: number;
   format: string;
+  schema: SchemaAnalysis | null;
+  suggestedExposure: ExposureConfig;
 }
 
 interface RunOutputFile {
@@ -176,6 +191,10 @@ export default function ComfyUIAPIManager() {
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<ComfyUIAPI | null>(null);
   const [editForm] = Form.useForm();
+  // 编辑弹窗：暴露字段配置
+  const [editSchema, setEditSchema] = useState<SchemaAnalysis | null>(null);
+  const [editSchemaLoading, setEditSchemaLoading] = useState(false);
+  const [editExposureKeys, setEditExposureKeys] = useState<Set<string>>(new Set());
   const [importForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('file');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -194,6 +213,8 @@ export default function ComfyUIAPIManager() {
   const [remotePreviewLoading, setRemotePreviewLoading] = useState(false);
   const [remoteImporting, setRemoteImporting] = useState(false);
   const [remoteForm] = Form.useForm();
+  // 导入弹窗：已勾选暴露字段（key=`${nodeId}::${param}`）
+  const [exposureKeys, setExposureKeys] = useState<Set<string>>(new Set());
 
   // 运行面板
   const [runOpen, setRunOpen] = useState(false);
@@ -354,7 +375,17 @@ export default function ComfyUIAPIManager() {
       description: w.description ?? '',
       tags: w.tags ?? [],
     });
+    // 载入当前暴露配置（无则空集）
+    setEditExposureKeys(
+      new Set((w.exposureConfig?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`)),
+    );
+    setEditSchema(null);
+    setEditSchemaLoading(true);
     setEditOpen(true);
+    request<{ schema: SchemaAnalysis }>(`/api/comfyui/workflows/${w.id}/schema`)
+      .then((data) => setEditSchema(data.schema))
+      .catch(() => setEditSchema(null))
+      .finally(() => setEditSchemaLoading(false));
   };
   onDelete = async (id) => {
     await request(`/api/workflows/${id}`, { method: 'DELETE' });
@@ -411,6 +442,13 @@ export default function ComfyUIAPIManager() {
     if (!editing) return;
     const values = await editForm.validateFields();
     try {
+      const exposureConfig = {
+        version: 1,
+        fields: [...editExposureKeys].map((k) => {
+          const idx = k.lastIndexOf('::');
+          return { nodeId: k.slice(0, idx), param: k.slice(idx + 2) };
+        }),
+      };
       await request(`/api/workflows/${editing.id}`, {
         method: 'PATCH',
         data: {
@@ -418,6 +456,7 @@ export default function ComfyUIAPIManager() {
           category: values.category,
           description: values.description,
           tags: values.tags,
+          exposureConfig,
         },
       });
       message.success('已保存');
@@ -468,6 +507,11 @@ export default function ComfyUIAPIManager() {
         name: data.derivedName,
         category: data.suggestedCategory,
       });
+      // 智能预勾：后端建议的字段默认选中
+      const preset = new Set(
+        (data.suggestedExposure?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`),
+      );
+      setExposureKeys(preset);
     } catch (e: any) {
       message.error(`转换失败：${e?.response?.data?.message || '未知错误'}`);
     } finally {
@@ -483,6 +527,13 @@ export default function ComfyUIAPIManager() {
     const values = (await remoteForm.validateFields()) as ImportFormValues;
     setRemoteImporting(true);
     try {
+      const exposure = {
+        version: 1,
+        fields: [...exposureKeys].map((k) => {
+          const idx = k.lastIndexOf('::');
+          return { nodeId: k.slice(0, idx), param: k.slice(idx + 2) };
+        }),
+      };
       await request('/api/comfyui/workflows/import', {
         method: 'POST',
         data: {
@@ -491,6 +542,7 @@ export default function ComfyUIAPIManager() {
           category: values.category,
           description: values.description,
           tags: values.tags,
+          exposure,
         },
       });
       message.success('导入成功');
@@ -740,6 +792,161 @@ export default function ComfyUIAPIManager() {
     }
   };
 
+  /** 渲染一组节点分组的表单控件（运行面板用） */
+  const renderRunGroups = (groups: SchemaNodeGroup[]) =>
+    groups.map((g) => (
+      <div key={g.nodeId} style={{ marginBottom: 12 }}>
+        <Divider orientation="left" style={{ margin: '8px 0' }}>
+          <span style={{ fontSize: 13 }}>
+            {g.nodeTitle}
+            <span style={{ color: '#999', marginLeft: 8, fontSize: 12 }}>
+              {g.classType} · {g.nodeId}
+            </span>
+          </span>
+        </Divider>
+        <Row gutter={16}>
+          {g.fields.map((f) =>
+            f.control === 'hidden' ? null : (
+              <Col span={12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4 }}>
+                <div style={{ marginBottom: 2, fontSize: 12, color: '#555' }}>{f.label}</div>
+                {renderField(f)}
+              </Col>
+            ),
+          )}
+        </Row>
+      </div>
+    ));
+
+  /**
+   * 按 exposureConfig 把 schema 分组拆成主区（暴露）与高级区（折叠）。
+   * exposureConfig 为空 → 全部归主区（回退为平铺，不破坏老数据）。
+   */
+  const splitByExposure = (schema: SchemaAnalysis, exposure: ExposureConfig | null) => {
+    const exposed = exposure?.fields?.length
+      ? new Set(exposure.fields.map((f) => `${f.nodeId}::${f.param}`))
+      : null;
+    if (!exposed) {
+      return { primary: schema.groups, advanced: [] as SchemaNodeGroup[] };
+    }
+    const primary: SchemaNodeGroup[] = [];
+    const advanced: SchemaNodeGroup[] = [];
+    for (const g of schema.groups) {
+      const p = g.fields.filter((f) => exposed.has(`${f.nodeId}::${f.param}`));
+      const a = g.fields.filter((f) => !exposed.has(`${f.nodeId}::${f.param}`));
+      if (p.length) primary.push({ ...g, fields: p });
+      if (a.length) advanced.push({ ...g, fields: a });
+    }
+    return { primary, advanced };
+  };
+
+  /** 字段值预览（勾选表右侧展示当前值） */
+  const previewValue = (v: unknown): string => {
+    if (v === null || v === undefined) return '—';
+    if (typeof v === 'string') return v.length > 40 ? `${v.slice(0, 40)}…` : v || '(空)';
+    if (typeof v === 'object') return JSON.stringify(v).slice(0, 40);
+    return String(v);
+  };
+
+  /** control → 中文标签 */
+  const controlLabel = (c: SchemaField['control']): string => {
+    const map: Record<string, string> = {
+      input_number: '数值',
+      slider: '滑块',
+      textarea: '多行文本',
+      input: '文本',
+      select: '下拉',
+      switch: '开关',
+      upload: '图片',
+    };
+    return map[c] ?? c;
+  };
+
+  /**
+   * 暴露字段勾选表：按节点分组，每个可编辑字段一行 Checkbox + 类型 + 当前值。
+   * 供导入弹窗与编辑弹窗复用。
+   */
+  const renderExposureSelector = (
+    schema: SchemaAnalysis | null,
+    selected: Set<string>,
+    setSelected: (next: Set<string>) => void,
+  ) => {
+    if (!schema || !schema.ok) {
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          message="无法解析可编辑字段"
+          description="该工作流未能分析出可编辑参数，导入后运行面板将回退为完整参数列表。"
+        />
+      );
+    }
+    const editableGroups = schema.groups
+      .map((g) => ({ ...g, fields: g.fields.filter((f) => f.control !== 'hidden') }))
+      .filter((g) => g.fields.length > 0);
+
+    const allKeys = editableGroups.flatMap((g) =>
+      g.fields.map((f) => `${f.nodeId}::${f.param}`),
+    );
+    const allChecked = allKeys.length > 0 && allKeys.every((k) => selected.has(k));
+
+    const toggle = (key: string, checked: boolean) => {
+      const next = new Set(selected);
+      if (checked) next.add(key);
+      else next.delete(key);
+      setSelected(next);
+    };
+
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: '#888' }}>
+            勾选需要在运行面板直接暴露的字段，未勾选的将收进"高级参数"折叠区。已选 {selected.size} 项
+          </span>
+          <Space>
+            <Button size="small" onClick={() => setSelected(new Set(allKeys))} disabled={allChecked}>
+              全选
+            </Button>
+            <Button size="small" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+              全不选
+            </Button>
+          </Space>
+        </div>
+        <div style={{ maxHeight: '40vh', overflow: 'auto', border: '1px solid #f0f0f0', borderRadius: 6, padding: 8 }}>
+          {editableGroups.map((g) => (
+            <div key={g.nodeId} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: '#999', margin: '4px 0' }}>
+                {g.nodeTitle}
+                <span style={{ marginLeft: 6 }}>
+                  {g.classType} · {g.nodeId}
+                </span>
+              </div>
+              {g.fields.map((f) => {
+                const key = `${f.nodeId}::${f.param}`;
+                return (
+                  <div
+                    key={key}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 2px 12px' }}
+                  >
+                    <Checkbox
+                      checked={selected.has(key)}
+                      onChange={(e) => toggle(key, e.target.checked)}
+                    >
+                      <span style={{ fontSize: 13 }}>{f.label}</span>
+                    </Checkbox>
+                    <Tag style={{ fontSize: 11 }}>{controlLabel(f.control)}</Tag>
+                    <span style={{ fontSize: 11, color: '#bbb', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {previewValue(f.current)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const interruptRun = async () => {
     if (!runState) return;
     try {
@@ -815,6 +1022,32 @@ export default function ComfyUIAPIManager() {
       hoverable
       style={{ marginBottom: 16 }}
       onClick={() => onView(w)}
+      cover={
+        w.thumbnailPath ? (
+          <img
+            src={w.thumbnailPath}
+            alt={w.name}
+            style={{ height: 160, objectFit: 'cover', display: 'block' }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              height: 160,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#fafafa',
+              color: '#bbb',
+              fontSize: 12,
+            }}
+          >
+            暂无预览图
+          </div>
+        )
+      }
       actions={[
         <Tooltip title="查看" key="view">
           <EyeOutlined />
@@ -838,24 +1071,20 @@ export default function ComfyUIAPIManager() {
       ]}
     >
       <Card.Meta
-        title={
-          <Space>
-            {w.name}
-            <Tag color={CATEGORY_COLORS[w.category] || 'default'}>{w.categoryLabel}</Tag>
-          </Space>
-        }
+        title={w.name}
         description={
           <div>
             <div style={{ minHeight: 40, color: '#555', fontSize: 12, marginBottom: 8 }}>
               {w.description || '暂无描述'}
             </div>
-            {w.tags?.length ? (
-              <Space size={[0, 4]} wrap>
-                {w.tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>)}
-              </Space>
-            ) : (
-              <span style={{ color: '#999', fontSize: 11 }}>无标签</span>
-            )}
+            <Space size={[0, 4]} wrap>
+              <Tag color={CATEGORY_COLORS[w.category] || 'default'} style={{ fontSize: 11 }}>
+                {w.categoryLabel}
+              </Tag>
+              {w.tags?.length
+                ? w.tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>)
+                : null}
+            </Space>
           </div>
         }
       />
@@ -1035,6 +1264,7 @@ export default function ComfyUIAPIManager() {
         onCancel={() => setEditOpen(false)}
         onOk={handleEditSave}
         okText="保存"
+        width={720}
       >
         <Form form={editForm} layout="vertical">
           <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
@@ -1056,7 +1286,18 @@ export default function ComfyUIAPIManager() {
             <Select mode="tags" tokenSeparators={[',', '，']} placeholder="输入后回车添加标签" />
           </Form.Item>
         </Form>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+        <Divider orientation="left" style={{ margin: '8px 0' }}>
+          <span style={{ fontSize: 13 }}>暴露字段配置</span>
+        </Divider>
+        {editSchemaLoading ? (
+          <div style={{ textAlign: 'center', padding: 16 }}>
+            <Progress percent={100} size="small" status="active" />
+            <div style={{ color: '#888', marginTop: 4 }}>正在分析可编辑参数…</div>
+          </div>
+        ) : (
+          renderExposureSelector(editSchema, editExposureKeys, setEditExposureKeys)
+        )}
+        <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
           当前 JSON 节点数：{editing ? Object.keys(editing.apiJson as object).length : 0}
         </Paragraph>
       </Modal>
@@ -1167,32 +1408,39 @@ export default function ComfyUIAPIManager() {
                   <div style={{ color: '#888', marginTop: 8 }}>正在分析可编辑参数…</div>
                 </div>
               ) : runSchema && runSchema.ok ? (
-                <div style={{ maxHeight: '52vh', overflow: 'auto', paddingRight: 8 }}>
-                  {runSchema.groups.map((g) => (
-                    <div key={g.nodeId} style={{ marginBottom: 12 }}>
-                      <Divider orientation="left" style={{ margin: '8px 0' }}>
-                        <span style={{ fontSize: 13 }}>
-                          {g.nodeTitle}
-                          <span style={{ color: '#999', marginLeft: 8, fontSize: 12 }}>
-                            {g.classType} · {g.nodeId}
-                          </span>
-                        </span>
-                      </Divider>
-                      <Row gutter={16}>
-                        {g.fields.map((f) =>
-                          f.control === 'hidden' ? null : (
-                            <Col span={12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4 }}>
-                              <div style={{ marginBottom: 2, fontSize: 12, color: '#555' }}>
-                                {f.label}
-                              </div>
-                              {renderField(f)}
-                            </Col>
-                          ),
-                        )}
-                      </Row>
+                (() => {
+                  const { primary, advanced } = splitByExposure(
+                    runSchema,
+                    runWorkflow?.exposureConfig ?? null,
+                  );
+                  const advancedCount = advanced.reduce((n, g) => n + g.fields.length, 0);
+                  return (
+                    <div style={{ maxHeight: '52vh', overflow: 'auto', paddingRight: 8 }}>
+                      {primary.length > 0 ? (
+                        renderRunGroups(primary)
+                      ) : (
+                        <Alert
+                          type="info"
+                          showIcon
+                          style={{ marginBottom: 12 }}
+                          message="该工作流未配置暴露字段，所有参数已收进下方高级参数区。"
+                        />
+                      )}
+                      {advancedCount > 0 && (
+                        <Collapse
+                          ghost
+                          items={[
+                            {
+                              key: 'advanced',
+                              label: `高级参数（${advancedCount} 项）`,
+                              children: renderRunGroups(advanced),
+                            },
+                          ]}
+                        />
+                      )}
                     </div>
-                  ))}
-                </div>
+                  );
+                })()
               ) : (
                 <Alert
                   type="warning"
@@ -1372,6 +1620,10 @@ export default function ComfyUIAPIManager() {
               <Form.Item label="标签" name="tags">
                 <Select mode="tags" placeholder="输入后回车添加标签" tokenSeparators={[',', '，']} />
               </Form.Item>
+              <Divider orientation="left" style={{ margin: '8px 0' }}>
+                <span style={{ fontSize: 13 }}>暴露字段配置</span>
+              </Divider>
+              {renderExposureSelector(remotePreview.schema, exposureKeys, setExposureKeys)}
             </>
           ) : (
             <Empty description={remoteLoading ? '正在拉取工作流列表…' : '请选择工作流进行预览'} />

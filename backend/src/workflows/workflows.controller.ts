@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, HttpCode } from '@nestjs/common';
 import { WorkflowsService, WorkflowResponse } from './workflows.service';
 import { WorkflowCategory, WORKFLOW_CATEGORIES } from './workflow-category';
+import { ExposureConfig } from './workflow.entity';
 
 export interface CreateWorkflowDto {
   name?: string;
@@ -8,6 +9,7 @@ export interface CreateWorkflowDto {
   description?: string;
   tags?: string[];
   content: string;
+  exposureConfig?: ExposureConfig | null;
 }
 
 export interface UpdateWorkflowDto {
@@ -17,6 +19,7 @@ export interface UpdateWorkflowDto {
   tags?: string[];
   thumbnailPath?: string;
   content?: string;
+  exposureConfig?: ExposureConfig | null;
 }
 
 @Controller('workflows')
