@@ -54,6 +54,12 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 │  │     ├─ workflow.entity.ts
 │  │     ├─ workflows.module.ts / controller.ts / service.ts
 │  │     └─ comfyui-validator.ts # ComfyUI API 格式校验
+│  └─ comfyui/                # ComfyUI 集成（步骤②③：工作流导入 + 运行执行）
+│     ├─ comfyui-client.ts    # HTTP 客户端（/userdata、/object_info、/prompt、/view）
+│     ├─ comfyui-graph-converter.ts # 复刻官方 graphToPrompt UI→API 转换（含子图展开/Reroute 穿透）
+│     ├─ comfyui-runner.service.ts  # 提交 + WebSocket 监控 + 输出收集（内存运行状态）
+│     ├─ comfyui.controller.ts      # /api/comfyui/* 端点（列表/预览/导入/运行/中断/图片代理）
+│     └─ comfyui.module.ts
 │  ├─ package.json              # @carrot-canvas/backend
 │  ├─ tsconfig.json / tsconfig.build.json
 └─ web/                         # Umi + AntD 前端
@@ -73,7 +79,9 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 后端 NestJS：`http://localhost:3100`，`GET /api/health` → `200 {"status":"ok"}`
 - ✅ 后端 `workflows` 模块：CRUD + 导入 + ComfyUI API 格式校验（`/api/workflows`）
 - ✅ 前端 Umi dev：`http://localhost:8000`，HTTP 200，首页 / 画布页 / 设置页（含 ComfyUI API 管理）可访问
-- ✅ 前端 ComfyUI API 管理：列表 CRUD + 导入/校验（Table 视图），含 ComfyUI 地址配置与连接测试
+- ✅ 前端 ComfyUI API 管理：列表 CRUD + 导入/校验（卡片/列表视图），含 ComfyUI 地址配置与连接测试
+- ✅ 工作流导入（步骤②）：后端 /api/comfyui/workflows 从 8188 /userdata 拉取已保存工作流，复刻官方 graphToPrompt 转 API 格式（新旧格式 + 子图展开 + Reroute 穿透），/preview 预览、/import 入库；前端「从 ComfyUI 导入」弹窗（选文件→预览→导入）
+- ✅ 运行执行（步骤③）：POST /api/comfyui/runs 提交 /prompt，WebSocket 监控进度，GET /runs/:promptId 轮询，成功回写 `thumbnail_path`，/api/comfyui/view 代理输出图片；前端运行面板（提交→进度→结果缩略图→缩略图刷新）
 - ✅ 前端构建通过（`pnpm build`）
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
@@ -115,14 +123,17 @@ pnpm start     # 生产运行后端（需先 build）
 - [x] 工作流管理：导入（文件/粘贴）、查询、编辑、删除，含 ComfyUI API 格式校验
 - [x] ComfyUI API 管理重构：`WorkflowManager` → `ComfyUIAPIManager`，独立路由页 `/settings/comfyui-api`，后端措辞统一为「ComfyUI API」
 - [x] 建立 docs/ 统一文档目录
+- [x] ComfyUI 工作流导入（步骤②）：8188 拉取 UI 工作流 → 复刻 graphToPrompt 转换（含子图展开/Reroute 穿透/新旧格式）→ 校验 → 入库；前端「从 ComfyUI 导入」交互（实测新/旧格式转换）
+- [x] ComfyUI 运行执行（步骤③）：/prompt 提交 + WebSocket 监控 + 输出收集 + 缩略图写回 + 图片代理；前端运行面板（实测端到端生成成功）
 
 ## 7. 待办 / 下一步（TODO）
 
-- [ ] ComfyUI 运行功能（独立菜单/卡片式/入参表单/文件占位符/提交与进度）——设计方案见 `docs/COMFYUI-INTEGRATION.md`
-- [ ] ComfyUI 客户端（HTTP + WebSocket 任务监听）
-- [ ] SQLite 数据表补全：generation_runs / assets / canvas_docs
+- [x] ComfyUI 运行执行（独立菜单/卡片式 + 提交与进度）——核心已落地，入参表单/文件占位符见步骤④⑤（`docs/COMFYUI-INTEGRATION.md`）
+- [x] ComfyUI 客户端（HTTP + WebSocket 任务监听）
+- [ ] SQLite 数据表补全：generation_runs / assets / canvas_docs（运行状态当前为内存态，未持久化）
 - [ ] 画布自定义节点：提示词、ComfyUI 生成、结果预览（从已导入工作流渲染节点）
-- [ ] 生成任务队列与进度展示
+- [ ] 入参动态表单（/object_info 拉取 + schema 分析，步骤④⑤）
+- [ ] 生成任务历史持久化（generation_runs 表）
 - [x] ComfyUI 配置界面（服务地址）
 - [ ] 前端产物由 NestJS 静态托管（单端口）
 - [ ] 单文件 exe 打包（bun build --compile / pkg）

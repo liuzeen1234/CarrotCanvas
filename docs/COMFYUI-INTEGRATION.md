@@ -94,15 +94,16 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 5. 落地步骤（当前进度）
 
-- [ ] ① 路由改造：独立菜单 + 卡片网格视图（保留列表切换）
-- [ ] ② 后端：工作流导入（8188 `/userdata` 拉取 + 复刻官方 `graphToPrompt` 的 UI→API 转换 + 校验入库，见 §4.4）
-- [ ] ③ 后端：`/object_info` 拉取 + 缓存接口
+- [x] ① 路由改造：独立菜单 + 卡片网格视图（保留列表切换）——已落地（commit 446eb41）
+- [x] ② 后端：工作流导入（8188 `/userdata` 拉取 + 复刻官方 `graphToPrompt` 的 UI→API 转换 + 校验入库，见 §4.4）——已落地，含子图展开 / Reroute 穿透 / 新旧格式兼容；前端「从 ComfyUI 导入」弹窗
+- [x] ③ 后端：`/object_info` 拉取 + 缓存接口——已落地（`ComfyUIClientService.getObjectInfo` 带缓存，供转换校验与后续表单用）
 - [ ] ④ 后端：schema 分析接口（入参 API JSON → 返回表单描述 `[{param, type, default, constraints, control}]`）
 - [ ] ⑤ 前端：动态表单渲染 + 值写回 JSON + JSONText 模式切换
 - [ ] ⑥ 后端：文件上传（写 input 目录）+ 模板渲染（占位符值级替换）
-- [ ] ⑦ 提交 `/prompt` + WebSocket 进度监听 + 结果回传入库（`generation_runs` 表）
+- [x] ⑦ 提交 `/prompt` + WebSocket 进度监听 + 结果展示——已落地（`ComfyUIRunnerService`：提交 /prompt + WS 监控 + 输出收集 + 缩略图写回 workflows.thumbnail_path + 前端运行面板）；`generation_runs` 表持久化待做
 
 ## 6. 变更日志
 
+- 2026-09-01（实现）：落地步骤②（工作流导入）与步骤③/⑦（运行执行）——新增 `backend/src/comfyui/` 模块（client / graph-converter / runner / controller）；复刻官方 graphToPrompt 并补充子图展开（subgraph 节点展开为 `父id:子id` 内部节点）与 Reroute 穿透；旧格式（位置 widgets_values）按 /object_info 映射；提交前展开 `%date%`/`%time%` 前端通配符；运行状态内存化 + 成功回写缩略图；前端接入「从 ComfyUI 导入」与运行面板。
 - 2026-09-01（补充）：新增「工作流导入」方案（§4.4）——通过 8188 官方 `/userdata` 端点直接拉取 ComfyUI 已保存工作流，后端复刻官方前端 `graphToPrompt` 算法做 UI→API 转换后入库，免去手动导出上传；落地步骤新增 ②。
 - 2026-09-01：创建本文档，沉淀需求讨论（独立菜单 / 卡片式 / JSONText+文件占位符 / object_info 自动表单）。

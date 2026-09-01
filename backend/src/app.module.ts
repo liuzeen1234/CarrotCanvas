@@ -4,9 +4,10 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { SettingsModule } from './settings/settings.module';
+import { ComfyuiModule } from './comfyui/comfyui.module';
 
 @Module({
-  imports: [DatabaseModule, WorkflowsModule, SettingsModule],
+  imports: [DatabaseModule, WorkflowsModule, SettingsModule, ComfyuiModule],
   controllers: [AppController],
   providers: [AppService],
 })
