@@ -25,6 +25,7 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
    - **JSONText 兜底**：右上角可切换"JSON 模式"直接编辑模板；拉不到 schema 时自动回退。
 4. **文件参数占位符机制**：需要传图/传文件的参数，界面可随意上传文件，每个文件自动编号（`{{file:1}}`），JSON 中引用该编号即可（见 §4.1）。
 5. **提交与结果**：渲染完整请求体 → `POST /prompt` → WebSocket 监听进度 → 结果（图/视频）回传前端展示。
+6. **工作流导入免手动导出**：用户无需在 ComfyUI 里手动「Export → API format」再回项目上传——通过 8188 官方端点直接拉取已保存工作流并自动转成 API 格式入库（见 §4.4）。
 
 ## 4. 技术方案决策记录
 
@@ -68,16 +69,40 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 | 入参方式 | 自动表单为主 + JSONText 兜底（可切换） |
 | 文件参数 | 上传 + 占位符编号，提交时值级替换 |
 | schema 来源 | ComfyUI `/object_info`，缓存 + 降级 |
+| 工作流获取 | 8188 `/userdata` 官方端点拉取（免目录扫描、免手动导出） |
+| UI→API 转换 | 复刻官方前端 `graphToPrompt` 算法，转换后校验 + 手动上传兜底 |
+
+### 4.4 工作流导入方案（8188 拉取 + 复刻官方转换，已拍板 2026-09-01）
+
+**动机**：避免用户每次在 ComfyUI 手动「Export → API format」再回项目上传。现有工作流应能直接拉取导入。
+
+**已验证事实（本地实测 2026-09-01）**：
+- ComfyUI 官方提供公开端点 `GET /userdata?dir=workflows` → 返回已保存工作流文件名列表（实测 9 个文件）；`GET /userdata/workflows/<file>` → 返回文件完整内容（200）。
+- 保存的工作流为 **UI 格式**（graph format）：顶层含 `nodes/links/groups`，无顶层 `class_type`，**不可直接提交 `/prompt`**。
+- 新版 UI 格式节点含 `widgets_values_named`（名字→值映射）与 `inputs[].widget` 标记 → 磁盘文件保留了转换所需的完整信息。
+- 官方前端「Export → API format」调用内置 `graphToPrompt()`（源码在官方前端 bundle `dialogService-*.js`），即官方权威转换算法。
+
+**方案**：
+- 导入入口：「从 ComfyUI 导入」→ 调 8188 `/userdata?dir=workflows` 列出 → 用户勾选 → `/userdata/workflows/<file>` 拉内容 → 后端转换 → 复用现有 `POST /workflows` 导入/校验入库。
+- 转换实现：后端复刻官方 `graphToPrompt` 算法——遍历 `nodes`，每节点输出 `{inputs, class_type, _meta}`；`inputs` 中已连线项写成 `["srcNodeId", outputIndex]`（查 `links` 表），widget 项取值自 `widgets_values_named`；丢弃画布信息（pos/size/groups/links）。
+- 校验与兜底：转换后跑 `ComfyUIValidator` 结构校验；失败或非标准结构时提示「请用 ComfyUI 导出 API 格式后上传」，保留手动上传入口。
+
+**可靠性边界**：
+- 标准节点 100% 可靠（`widgets_values_named` + `inputs[].widget` 完整）。
+- 自定义节点：走同一 widgets 序列化路径，大概率可靠；个别特殊 widget（曲线/隐藏值）需转换后校验确认。
+- 不读本地文件系统目录、不依赖 ComfyUI 安装路径；仅需 ComfyUI 地址（已有 `comfyui-url` 配置）。
 
 ## 5. 落地步骤（当前进度）
 
 - [ ] ① 路由改造：独立菜单 + 卡片网格视图（保留列表切换）
-- [ ] ② 后端：`/object_info` 拉取 + 缓存接口
-- [ ] ③ 后端：schema 分析接口（入参 API JSON → 返回表单描述 `[{param, type, default, constraints, control}]`）
-- [ ] ④ 前端：动态表单渲染 + 值写回 JSON + JSONText 模式切换
-- [ ] ⑤ 后端：文件上传（写 input 目录）+ 模板渲染（占位符值级替换）
-- [ ] ⑥ 提交 `/prompt` + WebSocket 进度监听 + 结果回传入库（`generation_runs` 表）
+- [ ] ② 后端：工作流导入（8188 `/userdata` 拉取 + 复刻官方 `graphToPrompt` 的 UI→API 转换 + 校验入库，见 §4.4）
+- [ ] ③ 后端：`/object_info` 拉取 + 缓存接口
+- [ ] ④ 后端：schema 分析接口（入参 API JSON → 返回表单描述 `[{param, type, default, constraints, control}]`）
+- [ ] ⑤ 前端：动态表单渲染 + 值写回 JSON + JSONText 模式切换
+- [ ] ⑥ 后端：文件上传（写 input 目录）+ 模板渲染（占位符值级替换）
+- [ ] ⑦ 提交 `/prompt` + WebSocket 进度监听 + 结果回传入库（`generation_runs` 表）
 
 ## 6. 变更日志
 
+- 2026-09-01（补充）：新增「工作流导入」方案（§4.4）——通过 8188 官方 `/userdata` 端点直接拉取 ComfyUI 已保存工作流，后端复刻官方前端 `graphToPrompt` 算法做 UI→API 转换后入库，免去手动导出上传；落地步骤新增 ②。
 - 2026-09-01：创建本文档，沉淀需求讨论（独立菜单 / 卡片式 / JSONText+文件占位符 / object_info 自动表单）。
