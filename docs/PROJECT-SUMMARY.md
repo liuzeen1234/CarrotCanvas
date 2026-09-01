@@ -1,6 +1,6 @@
 # CarrotCanvas 项目现状总结
 
-> 最后更新：2026-08-31
+> 最后更新：2026-09-01
 > 本文件是对项目当前状态的完整快照，开发过程中行变更时应同步更新。
 
 ## 1. 项目定位
@@ -40,7 +40,8 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 ├─ LICENSE
 ├─ docs/                        # ★ 所有文档统一存放处（本目录）
 │  ├─ README.md                 # 文档索引与约定
-│  └─ PROJECT-SUMMARY.md        # 本文档
+│  ├─ PROJECT-SUMMARY.md        # 本文档
+│  └─ COMFYUI-INTEGRATION.md    # ComfyUI 集成·运行功能设计
 ├─ backend/                     # NestJS 后端
 │  ├─ src/
 │  │  ├─ main.ts                # 入口，端口 3100
@@ -49,7 +50,7 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 │  │  ├─ app.service.ts
 │  │  ├─ database/
 │  │  │  └─ database.module.ts   # TypeORM + better-sqlite3（数据文件 data/carrot-canvas.sqlite）
-│  │  └─ workflows/              # 工作流管理模块
+│  │  └─ workflows/              # ComfyUI API（工作流）管理模块
 │  │     ├─ workflow.entity.ts
 │  │     ├─ workflows.module.ts / controller.ts / service.ts
 │  │     └─ comfyui-validator.ts # ComfyUI API 格式校验
@@ -60,8 +61,9 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
    ├─ src/
    │  ├─ pages/index.tsx        # 首页
    │  ├─ pages/canvas.tsx       # 无限画布（@xyflow/react 骨架）
-   │  ├─ pages/settings/index.tsx # 设置页（工作流管理 + ComfyUI 地址配置）
-   │  ├─ components/settings/WorkflowManager.tsx # 工作流列表 + 导入/编辑
+   │  ├─ pages/settings/index.tsx # 设置页（路由 Outlet 布局）
+   │  ├─ pages/settings/comfyui-api/index.tsx # ComfyUI API 管理页（独立路由）
+   │  ├─ components/settings/ComfyUIAPIManager.tsx # ComfyUI API 列表 + 导入/编辑
    │  ├─ layouts/index.tsx      # 布局（AntD ConfigProvider）
    └─ package.json              # @carrot-canvas/web
 ```
@@ -70,9 +72,11 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 
 - ✅ 后端 NestJS：`http://localhost:3100`，`GET /api/health` → `200 {"status":"ok"}`
 - ✅ 后端 `workflows` 模块：CRUD + 导入 + ComfyUI API 格式校验（`/api/workflows`）
-- ✅ 前端 Umi dev：`http://localhost:8000`，HTTP 200，登录页 / 画布页 / 设置页可访问
+- ✅ 前端 Umi dev：`http://localhost:8000`，HTTP 200，首页 / 画布页 / 设置页（含 ComfyUI API 管理）可访问
+- ✅ 前端 ComfyUI API 管理：列表 CRUD + 导入/校验（Table 视图），含 ComfyUI 地址配置与连接测试
 - ✅ 前端构建通过（`pnpm build`）
-- ⚠️ 两个服务目前由我后台进程方式拉起，非固化脚本
+- ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
+- ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
 
 ### 启动命令
 
@@ -109,10 +113,12 @@ pnpm start     # 生产运行后端（需先 build）
 - [x] React Flow 无限画布骨架页
 - [x] TypeORM + better-sqlite3 数据库接入，`workflows` 表建好
 - [x] 工作流管理：导入（文件/粘贴）、查询、编辑、删除，含 ComfyUI API 格式校验
+- [x] ComfyUI API 管理重构：`WorkflowManager` → `ComfyUIAPIManager`，独立路由页 `/settings/comfyui-api`，后端措辞统一为「ComfyUI API」
 - [x] 建立 docs/ 统一文档目录
 
 ## 7. 待办 / 下一步（TODO）
 
+- [ ] ComfyUI 运行功能（独立菜单/卡片式/入参表单/文件占位符/提交与进度）——设计方案见 `docs/COMFYUI-INTEGRATION.md`
 - [ ] ComfyUI 客户端（HTTP + WebSocket 任务监听）
 - [ ] SQLite 数据表补全：generation_runs / assets / canvas_docs
 - [ ] 画布自定义节点：提示词、ComfyUI 生成、结果预览（从已导入工作流渲染节点）
