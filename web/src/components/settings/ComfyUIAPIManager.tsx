@@ -230,6 +230,8 @@ export default function ComfyUIAPIManager() {
   const [runJsonText, setRunJsonText] = useState('');
   const [runFormError, setRunFormError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // 结果区：正在设置封面的图片 url（用于按钮 loading）
+  const [settingCoverUrl, setSettingCoverUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -701,7 +703,7 @@ export default function ComfyUIAPIManager() {
     });
 
   /** upload 控件：从已有图片选择 + 上传新图片到 ComfyUI input 目录 */
-  const renderUploadField = (f: SchemaField) => {
+  const renderUploadField = (f: SchemaField, disabled = false) => {
     const value = runFormValues[fileKey(f)];
     return (
       <div style={{ display: 'flex', gap: 8, width: '100%' }}>
@@ -709,6 +711,7 @@ export default function ComfyUIAPIManager() {
           style={{ flex: 1, minWidth: 0 }}
           value={(value as string | number) ?? undefined}
           showSearch
+          disabled={disabled}
           placeholder="选择已有图片"
           options={(f.options ?? []).map((o) => ({ value: o, label: String(o) }))}
           onChange={(v) => setFieldValue(f, v)}
@@ -716,6 +719,7 @@ export default function ComfyUIAPIManager() {
         <Upload
           accept="image/*"
           showUploadList={false}
+          disabled={disabled}
           customRequest={async ({ file, onSuccess, onError }) => {
             const rcFile = file as File;
             try {
@@ -736,15 +740,16 @@ export default function ComfyUIAPIManager() {
               setUploading(false);
             }
           }}
+          disabled={disabled}
         >
-          <Button icon={<UploadOutlined />} loading={uploading} />
+          <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled} />
         </Upload>
       </div>
     );
   };
 
   /** schema 字段 → antd 控件 */
-  const renderField = (f: SchemaField) => {
+  const renderField = (f: SchemaField, disabled = false) => {
     const value = runFormValues[fileKey(f)];
     switch (f.control) {
       case 'input_number':
@@ -755,6 +760,7 @@ export default function ComfyUIAPIManager() {
             min={f.min}
             max={f.max}
             step={f.step}
+            disabled={disabled}
             onChange={(v) => setFieldValue(f, v ?? undefined)}
           />
         );
@@ -763,6 +769,7 @@ export default function ComfyUIAPIManager() {
           <Input.TextArea
             rows={3}
             value={String(value ?? '')}
+            disabled={disabled}
             onChange={(e) => setFieldValue(f, e.target.value)}
           />
         );
@@ -770,6 +777,7 @@ export default function ComfyUIAPIManager() {
         return (
           <Input
             value={String(value ?? '')}
+            disabled={disabled}
             onChange={(e) => setFieldValue(f, e.target.value)}
           />
         );
@@ -779,21 +787,22 @@ export default function ComfyUIAPIManager() {
             style={{ width: '100%' }}
             value={(value as string | number) ?? undefined}
             showSearch
+            disabled={disabled}
             options={(f.options ?? []).map((o) => ({ value: o, label: String(o) }))}
             onChange={(v) => setFieldValue(f, v)}
           />
         );
       case 'switch':
-        return <Switch checked={Boolean(value)} onChange={(v) => setFieldValue(f, v)} />;
+        return <Switch checked={Boolean(value)} disabled={disabled} onChange={(v) => setFieldValue(f, v)} />;
       case 'upload':
-        return renderUploadField(f);
+        return renderUploadField(f, disabled);
       default:
         return null;
     }
   };
 
   /** 渲染一组节点分组的表单控件（运行面板用） */
-  const renderRunGroups = (groups: SchemaNodeGroup[]) =>
+  const renderRunGroups = (groups: SchemaNodeGroup[], disabled = false) =>
     groups.map((g) => (
       <div key={g.nodeId} style={{ marginBottom: 12 }}>
         <Divider orientation="left" style={{ margin: '8px 0' }}>
@@ -809,7 +818,7 @@ export default function ComfyUIAPIManager() {
             f.control === 'hidden' ? null : (
               <Col span={12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4 }}>
                 <div style={{ marginBottom: 2, fontSize: 12, color: '#555' }}>{f.label}</div>
-                {renderField(f)}
+                {renderField(f, disabled)}
               </Col>
             ),
           )}
@@ -954,6 +963,45 @@ export default function ComfyUIAPIManager() {
       message.info('已发送中断请求');
     } catch (e: any) {
       message.error(`中断失败：${e?.response?.data?.message || '未知错误'}`);
+    }
+  };
+
+  /** 保存（下载）结果图片到本地 */
+  const downloadOutput = async (o: RunOutputFile) => {
+    try {
+      const resp = await fetch(o.url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = o.filename || 'output';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch (e: any) {
+      message.error(`下载失败：${e?.message || '未知错误'}`);
+    }
+  };
+
+  /** 把某张结果图设为该工作流的卡片封面 */
+  const setAsCover = async (o: RunOutputFile) => {
+    if (!runWorkflow) return;
+    setSettingCoverUrl(o.url);
+    try {
+      await request(`/api/workflows/${runWorkflow.id}`, {
+        method: 'PATCH',
+        data: { thumbnailPath: o.url },
+      });
+      // 同步更新面板内引用，避免关闭后再打开仍是旧值
+      setRunWorkflow((prev) => (prev ? { ...prev, thumbnailPath: o.url } : prev));
+      message.success('已设为封面');
+      load();
+    } catch (e: any) {
+      message.error(`设置封面失败：${e?.response?.data?.message || '未知错误'}`);
+    } finally {
+      setSettingCoverUrl(null);
     }
   };
 
@@ -1314,220 +1362,245 @@ export default function ComfyUIAPIManager() {
           clearRunPoll();
           setRunOpen(false);
         }}
-        footer={
-          runState && ['pending', 'running'].includes(runState.status) ? (
-            <Space>
-              <Button icon={<StopOutlined />} danger onClick={interruptRun}>
-                中断运行
-              </Button>
-              <Button onClick={() => setRunOpen(false)}>关闭</Button>
-            </Space>
-          ) : runState ? (
-            <Button type="primary" onClick={() => setRunOpen(false)}>关闭</Button>
-          ) : (
+        footer={(() => {
+          const running = !!runState && ['pending', 'running'].includes(runState.status);
+          return (
             <Space>
               <Button
                 type="primary"
                 icon={<PlayCircleOutlined />}
                 onClick={handleRunSubmit}
-                disabled={runSchemaLoading}
-                loading={runPolling && !runState}
+                disabled={runSchemaLoading || running}
+                loading={running}
               >
-                提交运行
+                {runState && !running ? '重新运行' : '提交运行'}
               </Button>
-              <Button onClick={() => setRunOpen(false)}>关闭</Button>
+              {running && (
+                <Button icon={<StopOutlined />} danger onClick={interruptRun}>
+                  中断运行
+                </Button>
+              )}
+              <Button onClick={() => { clearRunPoll(); setRunOpen(false); }}>关闭</Button>
             </Space>
-          )
-        }
-        width={860}
+          );
+        })()}
+        width={1080}
       >
-        {!runState ? (
-          <div>
-            <Space style={{ marginBottom: 12 }} wrap>
-              <Segmented
-                value={runMode}
-                onChange={(v) => {
-                  const mode = v as 'form' | 'json';
-                  if (mode === 'json') {
-                    setRunJsonText(
-                      JSON.stringify(
-                        applyFormValues(runWorkflow?.apiJson, runFormValues),
-                        null,
-                        2,
-                      ),
-                    );
-                  } else {
-                    try {
-                      const parsed = JSON.parse(runJsonText) as Record<string, any>;
-                      if (runSchema) {
-                        const vals: Record<string, unknown> = {};
-                        for (const g of runSchema.groups) {
-                          for (const f of g.fields) {
-                            if (f.control === 'hidden') continue;
-                            const node = parsed[f.nodeId];
-                            vals[fileKey(f)] = node?.inputs?.[f.param];
+        {(() => {
+          const running = !!runState && ['pending', 'running'].includes(runState.status);
+          return (
+            <Row gutter={20}>
+              {/* 左栏：参数表单（始终展示，运行中禁用） */}
+              <Col span={13} style={{ borderRight: '1px solid #f0f0f0' }}>
+                <Space style={{ marginBottom: 12 }} wrap>
+                  <Segmented
+                    value={runMode}
+                    disabled={running}
+                    onChange={(v) => {
+                      const mode = v as 'form' | 'json';
+                      if (mode === 'json') {
+                        setRunJsonText(
+                          JSON.stringify(
+                            applyFormValues(runWorkflow?.apiJson, runFormValues),
+                            null,
+                            2,
+                          ),
+                        );
+                      } else {
+                        try {
+                          const parsed = JSON.parse(runJsonText) as Record<string, any>;
+                          if (runSchema) {
+                            const vals: Record<string, unknown> = {};
+                            for (const g of runSchema.groups) {
+                              for (const f of g.fields) {
+                                if (f.control === 'hidden') continue;
+                                const node = parsed[f.nodeId];
+                                vals[fileKey(f)] = node?.inputs?.[f.param];
+                              }
+                            }
+                            setRunFormValues(vals);
                           }
+                        } catch {
+                          // JSON 解析失败，保留当前表单值
                         }
-                        setRunFormValues(vals);
                       }
-                    } catch {
-                      // JSON 解析失败，保留当前表单值
-                    }
-                  }
-                  setRunMode(mode);
-                }}
-                options={[
-                  { value: 'form', label: '自动表单' },
-                  { value: 'json', label: 'JSON 模式' },
-                ]}
-              />
-              {runSchema && (
-                <span style={{ color: '#888', fontSize: 12 }}>
-                  可编辑参数 {runSchema.editableCount} 项 / {runSchema.nodeCount} 节点
-                </span>
-              )}
-            </Space>
+                      setRunMode(mode);
+                    }}
+                    options={[
+                      { value: 'form', label: '自动表单' },
+                      { value: 'json', label: 'JSON 模式' },
+                    ]}
+                  />
+                  {runSchema && (
+                    <span style={{ color: '#888', fontSize: 12 }}>
+                      可编辑参数 {runSchema.editableCount} 项 / {runSchema.nodeCount} 节点
+                    </span>
+                  )}
+                </Space>
 
-            {runFormError && (
-              <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={runFormError} />
-            )}
-            {runSchema?.warnings?.length ? (
-              <Alert
-                type="info"
-                showIcon
-                style={{ marginBottom: 12 }}
-                message="部分节点未解析"
-                description={runSchema.warnings.join('；')}
-              />
-            ) : null}
+                {runFormError && (
+                  <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={runFormError} />
+                )}
+                {runSchema?.warnings?.length ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message="部分节点未解析"
+                    description={runSchema.warnings.join('；')}
+                  />
+                ) : null}
 
-            {runMode === 'form' ? (
-              runSchemaLoading ? (
-                <div style={{ textAlign: 'center', padding: 32 }}>
-                  <Progress percent={100} size="small" status="active" />
-                  <div style={{ color: '#888', marginTop: 8 }}>正在分析可编辑参数…</div>
-                </div>
-              ) : runSchema && runSchema.ok ? (
-                (() => {
-                  const { primary, advanced } = splitByExposure(
-                    runSchema,
-                    runWorkflow?.exposureConfig ?? null,
-                  );
-                  const advancedCount = advanced.reduce((n, g) => n + g.fields.length, 0);
-                  return (
-                    <div style={{ maxHeight: '52vh', overflow: 'auto', paddingRight: 8 }}>
-                      {primary.length > 0 ? (
-                        renderRunGroups(primary)
-                      ) : (
-                        <Alert
-                          type="info"
-                          showIcon
-                          style={{ marginBottom: 12 }}
-                          message="该工作流未配置暴露字段，所有参数已收进下方高级参数区。"
-                        />
-                      )}
-                      {advancedCount > 0 && (
-                        <Collapse
-                          ghost
-                          items={[
-                            {
-                              key: 'advanced',
-                              label: `高级参数（${advancedCount} 项）`,
-                              children: renderRunGroups(advanced),
-                            },
-                          ]}
-                        />
-                      )}
+                {runMode === 'form' ? (
+                  runSchemaLoading ? (
+                    <div style={{ textAlign: 'center', padding: 32 }}>
+                      <Progress percent={100} size="small" status="active" />
+                      <div style={{ color: '#888', marginTop: 8 }}>正在分析可编辑参数…</div>
                     </div>
-                  );
-                })()
-              ) : (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message="无法生成自动表单"
-                  description="该工作流未能解析出可编辑参数，请切换到 JSON 模式直接编辑模板。"
-                />
-              )
-            ) : (
-              <Input.TextArea
-                rows={16}
-                value={runJsonText}
-                onChange={(e) => setRunJsonText(e.target.value)}
-                style={{ fontFamily: 'monospace', fontSize: 12 }}
-              />
-            )}
-          </div>
-        ) : (
-          <div>
-            <Space style={{ marginBottom: 8 }}>
-              <span style={{ color: '#555' }}>
-                当前节点：
-                <b>
-                  {runState.currentNodeTitle ||
-                    (runState.currentNode && runState.nodeTitles?.[runState.currentNode]) ||
-                    runState.currentNode ||
-                    '—'}
-                </b>
-              </span>
-              {runState.currentNode && (
-                <span style={{ color: '#999', fontSize: 12 }}>（{runState.currentNode}）</span>
-              )}
-            </Space>
-            <div style={{ marginBottom: 16 }}>{runProgress(runState)}</div>
-
-            {runState.error && (
-              <Alert
-                type="error"
-                showIcon
-                style={{ marginBottom: 16 }}
-                message="运行失败"
-                description={<pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 160, overflow: 'auto' }}>{runState.error}</pre>}
-              />
-            )}
-
-            {runState.status === 'success' && (
-              <Alert type="success" showIcon style={{ marginBottom: 16 }} message="运行完成" />
-            )}
-
-            {runState.outputs?.length > 0 && (
-              <div>
-                <div style={{ marginBottom: 8, fontWeight: 500 }}>输出结果：</div>
-                <Row gutter={[12, 12]}>
-                  {runState.outputs.map((o, i) => (
-                    <Col span={8} key={`${o.url}-${i}`}>
-                      <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 4 }}>
-                        {o.kind === 'image' ? (
-                          <img
-                            src={o.url}
-                            alt={o.filename}
-                            style={{ width: '100%', borderRadius: 4, display: 'block' }}
-                          />
-                        ) : (
-                          <div style={{ textAlign: 'center', padding: 16, color: '#888' }}>
-                            {o.filename}
-                          </div>
-                        )}
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 4, wordBreak: 'break-all' }}>
-                          {o.filename}
+                  ) : runSchema && runSchema.ok ? (
+                    (() => {
+                      const { primary, advanced } = splitByExposure(
+                        runSchema,
+                        runWorkflow?.exposureConfig ?? null,
+                      );
+                      const advancedCount = advanced.reduce((n, g) => n + g.fields.length, 0);
+                      return (
+                        <div style={{ maxHeight: '58vh', overflow: 'auto', paddingRight: 8 }}>
+                          {primary.length > 0 ? (
+                            renderRunGroups(primary, running)
+                          ) : (
+                            <Alert
+                              type="info"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message="该工作流未配置暴露字段，所有参数已收进下方高级参数区。"
+                            />
+                          )}
+                          {advancedCount > 0 && (
+                            <Collapse
+                              ghost
+                              items={[
+                                {
+                                  key: 'advanced',
+                                  label: `高级参数（${advancedCount} 项）`,
+                                  children: renderRunGroups(advanced, running),
+                                },
+                              ]}
+                            />
+                          )}
                         </div>
-                      </div>
-                    </Col>
-                  ))}
-                </Row>
-              </div>
-            )}
+                      );
+                    })()
+                  ) : (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="无法生成自动表单"
+                      description="该工作流未能解析出可编辑参数，请切换到 JSON 模式直接编辑模板。"
+                    />
+                  )
+                ) : (
+                  <Input.TextArea
+                    rows={18}
+                    value={runJsonText}
+                    disabled={running}
+                    onChange={(e) => setRunJsonText(e.target.value)}
+                    style={{ fontFamily: 'monospace', fontSize: 12 }}
+                  />
+                )}
+              </Col>
 
-            {runState.status === 'success' && (
-              <Alert
-                type="info"
-                showIcon
-                style={{ marginTop: 16 }}
-                message="运行结果已作为该工作流的缩略图保存，可在列表中查看。"
-              />
-            )}
-          </div>
-        )}
+              {/* 右栏：进度 + 结果预览 */}
+              <Col span={11}>
+                {!runState ? (
+                  <Empty
+                    style={{ marginTop: 80 }}
+                    description="点击“提交运行”后，这里会显示进度与结果"
+                  />
+                ) : (
+                  <div>
+                    <Space style={{ marginBottom: 8 }} wrap>
+                      <span style={{ color: '#555' }}>
+                        当前节点：
+                        <b>
+                          {runState.currentNodeTitle ||
+                            (runState.currentNode && runState.nodeTitles?.[runState.currentNode]) ||
+                            runState.currentNode ||
+                            '—'}
+                        </b>
+                      </span>
+                      {runState.currentNode && (
+                        <span style={{ color: '#999', fontSize: 12 }}>（{runState.currentNode}）</span>
+                      )}
+                    </Space>
+                    <div style={{ marginBottom: 16 }}>{runProgress(runState)}</div>
+
+                    {runState.error && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        style={{ marginBottom: 16 }}
+                        message="运行失败"
+                        description={<pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 160, overflow: 'auto' }}>{runState.error}</pre>}
+                      />
+                    )}
+
+                    {runState.status === 'success' && !runState.outputs?.length && (
+                      <Alert type="success" showIcon style={{ marginBottom: 16 }} message="运行完成，但没有可预览的输出" />
+                    )}
+
+                    {runState.outputs?.length > 0 && (
+                      <div style={{ maxHeight: '58vh', overflow: 'auto', paddingRight: 4 }}>
+                        <div style={{ marginBottom: 8, fontWeight: 500 }}>输出结果：</div>
+                        <Row gutter={[12, 12]}>
+                          {runState.outputs.map((o, i) => (
+                            <Col span={12} key={`${o.url}-${i}`}>
+                              <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 6 }}>
+                                {o.kind === 'image' ? (
+                                  <img
+                                    src={o.url}
+                                    alt={o.filename}
+                                    style={{ width: '100%', borderRadius: 4, display: 'block' }}
+                                  />
+                                ) : (
+                                  <div style={{ textAlign: 'center', padding: 16, color: '#888' }}>
+                                    {o.filename}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: 11, color: '#888', margin: '4px 0', wordBreak: 'break-all' }}>
+                                  {o.filename}
+                                </div>
+                                <Space size={4} wrap>
+                                  <Button
+                                    size="small"
+                                    icon={<DownloadOutlined />}
+                                    onClick={() => downloadOutput(o)}
+                                  >
+                                    保存图片
+                                  </Button>
+                                  {o.kind === 'image' && (
+                                    <Button
+                                      size="small"
+                                      icon={<AppstoreOutlined />}
+                                      loading={settingCoverUrl === o.url}
+                                      onClick={() => setAsCover(o)}
+                                    >
+                                      作为封面
+                                    </Button>
+                                  )}
+                                </Space>
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Col>
+            </Row>
+          );
+        })()}
       </Modal>
 
       <Modal

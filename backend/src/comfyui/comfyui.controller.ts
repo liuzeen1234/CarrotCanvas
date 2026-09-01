@@ -163,14 +163,7 @@ export class ComfyUIController {
     const run = await this.runner.submit(apiJson, {
       workflowId: workflow.id,
       title: workflow.name,
-      onComplete: (finished) => {
-        if (finished.status === 'success' && finished.outputs.length) {
-          const thumb = finished.outputs[0];
-          void this.workflows
-            .update(workflow.id, { thumbnailPath: thumb.url })
-            .catch((e) => console.error('写回缩略图失败', e));
-        }
-      },
+      // 不再自动写回缩略图：改由前端在结果区点"作为封面"手动设置
     });
     return { run };
   }
