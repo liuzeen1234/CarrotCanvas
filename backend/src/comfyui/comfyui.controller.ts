@@ -13,6 +13,7 @@ import { Readable } from 'stream';
 import { ComfyUIClientService } from './comfyui-client';
 import { ComfyUIGraphConverter } from './comfyui-graph-converter';
 import { ComfyUIRunnerService, RunState } from './comfyui-runner.service';
+import { ComfyUISchemaService } from './comfyui-schema.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { ComfyUIValidator } from '../workflows/comfyui-validator';
 import { WorkflowCategory } from '../workflows/workflow-category';
@@ -41,6 +42,7 @@ export class ComfyUIController {
     private readonly client: ComfyUIClientService,
     private readonly runner: ComfyUIRunnerService,
     private readonly workflows: WorkflowsService,
+    private readonly schemaService: ComfyUISchemaService,
   ) {}
 
   // ---------- 步骤②：工作流导入 ----------
@@ -102,6 +104,20 @@ export class ComfyUIController {
       content: JSON.stringify(result.apiJson),
     });
     return { workflow: created, warnings: result.warnings, nodeCount: result.nodeCount };
+  }
+
+  // ---------- 步骤④：schema 分析 ----------
+
+  /** 分析工作流的可编辑入参（apiJson + /object_info），供前端渲染动态表单 */
+  @Get('workflows/:workflowId/schema')
+  async workflowSchema(@Param('workflowId') workflowId: string) {
+    const workflow = await this.workflows.findOne(workflowId);
+    const objectInfo = await this.client.getObjectInfo();
+    const analysis = this.schemaService.analyze(
+      workflow.apiJson as Record<string, unknown>,
+      objectInfo,
+    );
+    return { schema: analysis };
   }
 
   // ---------- 步骤③：运行执行 ----------
@@ -190,6 +206,34 @@ export class ComfyUIController {
     res.setHeader('Cache-Control', 'public, max-age=86400');
     const stream = Readable.fromWeb(resp.body as import('stream/web').ReadableStream);
     stream.pipe(res);
+  }
+
+  // ---------- 步骤⑥：图片上传 ----------
+
+  /** 上传图片到 ComfyUI input 目录（base64 JSON 转发，避免引入 multer） */
+  @Post('upload/image')
+  async uploadImage(@Body() body: { filename?: string; dataBase64?: string }) {
+    if (!body.dataBase64) {
+      throw new HttpException('缺少 dataBase64 参数', HttpStatus.BAD_REQUEST);
+    }
+    let buf: Buffer;
+    try {
+      const raw = body.dataBase64.replace(/^data:[^;]+;base64,/, '');
+      buf = Buffer.from(raw, 'base64');
+    } catch {
+      throw new HttpException('dataBase64 解码失败', HttpStatus.BAD_REQUEST);
+    }
+    if (buf.length === 0) {
+      throw new HttpException('文件内容为空', HttpStatus.BAD_REQUEST);
+    }
+    const name = (body.filename || 'upload.png')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .trim();
+    if (!name) {
+      throw new HttpException('无效的文件名', HttpStatus.BAD_REQUEST);
+    }
+    const file = await this.client.uploadImage(buf, name);
+    return { file };
   }
 
   // ---------- 辅助 ----------

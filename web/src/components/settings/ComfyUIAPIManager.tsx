@@ -22,6 +22,9 @@ import {
   Row,
   Col,
   Progress,
+  InputNumber,
+  Switch,
+  Divider,
 } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -111,6 +114,42 @@ interface RunStateData {
   nodeErrors: Record<string, unknown>;
 }
 
+interface SchemaField {
+  nodeId: string;
+  nodeTitle: string;
+  classType: string;
+  param: string;
+  label: string;
+  control: 'input_number' | 'slider' | 'textarea' | 'input' | 'select' | 'switch' | 'upload' | 'hidden';
+  valueType: string;
+  current: unknown;
+  default?: unknown;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: (string | number)[];
+  multiline?: boolean;
+  imageUpload?: boolean;
+}
+
+interface SchemaNodeGroup {
+  nodeId: string;
+  nodeTitle: string;
+  classType: string;
+  fields: SchemaField[];
+}
+
+interface SchemaAnalysis {
+  ok: boolean;
+  source: string;
+  groups: SchemaNodeGroup[];
+  warnings: string[];
+  error?: string;
+  nodeCount: number;
+  editableCount: number;
+  totalFieldCount: number;
+}
+
 const { Paragraph } = Typography;
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -162,6 +201,14 @@ export default function ComfyUIAPIManager() {
   const [runState, setRunState] = useState<RunStateData | null>(null);
   const [runPolling, setRunPolling] = useState(false);
   const runPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 运行面板（步骤④⑤⑥：schema 动态表单 + JSON 切换 + 图片上传）
+  const [runMode, setRunMode] = useState<'form' | 'json'>('form');
+  const [runSchema, setRunSchema] = useState<SchemaAnalysis | null>(null);
+  const [runSchemaLoading, setRunSchemaLoading] = useState(false);
+  const [runFormValues, setRunFormValues] = useState<Record<string, unknown>>({});
+  const [runJsonText, setRunJsonText] = useState('');
+  const [runFormError, setRunFormError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -477,15 +524,81 @@ export default function ComfyUIAPIManager() {
     }
   };
 
-  const startRun = async (w: ComfyUIAPI) => {
+  // ---------- 运行面板：schema 动态表单 + JSON 切换 + 图片上传 ----------
+
+  const fileKey = (f: SchemaField) => `${f.nodeId}::${f.param}`;
+
+  /** 把表单值（key=`${nodeId}::${param}`）按值级写入 apiJson 深拷贝 */
+  const applyFormValues = (base: unknown, values: Record<string, unknown>): unknown => {
+    const json = JSON.parse(JSON.stringify(base)) as Record<string, any>;
+    for (const [key, v] of Object.entries(values)) {
+      const idx = key.lastIndexOf('::');
+      if (idx <= 0) continue;
+      const nodeId = key.slice(0, idx);
+      const param = key.slice(idx + 2);
+      const node = json[nodeId];
+      if (node && typeof node.inputs === 'object' && node.inputs !== null) {
+        node.inputs[param] = v;
+      }
+    }
+    return json;
+  };
+
+  const openRunPanel = async (w: ComfyUIAPI) => {
     setRunWorkflow(w);
     setRunState(null);
-    setRunPolling(true);
+    setRunSchema(null);
+    setRunSchemaLoading(true);
+    setRunFormError(null);
     setRunOpen(true);
+    setRunJsonText(JSON.stringify(w.apiJson, null, 2));
+    try {
+      const data = await request<{ schema: SchemaAnalysis }>(
+        `/api/comfyui/workflows/${w.id}/schema`,
+      );
+      setRunSchema(data.schema);
+      const init: Record<string, unknown> = {};
+      for (const g of data.schema.groups) {
+        for (const f of g.fields) {
+          if (f.control === 'hidden') continue;
+          init[fileKey(f)] = f.current;
+        }
+      }
+      setRunFormValues(init);
+    } catch (e: any) {
+      setRunSchema(null);
+      setRunFormError(
+        `自动表单加载失败：${e?.response?.data?.message || '未知错误'}，已切换为 JSON 模式`,
+      );
+      setRunMode('json');
+    } finally {
+      setRunSchemaLoading(false);
+    }
+  };
+
+  const startRun = async (w: ComfyUIAPI) => {
+    void openRunPanel(w);
+  };
+
+  const handleRunSubmit = async () => {
+    if (!runWorkflow) return;
+    let apiJson: unknown;
+    try {
+      if (runMode === 'json') {
+        apiJson = JSON.parse(runJsonText);
+      } else {
+        apiJson = applyFormValues(runWorkflow.apiJson, runFormValues);
+      }
+    } catch (e: any) {
+      message.error(`参数解析失败：${e?.message || 'JSON 格式错误'}`);
+      return;
+    }
+    setRunState(null);
+    setRunPolling(true);
     try {
       const data = await request<{ run: RunStateData }>('/api/comfyui/runs', {
         method: 'POST',
-        data: { workflowId: w.id },
+        data: { workflowId: runWorkflow.id, apiJson },
       });
       setRunState(data.run);
       stopPollingIfFinished(data.run);
@@ -502,6 +615,128 @@ export default function ComfyUIAPIManager() {
     } catch (e: any) {
       setRunPolling(false);
       message.error(`提交运行失败：${e?.response?.data?.message || '未知错误'}`);
+    }
+  };
+
+  const setFieldValue = (f: SchemaField, v: unknown) => {
+    setRunFormValues((prev) => ({ ...prev, [fileKey(f)]: v }));
+  };
+
+  /** 上传成功后把新文件名追加进对应字段的 options */
+  const appendUploadOption = (f: SchemaField, name: string) => {
+    setRunSchema((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        groups: prev.groups.map((g) => ({
+          ...g,
+          fields: g.fields.map((field) =>
+            field.nodeId === f.nodeId && field.param === f.param
+              ? { ...field, options: [...(field.options ?? []), name] }
+              : field,
+          ),
+        })),
+      };
+    });
+  };
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  /** upload 控件：从已有图片选择 + 上传新图片到 ComfyUI input 目录 */
+  const renderUploadField = (f: SchemaField) => {
+    const value = runFormValues[fileKey(f)];
+    return (
+      <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+        <Select
+          style={{ flex: 1, minWidth: 0 }}
+          value={(value as string | number) ?? undefined}
+          showSearch
+          placeholder="选择已有图片"
+          options={(f.options ?? []).map((o) => ({ value: o, label: String(o) }))}
+          onChange={(v) => setFieldValue(f, v)}
+        />
+        <Upload
+          accept="image/*"
+          showUploadList={false}
+          customRequest={async ({ file, onSuccess, onError }) => {
+            const rcFile = file as File;
+            try {
+              const dataBase64 = await fileToBase64(rcFile);
+              setUploading(true);
+              const res = await request<{ file: { name: string } }>('/api/comfyui/upload/image', {
+                method: 'POST',
+                data: { filename: rcFile.name, dataBase64 },
+              });
+              setFieldValue(f, res.file.name);
+              appendUploadOption(f, res.file.name);
+              message.success(`已上传 ${res.file.name}`);
+              onSuccess?.(res);
+            } catch (e: any) {
+              message.error(`上传失败：${e?.response?.data?.message || '未知错误'}`);
+              onError?.(e as Error);
+            } finally {
+              setUploading(false);
+            }
+          }}
+        >
+          <Button icon={<UploadOutlined />} loading={uploading} />
+        </Upload>
+      </div>
+    );
+  };
+
+  /** schema 字段 → antd 控件 */
+  const renderField = (f: SchemaField) => {
+    const value = runFormValues[fileKey(f)];
+    switch (f.control) {
+      case 'input_number':
+        return (
+          <InputNumber
+            style={{ width: '100%' }}
+            value={value as number}
+            min={f.min}
+            max={f.max}
+            step={f.step}
+            onChange={(v) => setFieldValue(f, v ?? undefined)}
+          />
+        );
+      case 'textarea':
+        return (
+          <Input.TextArea
+            rows={3}
+            value={String(value ?? '')}
+            onChange={(e) => setFieldValue(f, e.target.value)}
+          />
+        );
+      case 'input':
+        return (
+          <Input
+            value={String(value ?? '')}
+            onChange={(e) => setFieldValue(f, e.target.value)}
+          />
+        );
+      case 'select':
+        return (
+          <Select
+            style={{ width: '100%' }}
+            value={(value as string | number) ?? undefined}
+            showSearch
+            options={(f.options ?? []).map((o) => ({ value: o, label: String(o) }))}
+            onChange={(v) => setFieldValue(f, v)}
+          />
+        );
+      case 'switch':
+        return <Switch checked={Boolean(value)} onChange={(v) => setFieldValue(f, v)} />;
+      case 'upload':
+        return renderUploadField(f);
+      default:
+        return null;
     }
   };
 
@@ -846,16 +1081,134 @@ export default function ComfyUIAPIManager() {
               </Button>
               <Button onClick={() => setRunOpen(false)}>关闭</Button>
             </Space>
-          ) : (
+          ) : runState ? (
             <Button type="primary" onClick={() => setRunOpen(false)}>关闭</Button>
+          ) : (
+            <Space>
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                onClick={handleRunSubmit}
+                disabled={runSchemaLoading}
+                loading={runPolling && !runState}
+              >
+                提交运行
+              </Button>
+              <Button onClick={() => setRunOpen(false)}>关闭</Button>
+            </Space>
           )
         }
-        width={720}
+        width={860}
       >
         {!runState ? (
-          <div style={{ textAlign: 'center', padding: 32 }}>
-            <Progress percent={100} size="small" status="active" />
-            <div style={{ color: '#888', marginTop: 8 }}>正在提交到 ComfyUI…</div>
+          <div>
+            <Space style={{ marginBottom: 12 }} wrap>
+              <Segmented
+                value={runMode}
+                onChange={(v) => {
+                  const mode = v as 'form' | 'json';
+                  if (mode === 'json') {
+                    setRunJsonText(
+                      JSON.stringify(
+                        applyFormValues(runWorkflow?.apiJson, runFormValues),
+                        null,
+                        2,
+                      ),
+                    );
+                  } else {
+                    try {
+                      const parsed = JSON.parse(runJsonText) as Record<string, any>;
+                      if (runSchema) {
+                        const vals: Record<string, unknown> = {};
+                        for (const g of runSchema.groups) {
+                          for (const f of g.fields) {
+                            if (f.control === 'hidden') continue;
+                            const node = parsed[f.nodeId];
+                            vals[fileKey(f)] = node?.inputs?.[f.param];
+                          }
+                        }
+                        setRunFormValues(vals);
+                      }
+                    } catch {
+                      // JSON 解析失败，保留当前表单值
+                    }
+                  }
+                  setRunMode(mode);
+                }}
+                options={[
+                  { value: 'form', label: '自动表单' },
+                  { value: 'json', label: 'JSON 模式' },
+                ]}
+              />
+              {runSchema && (
+                <span style={{ color: '#888', fontSize: 12 }}>
+                  可编辑参数 {runSchema.editableCount} 项 / {runSchema.nodeCount} 节点
+                </span>
+              )}
+            </Space>
+
+            {runFormError && (
+              <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={runFormError} />
+            )}
+            {runSchema?.warnings?.length ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="部分节点未解析"
+                description={runSchema.warnings.join('；')}
+              />
+            ) : null}
+
+            {runMode === 'form' ? (
+              runSchemaLoading ? (
+                <div style={{ textAlign: 'center', padding: 32 }}>
+                  <Progress percent={100} size="small" status="active" />
+                  <div style={{ color: '#888', marginTop: 8 }}>正在分析可编辑参数…</div>
+                </div>
+              ) : runSchema && runSchema.ok ? (
+                <div style={{ maxHeight: '52vh', overflow: 'auto', paddingRight: 8 }}>
+                  {runSchema.groups.map((g) => (
+                    <div key={g.nodeId} style={{ marginBottom: 12 }}>
+                      <Divider orientation="left" style={{ margin: '8px 0' }}>
+                        <span style={{ fontSize: 13 }}>
+                          {g.nodeTitle}
+                          <span style={{ color: '#999', marginLeft: 8, fontSize: 12 }}>
+                            {g.classType} · {g.nodeId}
+                          </span>
+                        </span>
+                      </Divider>
+                      <Row gutter={16}>
+                        {g.fields.map((f) =>
+                          f.control === 'hidden' ? null : (
+                            <Col span={12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4 }}>
+                              <div style={{ marginBottom: 2, fontSize: 12, color: '#555' }}>
+                                {f.label}
+                              </div>
+                              {renderField(f)}
+                            </Col>
+                          ),
+                        )}
+                      </Row>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="无法生成自动表单"
+                  description="该工作流未能解析出可编辑参数，请切换到 JSON 模式直接编辑模板。"
+                />
+              )
+            ) : (
+              <Input.TextArea
+                rows={16}
+                value={runJsonText}
+                onChange={(e) => setRunJsonText(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+            )}
           </div>
         ) : (
           <div>

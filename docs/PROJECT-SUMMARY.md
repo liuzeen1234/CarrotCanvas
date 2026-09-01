@@ -55,7 +55,8 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 │  │     ├─ workflows.module.ts / controller.ts / service.ts
 │  │     └─ comfyui-validator.ts # ComfyUI API 格式校验
 │  └─ comfyui/                # ComfyUI 集成（步骤②③：工作流导入 + 运行执行）
-│     ├─ comfyui-client.ts    # HTTP 客户端（/userdata、/object_info、/prompt、/view）
+│     ├─ comfyui-client.ts    # HTTP 客户端（/userdata、/object_info、/prompt、/view、/upload/image）
+│     ├─ comfyui-schema.service.ts # schema 分析：apiJson + /object_info → 可编辑入参表单描述（步骤④）
 │     ├─ comfyui-graph-converter.ts # 复刻官方 graphToPrompt UI→API 转换（含子图展开/Reroute 穿透）
 │     ├─ comfyui-runner.service.ts  # 提交 + WebSocket 监控 + 输出收集（内存运行状态）
 │     ├─ comfyui.controller.ts      # /api/comfyui/* 端点（列表/预览/导入/运行/中断/图片代理）
@@ -82,6 +83,8 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 前端 ComfyUI API 管理：列表 CRUD + 导入/校验（卡片/列表视图），含 ComfyUI 地址配置与连接测试
 - ✅ 工作流导入（步骤②）：后端 /api/comfyui/workflows 从 8188 /userdata 拉取已保存工作流，复刻官方 graphToPrompt 转 API 格式（新旧格式 + 子图展开 + Reroute 穿透），/preview 预览、/import 入库；前端「从 ComfyUI 导入」弹窗（选文件→预览→导入）
 - ✅ 运行执行（步骤③）：POST /api/comfyui/runs 提交 /prompt，WebSocket 监控进度，GET /runs/:promptId 轮询，成功回写 `thumbnail_path`，/api/comfyui/view 代理输出图片；前端运行面板（提交→进度→结果缩略图→缩略图刷新）
+- ✅ 入参动态表单（步骤④⑤）：GET /api/comfyui/workflows/:id/schema 结合 /object_info 分析可编辑入参（文本/数值/下拉/图片，跳过连接输入，只暴露无连接 widget）；前端运行前自动表单渲染 + 值写回 apiJson + JSONText 模式切换（实测修改 filename_prefix 提交后 ComfyUI 输出文件名生效）
+- ✅ 图片上传（步骤⑥）：POST /api/comfyui/upload/image（base64 JSON 转发 ComfyUI /upload/image 写入 input 目录，后端 body 限制 15mb）；LoadImage 控件支持上传新图 / 选择已有图（实测 465KB 图片上传成功并被 ComfyUI /object_info 识别）
 - ✅ 前端构建通过（`pnpm build`）
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
@@ -110,6 +113,7 @@ pnpm start     # 生产运行后端（需先 build）
 3. **pnpm 11 新配置**：`onlyBuiltDependencies` 已废弃，改用 `pnpm-workspace.yaml` 的 `allowBuilds` map；`strictDepBuilds` 默认 true，未批准的构建脚本会导致 pnpm 命令报错退出。
 4. **Umi 对 bun 兼容不佳**：`npmClient: 'bun'` 会触发 Umi 配置校验报错（只接受 pnpm/tnpm/cnpm/yarn/npm），这是改用 pnpm 的原因之一。
 5. **@umijs/max 不能与 umi 同时依赖**：会直接报错，web/package.json 只保留 `@umijs/max`。
+6. **pnpm 严格依赖隔离**：backend 需直接声明 `body-parser`（1.x，含 `@types/body-parser` dev 依赖）——main.ts 用它设置 JSON body 上限 15mb，支持图片 base64 上传；express 等通过 pnpm `.pnpm` 内部链接解析，勿用 npm 在 backend 下装包（会破坏 workspace）。
 
 ## 6. 已完成事项
 
@@ -125,6 +129,8 @@ pnpm start     # 生产运行后端（需先 build）
 - [x] 建立 docs/ 统一文档目录
 - [x] ComfyUI 工作流导入（步骤②）：8188 拉取 UI 工作流 → 复刻 graphToPrompt 转换（含子图展开/Reroute 穿透/新旧格式）→ 校验 → 入库；前端「从 ComfyUI 导入」交互（实测新/旧格式转换）
 - [x] ComfyUI 运行执行（步骤③）：/prompt 提交 + WebSocket 监控 + 输出收集 + 缩略图写回 + 图片代理；前端运行面板（实测端到端生成成功）
+- [x] ComfyUI 入参动态表单（步骤④⑤）：schema 分析接口（apiJson + /object_info → 表单描述）+ 前端自动表单 / JSONText 切换 / 值写回提交（实测修改 filename_prefix 生效）
+- [x] ComfyUI 图片上传（步骤⑥）：/upload/image base64 转发写 input 目录 + LoadImage 上传/选择控件（实测 465KB 上传被 ComfyUI 识别）
 
 ## 7. 待办 / 下一步（TODO）
 
@@ -132,7 +138,7 @@ pnpm start     # 生产运行后端（需先 build）
 - [x] ComfyUI 客户端（HTTP + WebSocket 任务监听）
 - [ ] SQLite 数据表补全：generation_runs / assets / canvas_docs（运行状态当前为内存态，未持久化）
 - [ ] 画布自定义节点：提示词、ComfyUI 生成、结果预览（从已导入工作流渲染节点）
-- [ ] 入参动态表单（/object_info 拉取 + schema 分析，步骤④⑤）
+- [x] 入参动态表单（/object_info 拉取 + schema 分析，步骤④⑤）
 - [ ] 生成任务历史持久化（generation_runs 表）
 - [x] ComfyUI 配置界面（服务地址）
 - [ ] 前端产物由 NestJS 静态托管（单端口）

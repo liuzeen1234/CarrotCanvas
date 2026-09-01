@@ -97,13 +97,14 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 - [x] ① 路由改造：独立菜单 + 卡片网格视图（保留列表切换）——已落地（commit 446eb41）
 - [x] ② 后端：工作流导入（8188 `/userdata` 拉取 + 复刻官方 `graphToPrompt` 的 UI→API 转换 + 校验入库，见 §4.4）——已落地，含子图展开 / Reroute 穿透 / 新旧格式兼容；前端「从 ComfyUI 导入」弹窗
 - [x] ③ 后端：`/object_info` 拉取 + 缓存接口——已落地（`ComfyUIClientService.getObjectInfo` 带缓存，供转换校验与后续表单用）
-- [ ] ④ 后端：schema 分析接口（入参 API JSON → 返回表单描述 `[{param, type, default, constraints, control}]`）
-- [ ] ⑤ 前端：动态表单渲染 + 值写回 JSON + JSONText 模式切换
-- [ ] ⑥ 后端：文件上传（写 input 目录）+ 模板渲染（占位符值级替换）
+- [x] ④ 后端：schema 分析接口（入参 API JSON + `/object_info` → 返回表单描述 `[{param, type, default, constraints, control}]`）——已落地（`ComfyUISchemaService.analyze`：跳过连接输入 / schema 未定义参数，类型→控件映射 INT/FLOAT→input_number、STRING multiline→textarea、COMBO→select、BOOLEAN→switch、IMAGE→upload；实测 minimaxh3v1=19 项可编辑、Z-Image 三视图=44 项含子图 78:xx 分组）
+- [x] ⑤ 前端：动态表单渲染 + 值写回 JSON + JSONText 模式切换——已落地（`ComfyUIAPIManager.tsx` 运行面板：自动表单按节点分组渲染，值级写回 apiJson 后再提交 /runs；Segmented 自动表单/JSON 双向切换；实测修改 filename_prefix 后提交，ComfyUI 输出文件名生效）
+- [x] ⑥ 后端：文件上传（写 input 目录）+ 模板渲染（占位符值级替换）——已落地（POST /api/comfyui/upload/image 收 base64 → 转发 ComfyUI /upload/image 写 input 目录；前端 LoadImage 控件 Select 选已有图 + Upload 上传新图；实测 465KB 图片上传被 ComfyUI /object_info 识别；main.ts body 限制 15mb）
 - [x] ⑦ 提交 `/prompt` + WebSocket 进度监听 + 结果展示——已落地（`ComfyUIRunnerService`：提交 /prompt + WS 监控 + 输出收集 + 缩略图写回 workflows.thumbnail_path + 前端运行面板）；`generation_runs` 表持久化待做
 
 ## 6. 变更日志
 
+- 2026-09-01（实现）：落地步骤④⑤⑥（入参动态表单 + 图片上传）——新增 `ComfyUISchemaService`（apiJson + /object_info → 表单描述，跳过连接输入，类型→控件映射）；`comfyui-client` 增加 /object_info 10min TTL 缓存与 /upload/image（FormData 转发）；controller 新增 GET /workflows/:id/schema、POST /upload/image；main.ts 引入 body-parser（JSON body 15mb）支持大图 base64；前端运行面板自动表单按节点分组渲染 + 值写回 + JSONText 双向切换 + LoadImage 上传/选择控件（flex 布局修复上传按钮不可见）；实测：schema 三工作流、改 filename_prefix 提交生效、465KB 图片上传被 ComfyUI 识别。
 - 2026-09-01（实现）：落地步骤②（工作流导入）与步骤③/⑦（运行执行）——新增 `backend/src/comfyui/` 模块（client / graph-converter / runner / controller）；复刻官方 graphToPrompt 并补充子图展开（subgraph 节点展开为 `父id:子id` 内部节点）与 Reroute 穿透；旧格式（位置 widgets_values）按 /object_info 映射；提交前展开 `%date%`/`%time%` 前端通配符；运行状态内存化 + 成功回写缩略图；前端接入「从 ComfyUI 导入」与运行面板。
 - 2026-09-01（补充）：新增「工作流导入」方案（§4.4）——通过 8188 官方 `/userdata` 端点直接拉取 ComfyUI 已保存工作流，后端复刻官方前端 `graphToPrompt` 算法做 UI→API 转换后入库，免去手动导出上传；落地步骤新增 ②。
 - 2026-09-01：创建本文档，沉淀需求讨论（独立菜单 / 卡片式 / JSONText+文件占位符 / object_info 自动表单）。

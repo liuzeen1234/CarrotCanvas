@@ -23,7 +23,8 @@ export interface ComfyUISubmitResult {
  */
 @Injectable()
 export class ComfyUIClientService {
-  private objectInfoCache: Record<string, unknown> | null = null;
+  private objectInfoCache: { data: Record<string, unknown>; at: number } | null = null;
+  private readonly OBJECT_INFO_TTL = 10 * 60 * 1000; // 10 分钟
 
   constructor(private readonly settings: SettingsService) {}
 
@@ -98,12 +99,15 @@ export class ComfyUIClientService {
     }
   }
 
-  /** 获取全部节点定义（带缓存，force 可刷新） */
+  /** 获取全部节点定义（带 TTL 缓存，force 可刷新） */
   async getObjectInfo(force = false): Promise<Record<string, unknown>> {
-    if (this.objectInfoCache && !force) return this.objectInfoCache;
+    const now = Date.now();
+    if (this.objectInfoCache && !force && now - this.objectInfoCache.at < this.OBJECT_INFO_TTL) {
+      return this.objectInfoCache.data;
+    }
     const resp = await this.request('/object_info');
     const data = (await resp.json()) as Record<string, unknown>;
-    this.objectInfoCache = data;
+    this.objectInfoCache = { data, at: now };
     return data;
   }
 
@@ -158,6 +162,50 @@ export class ComfyUIClientService {
   async getSystemStats(): Promise<Record<string, unknown>> {
     const resp = await this.request('/system_stats');
     return (await resp.json()) as Record<string, unknown>;
+  }
+
+  /**
+   * 上传图片到 ComfyUI input 目录。
+   * 通过官方 POST /upload/image（multipart），由 ComfyUI 处理命名冲突并返回实际文件名。
+   */
+  async uploadImage(
+    buffer: Buffer,
+    filename: string,
+    subfolder?: string,
+  ): Promise<{ name: string; subfolder: string; type: string }> {
+    const base = await this.getBaseUrl();
+    const form = new FormData();
+    form.append('image', new Blob([new Uint8Array(buffer)]), filename);
+    form.append('overwrite', 'false');
+    form.append('type', 'input');
+    if (subfolder) form.append('subfolder', subfolder);
+    let resp: Response;
+    try {
+      resp = await fetch(`${base}/upload/image`, { method: 'POST', body: form });
+    } catch (e) {
+      throw new HttpException(
+        `无法连接 ComfyUI（${base}）：${(e as Error).message}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    const text = await resp.text();
+    let data: Record<string, unknown> | null = null;
+    try {
+      data = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      data = null;
+    }
+    if (!resp.ok) {
+      throw new HttpException(
+        `上传图片失败：HTTP ${resp.status} ${text}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    return {
+      name: String(data?.name ?? filename),
+      subfolder: String(data?.subfolder ?? subfolder ?? ''),
+      type: String(data?.type ?? 'input'),
+    };
   }
 
   /** 中断当前运行 */
