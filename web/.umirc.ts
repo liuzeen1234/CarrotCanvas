@@ -6,13 +6,15 @@ export default defineConfig({
   model: {},
   initialState: {},
   request: {},
+  esbuildMinifyIIFE: true,
   layout: {
     title: 'CarrotCanvas',
   },
   routes: [
     { path: '/', redirect: '/welcome' },
     { path: '/welcome', component: './index', name: '首页', icon: 'HomeOutlined' },
-    { path: '/canvas', component: './canvas', name: '画布', icon: 'DashboardOutlined' },
+    { path: '/canvas', component: './canvas/index', name: '画布', icon: 'DashboardOutlined' },
+    { path: '/canvas/:id', component: './canvas/editor' },
     {
       path: '/comfyui-api',
       component: './settings/comfyui-api',

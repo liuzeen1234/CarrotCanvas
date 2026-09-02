@@ -75,7 +75,8 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
    ├─ .umirc.ts                 # proxy /api → 3100
    ├─ src/
    │  ├─ pages/index.tsx        # 首页
-   │  ├─ pages/canvas.tsx       # 无限画布（@xyflow/react 骨架）
+   │  ├─ pages/canvas/index.tsx # 画布工作台（列表：新建/打开/重命名/删除，展示资产大小）
+   │  ├─ pages/canvas/editor.tsx # 画布编辑器（加载 graph + React Flow 渲染 + 顶栏）
    │  ├─ pages/settings/index.tsx # 设置页（路由 Outlet 布局）
    │  ├─ pages/settings/comfyui-api/index.tsx # ComfyUI API 管理页（独立路由）
    │  ├─ components/settings/ComfyUIAPIManager.tsx # ComfyUI API 列表 + 导入/编辑
@@ -93,12 +94,13 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 运行执行（步骤③）：POST /api/comfyui/runs 提交 /prompt，WebSocket 监控进度，GET /runs/:promptId 轮询，成功回写 `thumbnail_path`，/api/comfyui/view 代理输出图片；前端运行面板（提交→进度→结果缩略图→缩略图刷新）。**修复**：提交前先确保 WS 连接就绪（ComfyUI 在提交时该 client 的 WS 未连接则不下发 execution 消息，run 会卡 pending）
 - ✅ 入参动态表单（步骤④⑤）：GET /api/comfyui/workflows/:id/schema 结合 /object_info 分析可编辑入参（文本/数值/下拉/图片，跳过连接输入，只暴露无连接 widget）；前端运行前自动表单渲染 + 值写回 apiJson + JSONText 模式切换（实测修改 filename_prefix 提交后 ComfyUI 输出文件名生效）
 - ✅ 图片上传（步骤⑥）：POST /api/comfyui/upload/image（base64 JSON 转发 ComfyUI /upload/image 写入 input 目录，后端 body 限制 15mb）；LoadImage 控件支持上传新图 / 选择已有图（实测 465KB 图片上传成功并被 ComfyUI /object_info 识别）
-- ✅ 前端构建通过（`pnpm build`）
+- ✅ 前端构建通过（`pnpm build`；**修复**：Umi 4 + esbuild minify 的分包 IIFE helper 冲突导致构建失败，按提示在 `.umirc.ts` 增加 `esbuildMinifyIIFE: true`）
 - ✅ 画布多实例 CRUD（Canvas C1）：`/api/canvas` 建/列/取/改/删，列表只回元信息 + 节点数 + 资产大小；新建画布自动创建 `data/assets/<canvasId>/` 分区；删画布级联清理其资产分区与 asset 行（已端到端验证）
 - ✅ 平台资产库（Canvas C1）：`assets` 表（12 列与设计一致）+ `data/assets/<canvasId>` 分区读写（`saveGenerated`/`saveUpload` 服务层）+ `/api/assets/:id` 读取、`/api/assets/:id/download` 下载
 - ✅ 画布产物捕获（Canvas C2）：`POST /api/comfyui/runs` 扩展 `canvasId/nodeId`（画布生成节点发起），运行成功后经 `ComfyUIAssetCaptureService` 把输出字节从 ComfyUI `/view` 拉取落盘进该画布 `generated/` 分区并回填 `assetId/assetUrl` 到 run.outputs；同节点重跑按 §4.6.4 覆盖清理旧产物（`deleteGeneratedByNode` 支持 `keepIds` 保留本次新捕获，先建新后清旧）；不带 canvasId 的工具箱运行维持代理不落盘（已端到端验证：出图落盘 → 同节点重跑旧资产 404 只留新一组 → 删画布级联清目录）
 - ✅ 单元测试：Jest + ts-jest + supertest 测试栈，`pnpm test` 运行，**5 个 suite / 35 用例全绿**（canvas / assets 单测 + controller 接口测试 + `comfyui-capture` 捕获服务单测）；`AssetsService` 支持 `CARROT_ASSETS_ROOT` 环境变量覆盖资产根目录（测试隔离用，默认仍为 `data/assets`）
-- ⏳ 无限画布 `pages/canvas.tsx` 仍是 React Flow 骨架（3 个占位节点，未接运行）；多画布 + 画布节点调用工作流的方案见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（阶段二，一期仅文生图；后端 C1/C2 已完成，前端路由/列表/节点/运行/保存为 C3–C7 待做）
+- ✅ 画布列表与编辑器路由（Canvas C3）：`.umirc.ts` 路由 `/canvas → ./canvas/index`（画布工作台列表）、`/canvas/:id → ./canvas/editor`（编辑器）；列表页卡片网格（新建/打开/重命名/删除，删除二次确认，展示节点数/资产大小/更新时间）；编辑器加载画布 graph + React Flow 渲染节点/连线/视口 + 顶栏；旧 `pages/canvas.tsx` 骨架页已删除（已端到端手测：建→开→改名→删全通）
+- ⏳ 画布节点编排（Canvas C4–C7）待做：抽取共享运行组件（`useComfyRun` + `ComfySchemaForm`）、三类自定义节点（提示词/文生图/结果）、节点内运行出图、防抖自动保存与视口持久化；方案见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（阶段二，一期仅文生图；后端 C1/C2 已完成，前端 C3 列表/编辑器路由已完成）
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
 

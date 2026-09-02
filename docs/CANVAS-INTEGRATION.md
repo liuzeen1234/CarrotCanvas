@@ -182,7 +182,7 @@ backend/data/
 
 - [x] C1 后端数据层：`canvas` 模块（`CanvasDoc` + 五个 CRUD 接口）与 `assets` 模块（`Asset` 实体、`data/assets/<canvasId>` 分区读写、`/api/assets/:id` 读取/下载、删画布级联清理），实体注册进 `database.module.ts`，`tsc` 编译通过
 - [x] C2 后端运行捕获：`/api/comfyui/runs` 扩展 `canvasId/nodeId`；带画布时运行成功自动把输出字节捕获进对应分区并回 asset 引用，且按节点覆盖清理上一版 generated 资产（先建新后清旧，`deleteGeneratedByNode` 支持 `keepIds` 保留本次新捕获，§4.6.4）；不带画布的工具箱运行维持现状（代理不落盘）。**额外修复**：runner 提交前先确保 WebSocket 连接就绪（ComfyUI 在提交时该 client 的 WS 未连接则不下发 execution 消息，导致 run 卡 pending）——阶段一遗留的运行时缺陷，已一并修复（`ensureWs` 改为可等待 + `connectWs`）
-- [ ] C3 前端：路由改造（`/canvas` 列表 + `/canvas/:id` 编辑器）+ 画布列表页（新建 / 打开 / 重命名 / 删除，展示资产大小）
+- [x] C3 前端：路由改造（`/canvas` 列表 + `/canvas/:id` 编辑器）+ 画布列表页（新建 / 打开 / 重命名 / 删除，展示资产大小）。旧单文件 `pages/canvas.tsx` 删除，改为 `pages/canvas/index.tsx`（列表）+ `pages/canvas/editor.tsx`（编辑器外壳：加载画布 graph + React Flow 渲染 + 顶栏）。**额外修复**：`pnpm build` 因 Umi 4 + esbuild minify 的分包 IIFE helper 冲突失败，已按工具提示在 `.umirc.ts` 增加 `esbuildMinifyIIFE: true` 修复，构建通过
 - [ ] C4 前端：抽取共享运行逻辑到 `components/comfyui/`（`useComfyRun` + `ComfySchemaForm`），设置页运行面板改走共享件且行为不回归
 - [ ] C5 前端：三类自定义节点 + 节点工具栏 + 工作流选择器（仅 txt2img）
 - [ ] C6 前端：节点内运行（提交 / 轮询 / 中断 / 状态）+ 结果走平台资产 URL 展示 + 提示词连线注入；工作流缺失时历史结果仍可见
@@ -216,6 +216,8 @@ C4 抽共享件（不依赖 C1–C3，可随时并行）→ C5 节点外壳 ─�
 - 两处共用：schema 分析、`exposureConfig`、`/api/comfyui/runs`、前端共享运行组件。工作流的导入 / 编辑 / 暴露字段配置仍只在 ComfyUI API 管理页维护，画布只消费、不编辑工作流定义；工具箱运行不产生平台资产，只有画布节点运行（带 `canvasId`）才落资产。
 
 ## 7. 变更日志
+
+- 2026-09-02（实现）：**C3 前端路由与画布列表落地**——`.umirc.ts` 路由改为 `/canvas → ./canvas/index`（画布工作台列表）、新增 `/canvas/:id → ./canvas/editor`（编辑器）；列表页 `pages/canvas/index.tsx` 实现卡片网格（新建 / 打开 / 重命名 / 删除，展示节点数 / 资产大小 / 更新时间，删除带二次确认）；旧单文件 `pages/canvas.tsx` 删除，编辑器 `pages/canvas/editor.tsx` 为外壳（加载画布 graph、React Flow 渲染节点/连线/视口、顶栏返回+名称+节点数）。**额外修复**：`pnpm build` 因 Umi 4 + esbuild minify 的分包 IIFE helper 冲突失败（`Found conflicts in esbuild helpers`），按提示在 `.umirc.ts` 增加 `esbuildMinifyIIFE: true`，构建通过。端到端手测 PASS：建画布 → 跳转编辑器（空图提示）→ 返回列表见卡片 → 重命名 → 删除（二次确认 + 级联清资产）→ 注入非空 graph 后编辑器正确渲染 2 节点/1 连线/视口。
 
 - 2026-09-02（实现）：**C1 后端数据层落地**——新增 `backend/src/canvas`（`CanvasDoc` + 建/列/取/改/删 5 接口，列表含节点数与资产大小，新建自动建分区，删画布级联清资产）与 `backend/src/assets`（`Asset` 实体 + `data/assets/<canvasId>` 分区读写 + `/api/assets/:id` 读取、`/api/assets/:id/download` 下载），实体注册进 `database.module.ts`；`tsc` 编译通过并端到端验证（建画布→分区→改名存图→写资产→读/下载→统计→级联删除，全 PASS）。同日补齐单元测试栈（Jest + ts-jest + supertest，`pnpm test`，4 suite / 29 用例全绿）。
 - 2026-09-02（设计）：§5 补「依赖顺序 / 可并行项 / 关键里程碑」（§5.1）——C1 为地基、C2 依赖 C1、C3 与 C2 并行、C4 为纯重构可随时并行且是 C5/C6 前置、C5→C6→C7 串行。
