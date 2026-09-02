@@ -390,6 +390,7 @@ export default function ComfyUIAPIManager() {
       .finally(() => setEditSchemaLoading(false));
   };
   onDelete = async (id) => {
+    setDetailOpen(false);
     await request(`/api/workflows/${id}`, { method: 'DELETE' });
     message.success('已删除');
     load();
@@ -1052,7 +1053,7 @@ export default function ComfyUIAPIManager() {
         {new Date(w.updatedAt).toLocaleString()}
       </Descriptions.Item>
       <Descriptions.Item label="JSON 内容">
-        <pre style={{ maxHeight: 300, overflow: 'auto', fontSize: 12 }}>
+        <pre style={{ maxHeight: 300, overflow: 'auto', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
           {JSON.stringify(w.apiJson, null, 2)}
         </pre>
       </Descriptions.Item>
@@ -1069,7 +1070,14 @@ export default function ComfyUIAPIManager() {
       size="small"
       hoverable
       style={{ marginBottom: 16 }}
-      onClick={() => onView(w)}
+      onClick={(e) => {
+        // 点击操作区（查看/编辑/运行/删除）或删除确认弹层（含 portal 冒泡）时都不打开详情页
+        const t = e.target as HTMLElement;
+        const actionsEl = (e.currentTarget as HTMLElement).querySelector('.ant-card-actions');
+        if (actionsEl && actionsEl.contains(t)) return;
+        if (t.closest && t.closest('.ant-popover, .ant-popconfirm')) return;
+        onView(w);
+      }}
       cover={
         w.thumbnailPath ? (
           <img
@@ -1163,11 +1171,11 @@ export default function ComfyUIAPIManager() {
       </Card>
 
       <Space style={{ marginBottom: 16 }} wrap>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
-          导入 ComfyUI API
-        </Button>
-        <Button icon={<DownloadOutlined />} onClick={openRemoteImport}>
+        <Button type="primary" icon={<DownloadOutlined />} onClick={openRemoteImport}>
           从 ComfyUI 导入
+        </Button>
+        <Button icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
+          导入 ComfyUI API
         </Button>
         <Button onClick={load}>刷新</Button>
         <Select
@@ -1217,6 +1225,7 @@ export default function ComfyUIAPIManager() {
           columns={columns}
           dataSource={filteredList}
           pagination={{ pageSize: 10 }}
+          scroll={{ x: 'max-content' }}
         />
       )}
 
