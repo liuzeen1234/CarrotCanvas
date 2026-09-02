@@ -1,6 +1,6 @@
 # CarrotCanvas 项目现状总结
 
-> 最后更新：2026-09-01
+> 最后更新：2026-09-02
 > 本文件是对项目当前状态的完整快照，开发过程中行变更时应同步更新。
 
 ## 1. 项目定位
@@ -41,7 +41,8 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 ├─ docs/                        # ★ 所有文档统一存放处（本目录）
 │  ├─ README.md                 # 文档索引与约定
 │  ├─ PROJECT-SUMMARY.md        # 本文档
-│  └─ COMFYUI-INTEGRATION.md    # ComfyUI 集成·运行功能设计
+│  ├─ COMFYUI-INTEGRATION.md    # ComfyUI 集成·运行功能设计（阶段一：独立工具箱，已落地①-⑦）
+│  └─ CANVAS-INTEGRATION.md     # Canvas 集成·画布节点调用工作流（阶段二：多画布/一期仅文生图，C1 后端数据层已完成）
 ├─ backend/                     # NestJS 后端
 │  ├─ src/
 │  │  ├─ main.ts                # 入口，端口 3100
@@ -50,17 +51,23 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 │  │  ├─ app.service.ts
 │  │  ├─ database/
 │  │  │  └─ database.module.ts   # TypeORM + better-sqlite3（数据文件 data/carrot-canvas.sqlite）
-│  │  └─ workflows/              # ComfyUI API（工作流）管理模块
-│  │     ├─ workflow.entity.ts
-│  │     ├─ workflows.module.ts / controller.ts / service.ts
-│  │     └─ comfyui-validator.ts # ComfyUI API 格式校验
-│  └─ comfyui/                # ComfyUI 集成（步骤②③：工作流导入 + 运行执行）
-│     ├─ comfyui-client.ts    # HTTP 客户端（/userdata、/object_info、/prompt、/view、/upload/image）
-│     ├─ comfyui-schema.service.ts # schema 分析：apiJson + /object_info → 可编辑入参表单描述（步骤④）
-│     ├─ comfyui-graph-converter.ts # 复刻官方 graphToPrompt UI→API 转换（含子图展开/Reroute 穿透）
-│     ├─ comfyui-runner.service.ts  # 提交 + WebSocket 监控 + 输出收集（内存运行状态）
-│     ├─ comfyui.controller.ts      # /api/comfyui/* 端点（列表/预览/导入/运行/中断/图片代理）
-│     └─ comfyui.module.ts
+│  │  ├─ workflows/              # ComfyUI API（工作流）管理模块
+│  │  │  ├─ workflow.entity.ts
+│  │  │  ├─ workflows.module.ts / controller.ts / service.ts
+│  │  │  └─ comfyui-validator.ts # ComfyUI API 格式校验
+│  │  ├─ comfyui/                # ComfyUI 集成（步骤②③：工作流导入 + 运行执行）
+│  │  │  ├─ comfyui-client.ts    # HTTP 客户端（/userdata、/object_info、/prompt、/view、/upload/image）
+│  │  │  ├─ comfyui-schema.service.ts # schema 分析：apiJson + /object_info → 可编辑入参表单描述
+│  │  │  ├─ comfyui-graph-converter.ts # 复刻官方 graphToPrompt UI→API 转换（子图展开/Reroute 穿透）
+│  │  │  ├─ comfyui-runner.service.ts  # 提交 + WebSocket 监控 + 输出收集（内存运行状态）
+│  │  │  ├─ comfyui.controller.ts      # /api/comfyui/* 端点
+│  │  │  └─ comfyui.module.ts
+│  │  ├─ canvas/                 # Canvas C1：画布一等实体（CanvasDoc + 建/列/取/改/删 5 接口，删画布级联清资产）
+│  │  │  ├─ canvas.entity.ts
+│  │  │  ├─ canvas.service.ts / controller.ts / module.ts
+│  │  └─ assets/                 # Canvas C1：平台资产库（Asset + data/assets/<canvasId> 分区读写 + /api/assets/:id 读/下载）
+│  │     ├─ asset.entity.ts
+│  │     ├─ assets.service.ts / controller.ts / module.ts
 │  ├─ package.json              # @carrot-canvas/backend
 │  ├─ tsconfig.json / tsconfig.build.json
 └─ web/                         # Umi + AntD 前端
@@ -86,6 +93,10 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 入参动态表单（步骤④⑤）：GET /api/comfyui/workflows/:id/schema 结合 /object_info 分析可编辑入参（文本/数值/下拉/图片，跳过连接输入，只暴露无连接 widget）；前端运行前自动表单渲染 + 值写回 apiJson + JSONText 模式切换（实测修改 filename_prefix 提交后 ComfyUI 输出文件名生效）
 - ✅ 图片上传（步骤⑥）：POST /api/comfyui/upload/image（base64 JSON 转发 ComfyUI /upload/image 写入 input 目录，后端 body 限制 15mb）；LoadImage 控件支持上传新图 / 选择已有图（实测 465KB 图片上传成功并被 ComfyUI /object_info 识别）
 - ✅ 前端构建通过（`pnpm build`）
+- ✅ 画布多实例 CRUD（Canvas C1）：`/api/canvas` 建/列/取/改/删，列表只回元信息 + 节点数 + 资产大小；新建画布自动创建 `data/assets/<canvasId>/` 分区；删画布级联清理其资产分区与 asset 行（已端到端验证）
+- ✅ 平台资产库（Canvas C1）：`assets` 表（12 列与设计一致）+ `data/assets/<canvasId>` 分区读写（`saveGenerated`/`saveUpload` 服务层）+ `/api/assets/:id` 读取、`/api/assets/:id/download` 下载；画布节点运行产物捕获（C2）待接入
+- ✅ 单元测试（Canvas C1）：新增 Jest + ts-jest + supertest 测试栈，`pnpm test` 运行，**4 个 suite / 29 用例全绿**（`canvas.service` / `assets.service` 单测 + 两个 controller 接口测试）；`AssetsService` 支持 `CARROT_ASSETS_ROOT` 环境变量覆盖资产根目录（测试隔离用，默认仍为 `data/assets`）
+- ⏳ 无限画布 `pages/canvas.tsx` 仍是 React Flow 骨架（3 个占位节点，未接运行）；多画布 + 画布节点调用工作流的方案见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（阶段二，一期仅文生图；后端数据层 C1 已完成，前端路由/列表/节点/运行/保存为 C3–C7 待做）
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
 

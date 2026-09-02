@@ -9,6 +9,8 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 本功能目标：把 ComfyUI API 从一个"静态 JSON 仓库"变成**一套可独立调用的工具箱**——每个 API 是一张卡片，点进去填参数就能提交到本地 ComfyUI 执行并看到结果。
 
+> 本文档是**阶段一（独立工具箱，已完成）**。阶段二「多画布 + 画布节点复用本文件的运行引擎调用工作流（一期仅文生图）」独立成文，见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)；阶段二不新增运行协议、不改 runner。
+
 ## 2. 现状（2026-09-01）
 
 - ✅ 后端 `workflows` 模块：CRUD + 导入 + ComfyUI API 格式校验（`ComfyUIValidator`）
@@ -121,6 +123,7 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-02（文档）：阶段二画布方案独立成文 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（多画布一等实体 + 画布节点复用本文件运行引擎，一期仅文生图，图生图留二期）；本文件范围与结论不变。
 - 2026-09-02（实现）：新增「暴露字段配置」（§4.5）——`workflow` 实体加 `exposure_config`（simple-json，nullable，synchronize 自动建列）；`workflows.service` 透传 + `normalizeExposure`（去重、空归 null）；`comfyui.controller` preview 增返 `schema`/`suggestedExposure`（`suggestExposure`：图片 + 多行提示词预勾），import 接收 `exposure`。前端 `ComfyUIAPIManager.tsx`：可复用 `renderExposureSelector`（分组勾选表：字段名/类型/当前值 + 全选/全不选）接入「从 ComfyUI 导入」与「编辑」弹窗；运行面板 `splitByExposure` 拆主区/高级 Collapse，空配置回退平铺。后端 `tsc` 编译通过。
 - 2026-09-01（实现）：落地步骤④⑤⑥（入参动态表单 + 图片上传）——新增 `ComfyUISchemaService`（apiJson + /object_info → 表单描述，跳过连接输入，类型→控件映射）；`comfyui-client` 增加 /object_info 10min TTL 缓存与 /upload/image（FormData 转发）；controller 新增 GET /workflows/:id/schema、POST /upload/image；main.ts 引入 body-parser（JSON body 15mb）支持大图 base64；前端运行面板自动表单按节点分组渲染 + 值写回 + JSONText 双向切换 + LoadImage 上传/选择控件（flex 布局修复上传按钮不可见）；实测：schema 三工作流、改 filename_prefix 提交生效、465KB 图片上传被 ComfyUI 识别。
 - 2026-09-01（实现）：落地步骤②（工作流导入）与步骤③/⑦（运行执行）——新增 `backend/src/comfyui/` 模块（client / graph-converter / runner / controller）；复刻官方 graphToPrompt 并补充子图展开（subgraph 节点展开为 `父id:子id` 内部节点）与 Reroute 穿透；旧格式（位置 widgets_values）按 /object_info 映射；提交前展开 `%date%`/`%time%` 前端通配符；运行状态内存化 + 成功回写缩略图；前端接入「从 ComfyUI 导入」与运行面板。

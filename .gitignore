@@ -25,7 +25,6 @@ web/dist/
 
 # runtime data
 data/
-assets/
 logs/
 
 # logs
