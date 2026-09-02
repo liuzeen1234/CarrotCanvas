@@ -8,7 +8,7 @@
 |---|---|
 | [PROJECT-SUMMARY.md](./PROJECT-SUMMARY.md) | 项目现状总结（技术栈、结构、运行状态、已解决问题） |
 | [COMFYUI-INTEGRATION.md](./COMFYUI-INTEGRATION.md) | ComfyUI 集成·运行功能设计（阶段一：独立菜单/卡片式/JSONText+文件占位符/object_info 自动表单） |
-| [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md) | Canvas 集成·画布节点调用工作流设计（阶段二：多画布/三类节点，一期仅文生图，C1 后端数据层 + C2 产物捕获 + C3 列表/编辑器路由已完成） |
+| [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md) | Canvas 集成·画布节点调用工作流设计（阶段二：多画布/三类节点，一期仅文生图，C1 后端数据层 + C2 产物捕获 + C3 列表/编辑器路由 + C4 共享运行组件已完成） |
 
 > 新增文档时，请在此表登记一行索引，并遵循下述命名与组织约定。
 

@@ -100,7 +100,8 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 画布产物捕获（Canvas C2）：`POST /api/comfyui/runs` 扩展 `canvasId/nodeId`（画布生成节点发起），运行成功后经 `ComfyUIAssetCaptureService` 把输出字节从 ComfyUI `/view` 拉取落盘进该画布 `generated/` 分区并回填 `assetId/assetUrl` 到 run.outputs；同节点重跑按 §4.6.4 覆盖清理旧产物（`deleteGeneratedByNode` 支持 `keepIds` 保留本次新捕获，先建新后清旧）；不带 canvasId 的工具箱运行维持代理不落盘（已端到端验证：出图落盘 → 同节点重跑旧资产 404 只留新一组 → 删画布级联清目录）
 - ✅ 单元测试：Jest + ts-jest + supertest 测试栈，`pnpm test` 运行，**5 个 suite / 35 用例全绿**（canvas / assets 单测 + controller 接口测试 + `comfyui-capture` 捕获服务单测）；`AssetsService` 支持 `CARROT_ASSETS_ROOT` 环境变量覆盖资产根目录（测试隔离用，默认仍为 `data/assets`）
 - ✅ 画布列表与编辑器路由（Canvas C3）：`.umirc.ts` 路由 `/canvas → ./canvas/index`（画布工作台列表）、`/canvas/:id → ./canvas/editor`（编辑器）；列表页卡片网格（新建/打开/重命名/删除，删除二次确认，展示节点数/资产大小/更新时间）；编辑器加载画布 graph + React Flow 渲染节点/连线/视口 + 顶栏；旧 `pages/canvas.tsx` 骨架页已删除（已端到端手测：建→开→改名→删全通）
-- ⏳ 画布节点编排（Canvas C4–C7）待做：抽取共享运行组件（`useComfyRun` + `ComfySchemaForm`）、三类自定义节点（提示词/文生图/结果）、节点内运行出图、防抖自动保存与视口持久化；方案见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（阶段二，一期仅文生图；后端 C1/C2 已完成，前端 C3 列表/编辑器路由已完成）
+- ✅ 画布共享运行组件（Canvas C4）：抽取共享运行逻辑到 `web/src/components/comfyui/`（`types.ts` + `useComfyRun` 钩子 + `ComfySchemaForm` + `ComfyRunModal`），设置页运行面板改走共享件（schema 按 workflowId 缓存），行为不回归
+- ⏳ 画布节点编排（Canvas C5–C7）待做：三类自定义节点（提示词/文生图/结果）、节点内运行出图、防抖自动保存与视口持久化；方案见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（阶段二，一期仅文生图；后端 C1/C2 已完成，前端 C3 列表/编辑器路由、C4 共享运行组件已完成）
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
 

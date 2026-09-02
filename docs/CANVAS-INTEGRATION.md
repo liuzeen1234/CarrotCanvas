@@ -183,7 +183,7 @@ backend/data/
 - [x] C1 后端数据层：`canvas` 模块（`CanvasDoc` + 五个 CRUD 接口）与 `assets` 模块（`Asset` 实体、`data/assets/<canvasId>` 分区读写、`/api/assets/:id` 读取/下载、删画布级联清理），实体注册进 `database.module.ts`，`tsc` 编译通过
 - [x] C2 后端运行捕获：`/api/comfyui/runs` 扩展 `canvasId/nodeId`；带画布时运行成功自动把输出字节捕获进对应分区并回 asset 引用，且按节点覆盖清理上一版 generated 资产（先建新后清旧，`deleteGeneratedByNode` 支持 `keepIds` 保留本次新捕获，§4.6.4）；不带画布的工具箱运行维持现状（代理不落盘）。**额外修复**：runner 提交前先确保 WebSocket 连接就绪（ComfyUI 在提交时该 client 的 WS 未连接则不下发 execution 消息，导致 run 卡 pending）——阶段一遗留的运行时缺陷，已一并修复（`ensureWs` 改为可等待 + `connectWs`）
 - [x] C3 前端：路由改造（`/canvas` 列表 + `/canvas/:id` 编辑器）+ 画布列表页（新建 / 打开 / 重命名 / 删除，展示资产大小）。旧单文件 `pages/canvas.tsx` 删除，改为 `pages/canvas/index.tsx`（列表）+ `pages/canvas/editor.tsx`（编辑器外壳：加载画布 graph + React Flow 渲染 + 顶栏）。**额外修复**：`pnpm build` 因 Umi 4 + esbuild minify 的分包 IIFE helper 冲突失败，已按工具提示在 `.umirc.ts` 增加 `esbuildMinifyIIFE: true` 修复，构建通过
-- [ ] C4 前端：抽取共享运行逻辑到 `components/comfyui/`（`useComfyRun` + `ComfySchemaForm`），设置页运行面板改走共享件且行为不回归
+- [x] C4 前端：抽取共享运行逻辑到 `components/comfyui/`（`types.ts` 共享类型与纯函数 + `useComfyRun` 钩子 + `ComfySchemaForm` 表单组件 + `ComfyRunModal` 运行面板），schema 按 workflowId 缓存（`clearSchemaCache` 供编辑后失效）；`ComfyUIAPIManager` 删除内部重复实现、仅保留开关状态并改走共享件，行为不回归（`pnpm build` 与 `tsc --noEmit` 通过）
 - [ ] C5 前端：三类自定义节点 + 节点工具栏 + 工作流选择器（仅 txt2img）
 - [ ] C6 前端：节点内运行（提交 / 轮询 / 中断 / 状态）+ 结果走平台资产 URL 展示 + 提示词连线注入；工作流缺失时历史结果仍可见
 - [ ] C7 前端：画布防抖自动保存 + 视口持久化 + 刷新恢复（关掉 ComfyUI 也能看历史产物）；`pnpm build` 通过并端到端手测：建画布 → 绑 txt2img 工作流 → 连提示词 → 出图并确认落盘到 `data/assets/<canvasId>/generated/` → 同节点重跑确认旧产物被覆盖清理、只留最新一组 → 关 ComfyUI 刷新仍见图 → 删工作流结果不丢 → 删画布目录被清 → 建第二张画布资产互不串
@@ -216,6 +216,8 @@ C4 抽共享件（不依赖 C1–C3，可随时并行）→ C5 节点外壳 ─�
 - 两处共用：schema 分析、`exposureConfig`、`/api/comfyui/runs`、前端共享运行组件。工作流的导入 / 编辑 / 暴露字段配置仍只在 ComfyUI API 管理页维护，画布只消费、不编辑工作流定义；工具箱运行不产生平台资产，只有画布节点运行（带 `canvasId`）才落资产。
 
 ## 7. 变更日志
+
+- 2026-09-02（实现）：**C4 抽取共享运行组件落地**——新增 `web/src/components/comfyui/`：`types.ts`（SchemaAnalysis / RunStateData / ComfyUIAPI 等共享类型 + `applyFormValues` / `splitByExposure` / `fileKey` 纯函数）、`useComfyRun.ts`（schema 加载按 workflowId 缓存 + form/json 切换 + 提交/轮询/中断 + 图片上传 + 输出下载，支持画布上下文 `canvasId/nodeId` 与 `onRunStarted`/`onRunFinished` 回调）、`ComfySchemaForm.tsx`（受控 schema 表单：主区 / 高级参数折叠 + upload 控件）、`ComfyRunModal.tsx`（设置页运行面板整体：表单 / JSON 切换 + 进度 / 结果 + 作为封面）。`ComfyUIAPIManager.tsx` 删除约 660 行内部运行实现，仅保留 `runOpen/runWorkflow` 开关并渲染 `<ComfyRunModal>`；编辑保存后 `clearSchemaCache` 失效缓存。行为不回归：`pnpm build` 通过，`tsc --noEmit` 通过（临时 umi 模块 stub 验证后已删）。
 
 - 2026-09-02（实现）：**C3 前端路由与画布列表落地**——`.umirc.ts` 路由改为 `/canvas → ./canvas/index`（画布工作台列表）、新增 `/canvas/:id → ./canvas/editor`（编辑器）；列表页 `pages/canvas/index.tsx` 实现卡片网格（新建 / 打开 / 重命名 / 删除，展示节点数 / 资产大小 / 更新时间，删除带二次确认）；旧单文件 `pages/canvas.tsx` 删除，编辑器 `pages/canvas/editor.tsx` 为外壳（加载画布 graph、React Flow 渲染节点/连线/视口、顶栏返回+名称+节点数）。**额外修复**：`pnpm build` 因 Umi 4 + esbuild minify 的分包 IIFE helper 冲突失败（`Found conflicts in esbuild helpers`），按提示在 `.umirc.ts` 增加 `esbuildMinifyIIFE: true`，构建通过。端到端手测 PASS：建画布 → 跳转编辑器（空图提示）→ 返回列表见卡片 → 重命名 → 删除（二次确认 + 级联清资产）→ 注入非空 graph 后编辑器正确渲染 2 节点/1 连线/视口。
 
