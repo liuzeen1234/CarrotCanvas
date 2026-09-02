@@ -158,13 +158,20 @@ export class AssetsService {
 
   /**
    * 删除某生成节点的 generated 资产（行 + 文件）。
-   * C2 覆盖清理策略（§4.6.4）：节点重跑成功后先建新、再清旧。
+   * C2 覆盖清理策略（§4.6.4）：节点重跑成功后先建新、再清旧——
+   * 调用方把本次新捕获的 assetId 传入 keepIds，这些行会被保留，只清旧版本。
+   * 不带 keepIds 时删除该节点全部 generated 资产（删节点场景）。
    */
-  async deleteGeneratedByNode(canvasId: string, nodeId: string): Promise<void> {
+  async deleteGeneratedByNode(
+    canvasId: string,
+    nodeId: string,
+    keepIds?: string[],
+  ): Promise<void> {
     const assets = await this.repo.find({
       where: { canvasId, nodeId, source: 'generated' },
     });
     for (const asset of assets) {
+      if (keepIds?.includes(asset.id)) continue;
       await this.removeAssetRowAndFile(asset);
     }
   }

@@ -153,6 +153,27 @@ describe('AssetsService', () => {
       expect(existsSync(join(ASSETS_ROOT, 'c1', g1))).toBe(false);
       expect(existsSync(join(ASSETS_ROOT, 'c1', g2))).toBe(false);
     });
+
+    it('keepIds 指定的新资产被保留，只清旧版', async () => {
+      const repo = makeRepo();
+      const g1 = 'generated/g1__a.png';
+      const g2 = 'generated/g2__b.png';
+      const dir = join(ASSETS_ROOT, 'c1', 'generated');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(ASSETS_ROOT, 'c1', g1), 'new');
+      writeFileSync(join(ASSETS_ROOT, 'c1', g2), 'old');
+      repo.find.mockResolvedValue([
+        { id: 'g1', canvasId: 'c1', nodeId: 'n1', source: 'generated', relPath: g1 },
+        { id: 'g2', canvasId: 'c1', nodeId: 'n1', source: 'generated', relPath: g2 },
+      ]);
+      const service = new AssetsService(repo);
+      // g1 为本次新捕获，保留；g2 为旧版，清除
+      await service.deleteGeneratedByNode('c1', 'n1', ['g1']);
+      expect(repo.delete).toHaveBeenCalledTimes(1);
+      expect(repo.delete).toHaveBeenCalledWith('g2');
+      expect(existsSync(join(ASSETS_ROOT, 'c1', g1))).toBe(true);
+      expect(existsSync(join(ASSETS_ROOT, 'c1', g2))).toBe(false);
+    });
   });
 
   describe('getCanvasAssetSizes', () => {

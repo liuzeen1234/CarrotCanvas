@@ -181,7 +181,7 @@ backend/data/
 ## 5. 落地步骤（当前进度）
 
 - [x] C1 后端数据层：`canvas` 模块（`CanvasDoc` + 五个 CRUD 接口）与 `assets` 模块（`Asset` 实体、`data/assets/<canvasId>` 分区读写、`/api/assets/:id` 读取/下载、删画布级联清理），实体注册进 `database.module.ts`，`tsc` 编译通过
-- [ ] C2 后端运行捕获：`/api/comfyui/runs` 扩展 `canvasId/nodeId`；带画布时运行成功自动把输出字节捕获进对应分区并回 asset 引用，且按节点覆盖清理上一版 generated 资产（先建新后清旧，§4.6.4）；不带画布的工具箱运行维持现状（代理不落盘）
+- [x] C2 后端运行捕获：`/api/comfyui/runs` 扩展 `canvasId/nodeId`；带画布时运行成功自动把输出字节捕获进对应分区并回 asset 引用，且按节点覆盖清理上一版 generated 资产（先建新后清旧，`deleteGeneratedByNode` 支持 `keepIds` 保留本次新捕获，§4.6.4）；不带画布的工具箱运行维持现状（代理不落盘）。**额外修复**：runner 提交前先确保 WebSocket 连接就绪（ComfyUI 在提交时该 client 的 WS 未连接则不下发 execution 消息，导致 run 卡 pending）——阶段一遗留的运行时缺陷，已一并修复（`ensureWs` 改为可等待 + `connectWs`）
 - [ ] C3 前端：路由改造（`/canvas` 列表 + `/canvas/:id` 编辑器）+ 画布列表页（新建 / 打开 / 重命名 / 删除，展示资产大小）
 - [ ] C4 前端：抽取共享运行逻辑到 `components/comfyui/`（`useComfyRun` + `ComfySchemaForm`），设置页运行面板改走共享件且行为不回归
 - [ ] C5 前端：三类自定义节点 + 节点工具栏 + 工作流选择器（仅 txt2img）

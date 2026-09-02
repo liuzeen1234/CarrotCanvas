@@ -159,6 +159,36 @@ export class ComfyUIClientService {
     return `${base}/view?${qs.toString()}`;
   }
 
+  /**
+   * 从 ComfyUI /view 拉取输出文件字节（画布资产捕获用，C2）。
+   * 与 /api/comfyui/view 的"实时流式代理"不同，这里真正取回字节供平台落盘。
+   */
+  async fetchViewFile(params: {
+    filename: string;
+    type?: string;
+    subfolder?: string;
+  }): Promise<{ buffer: Buffer; mime: string | null }> {
+    const url = await this.buildViewUrl(params);
+    let resp: Response;
+    try {
+      resp = await fetch(url);
+    } catch (e) {
+      throw new HttpException(
+        `无法连接 ComfyUI（${url}）：${(e as Error).message}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    if (!resp.ok) {
+      throw new HttpException(
+        `拉取 ComfyUI 输出失败：HTTP ${resp.status}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    const mime = resp.headers.get('content-type');
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    return { buffer, mime };
+  }
+
   async getSystemStats(): Promise<Record<string, unknown>> {
     const resp = await this.request('/system_stats');
     return (await resp.json()) as Record<string, unknown>;

@@ -8,15 +8,18 @@ import {
   Res,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Readable } from 'stream';
 import { ComfyUIClientService } from './comfyui-client';
 import { ComfyUIGraphConverter } from './comfyui-graph-converter';
 import { ComfyUIRunnerService, RunState } from './comfyui-runner.service';
 import { ComfyUISchemaService, SchemaAnalysis } from './comfyui-schema.service';
+import { ComfyUIAssetCaptureService } from './comfyui-capture.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { ComfyUIValidator } from '../workflows/comfyui-validator';
 import { WorkflowCategory } from '../workflows/workflow-category';
+import { CanvasService } from '../canvas/canvas.service';
 
 interface PreviewBody {
   filename: string;
@@ -35,15 +38,23 @@ interface RunBody {
   workflowId: string;
   /** 可选：直接提交的 API JSON（前端 JSONText 编辑兜底） */
   apiJson?: unknown;
+  /** 画布上下文（画布生成节点发起时带）：成功后将输出捕获进该画布资产分区 */
+  canvasId?: string;
+  /** 画布内节点 id（覆盖清理键，需与 canvasId 同传） */
+  nodeId?: string;
 }
 
 @Controller('comfyui')
 export class ComfyUIController {
+  private readonly logger = new Logger('ComfyUIController');
+
   constructor(
     private readonly client: ComfyUIClientService,
     private readonly runner: ComfyUIRunnerService,
     private readonly workflows: WorkflowsService,
     private readonly schemaService: ComfyUISchemaService,
+    private readonly capture: ComfyUIAssetCaptureService,
+    private readonly canvas: CanvasService,
   ) {}
 
   // ---------- 步骤②：工作流导入 ----------
@@ -145,6 +156,11 @@ export class ComfyUIController {
     }
     const workflow = await this.workflows.findOne(body.workflowId);
 
+    // 画布节点发起：先确认画布存在，避免把产物捕获到不存在的分区
+    if (body.canvasId) {
+      await this.canvas.findOne(body.canvasId);
+    }
+
     let apiJson: Record<string, unknown>;
     if (body.apiJson !== undefined) {
       const parsed = ComfyUIValidator.parseJson(JSON.stringify(body.apiJson));
@@ -163,6 +179,19 @@ export class ComfyUIController {
     const run = await this.runner.submit(apiJson, {
       workflowId: workflow.id,
       title: workflow.name,
+      canvasId: body.canvasId,
+      nodeId: body.nodeId ?? null,
+      // 画布节点运行成功 → 捕获输出字节进画布资产分区（C2）
+      onComplete: (finished) => {
+        if (!body.canvasId) return;
+        void this.capture
+          .captureRunOutputs(finished, body.canvasId, body.nodeId ?? null, workflow.id)
+          .catch((e) =>
+            this.logger.error(
+              `捕获画布 ${body.canvasId} 运行 ${finished.promptId} 产物失败：${(e as Error).message}`,
+            ),
+          );
+      },
       // 不再自动写回缩略图：改由前端在结果区点"作为封面"手动设置
     });
     return { run };

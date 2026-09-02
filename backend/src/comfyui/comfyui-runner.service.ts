@@ -29,6 +29,10 @@ export interface RunOutputFile {
   /** 后端代理访问路径（相对，如 /api/comfyui/view?...) */
   url: string;
   kind: 'image' | 'video' | 'audio' | 'other';
+  /** 平台资产 id（画布节点运行时，捕获成功后回填） */
+  assetId?: string | null;
+  /** 平台资产访问路径（相对，如 /api/assets/:id） */
+  assetUrl?: string | null;
 }
 
 export interface RunState {
@@ -48,6 +52,9 @@ export interface RunState {
   outputs: RunOutputFile[];
   error?: string;
   nodeErrors: Record<string, unknown>;
+  /** 画布上下文（画布生成节点发起时带，用于产物捕获） */
+  canvasId?: string;
+  nodeId?: string | null;
 }
 
 interface WsMessage {
@@ -72,6 +79,8 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
   private readonly clientId = randomUUID();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connecting = false;
+  /** 进行中的 WS 连接 Promise（供并发提交复用同一个连接） */
+  private connectingPromise: Promise<void> | null = null;
 
   constructor(private readonly client: ComfyUIClientService) {}
 
@@ -86,8 +95,17 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
   /** 提交 prompt 到 ComfyUI 并开始监控 */
   async submit(
     apiJson: Record<string, unknown>,
-    options: { title?: string; workflowId?: string; onComplete?: (run: RunState) => void } = {},
+    options: {
+      title?: string;
+      workflowId?: string;
+      canvasId?: string;
+      nodeId?: string | null;
+      onComplete?: (run: RunState) => void;
+    } = {},
   ): Promise<RunState> {
+    // 先确保 WS 连接就绪再提交：ComfyUI 仅在提交时该 client 的 WS 已连接时下发 execution 消息，
+    // 先提交后连接会导致 run 永远收不到状态更新（卡 pending）。
+    await this.ensureWs();
     let result;
     try {
       result = await this.client.submitPrompt(expandFrontendWildcards(apiJson), this.clientId);
@@ -116,6 +134,8 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
       nodeTitles,
       outputs: [],
       nodeErrors: result.node_errors ?? {},
+      canvasId: options.canvasId,
+      nodeId: options.nodeId ?? null,
     };
 
     // 节点级校验错误：直接判定失败
@@ -133,7 +153,6 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
     this.runs.set(run.promptId, run);
     if (options.onComplete) this.onComplete.set(run.promptId, options.onComplete);
     this.prune();
-    void this.ensureWs();
     return run;
   }
 
@@ -153,40 +172,55 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
 
   // ---------- WebSocket 监控 ----------
 
-  private async ensureWs(): Promise<void> {
-    if (this.connecting) return;
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+  /** 确保 WebSocket 已连接；返回的 Promise 在连接就绪（open 或失败）后 resolve */
+  private ensureWs(): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return Promise.resolve();
+    if (this.connecting && this.connectingPromise) return this.connectingPromise;
     this.connecting = true;
-    try {
-      const wsUrl = await this.client.getWsUrl(this.clientId);
-      const ws = new WebSocket(wsUrl);
-      this.ws = ws;
-      ws.onopen = () => {
-        this.logger.log('ComfyUI WebSocket 已连接');
-      };
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(String(ev.data)) as WsMessage;
-          this.handleMessage(msg);
-        } catch (e) {
-          this.logger.warn(`WS 消息解析失败：${(e as Error).message}`);
-        }
-      };
-      ws.onerror = () => {
-        this.logger.warn('ComfyUI WebSocket 错误');
-      };
-      ws.onclose = () => {
-        this.logger.warn('ComfyUI WebSocket 已断开');
-        this.ws = null;
-        this.scheduleReconnect();
-      };
-    } catch (e) {
-      this.logger.error(`连接 ComfyUI WebSocket 失败：${(e as Error).message}`);
-      this.ws = null;
-      this.scheduleReconnect();
-    } finally {
+    this.connectingPromise = this.connectWs().finally(() => {
       this.connecting = false;
-    }
+      this.connectingPromise = null;
+    });
+    return this.connectingPromise;
+  }
+
+  /** 建立 WS 连接，onopen 或 onerror 时 resolve（供 submit 在提交前等待连接就绪） */
+  private connectWs(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      void (async () => {
+        try {
+          const wsUrl = await this.client.getWsUrl(this.clientId);
+          const ws = new WebSocket(wsUrl);
+          this.ws = ws;
+          ws.onopen = () => {
+            this.logger.log('ComfyUI WebSocket 已连接');
+            resolve();
+          };
+          ws.onmessage = (ev) => {
+            try {
+              const msg = JSON.parse(String(ev.data)) as WsMessage;
+              this.handleMessage(msg);
+            } catch (e) {
+              this.logger.warn(`WS 消息解析失败：${(e as Error).message}`);
+            }
+          };
+          ws.onerror = () => {
+            this.logger.warn('ComfyUI WebSocket 错误');
+            resolve();
+          };
+          ws.onclose = () => {
+            this.logger.warn('ComfyUI WebSocket 已断开');
+            this.ws = null;
+            this.scheduleReconnect();
+          };
+        } catch (e) {
+          this.logger.error(`连接 ComfyUI WebSocket 失败：${(e as Error).message}`);
+          this.ws = null;
+          this.scheduleReconnect();
+          resolve();
+        }
+      })();
+    });
   }
 
   private scheduleReconnect() {
