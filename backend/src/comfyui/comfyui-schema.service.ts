@@ -47,6 +47,8 @@ export interface SchemaField {
   imageUpload?: boolean;
   /** 来自 object_info.input.required；供画布节点提交前校验 */
   required: boolean;
+  /** 工作流级自定义使用建议，由 controller 合并。 */
+  description?: string;
 }
 
 export interface SchemaNodeGroup {

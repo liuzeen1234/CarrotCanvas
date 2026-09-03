@@ -20,6 +20,12 @@ export interface WorkflowInputConfig {
   fields: Array<{ nodeId: string; param: string; kind: WorkflowPortKind }>;
 }
 
+export interface WorkflowFieldConfig {
+  version: number;
+  fields: Array<{ nodeId: string; param: string; label?: string; description?: string }>;
+  groups?: Array<{ nodeId: string; label: string }>;
+}
+
 export interface ComfyUIAPI {
   id: string;
   name: string;
@@ -31,6 +37,7 @@ export interface ComfyUIAPI {
   thumbnailPath: string | null;
   exposureConfig: ExposureConfig | null;
   inputConfig: WorkflowInputConfig | null;
+  fieldConfig: WorkflowFieldConfig | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,6 +90,7 @@ export interface SchemaField {
   multiline?: boolean;
   imageUpload?: boolean;
   required: boolean;
+  description?: string;
 }
 
 export interface SchemaNodeGroup {

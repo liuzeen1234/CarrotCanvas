@@ -46,6 +46,7 @@ import {
   ComfyUIAPI,
   ExposureConfig,
   WorkflowInputConfig,
+  WorkflowFieldConfig,
   SchemaAnalysis,
   SchemaField,
 } from '@/components/comfyui/types';
@@ -83,6 +84,7 @@ interface WorkflowPreview {
   schema: SchemaAnalysis | null;
   suggestedExposure: ExposureConfig;
   suggestedInputConfig: WorkflowInputConfig;
+  suggestedFieldConfig: WorkflowFieldConfig;
 }
 
 const { Paragraph } = Typography;
@@ -116,6 +118,8 @@ export default function ComfyUIAPIManager() {
   const [editSchemaLoading, setEditSchemaLoading] = useState(false);
   const [editExposureKeys, setEditExposureKeys] = useState<Set<string>>(new Set());
   const [editInputKeys, setEditInputKeys] = useState<Set<string>>(new Set());
+  const [editFieldMeta, setEditFieldMeta] = useState<Record<string, { label: string; description: string }>>({});
+  const [editGroupLabels, setEditGroupLabels] = useState<Record<string, string>>({});
   const [importForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('file');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -137,6 +141,8 @@ export default function ComfyUIAPIManager() {
   // 导入弹窗：已勾选暴露字段（key=`${nodeId}::${param}`）
   const [exposureKeys, setExposureKeys] = useState<Set<string>>(new Set());
   const [inputKeys, setInputKeys] = useState<Set<string>>(new Set());
+  const [fieldMeta, setFieldMeta] = useState<Record<string, { label: string; description: string }>>({});
+  const [groupLabels, setGroupLabels] = useState<Record<string, string>>({});
 
   // 运行面板：由共享组件 ComfyRunModal 承接，这里只保留开关状态
   const [runOpen, setRunOpen] = useState(false);
@@ -291,11 +297,19 @@ export default function ComfyUIAPIManager() {
       new Set((w.exposureConfig?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`)),
     );
     setEditInputKeys(new Set((w.inputConfig?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`)));
+    setEditFieldMeta(Object.fromEntries((w.fieldConfig?.fields ?? []).map((f) => [`${f.nodeId}::${f.param}`, { label: f.label ?? '', description: f.description ?? '' }])));
+    setEditGroupLabels(Object.fromEntries((w.fieldConfig?.groups ?? []).map((g) => [g.nodeId, g.label])));
     setEditSchema(null);
     setEditSchemaLoading(true);
     setEditOpen(true);
     request<{ schema: SchemaAnalysis }>(`/api/comfyui/workflows/${w.id}/schema`)
-      .then((data) => setEditSchema(data.schema))
+      .then((data) => {
+        setEditSchema(data.schema);
+        if (!(w.fieldConfig?.fields?.length)) {
+          setEditFieldMeta(Object.fromEntries(data.schema.groups.flatMap((g) => g.fields).map((f) => [`${f.nodeId}::${f.param}`, { label: f.label ?? '', description: f.description ?? '' }])));
+        }
+        if (!(w.fieldConfig?.groups?.length)) setEditGroupLabels(Object.fromEntries(data.schema.groups.map((g) => [g.nodeId, g.nodeTitle])));
+      })
       .catch(() => setEditSchema(null))
       .finally(() => setEditSchemaLoading(false));
   };
@@ -351,6 +365,18 @@ export default function ComfyUIAPIManager() {
     return false;
   };
 
+  const buildFieldConfig = (metadata: Record<string, { label: string; description: string }>, groups: Record<string, string>): WorkflowFieldConfig => ({
+    version: 1,
+    groups: Object.entries(groups).flatMap(([nodeId, label]) => label.trim() ? [{ nodeId, label: label.trim() }] : []),
+    fields: Object.entries(metadata).flatMap(([key, value]) => {
+      const idx = key.lastIndexOf('::');
+      const label = value.label.trim();
+      const description = value.description.trim();
+      if (idx <= 0 || (!label && !description)) return [];
+      return [{ nodeId: key.slice(0, idx), param: key.slice(idx + 2), ...(label ? { label } : {}), ...(description ? { description } : {}) }];
+    }),
+  });
+
   const handleEditSave = async () => {
     if (!editing) return;
     const values = await editForm.validateFields();
@@ -367,6 +393,7 @@ export default function ComfyUIAPIManager() {
         const idx = k.lastIndexOf('::'); const f = fieldByKey.get(k);
         return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text' };
       }) };
+      const fieldConfig = buildFieldConfig(editFieldMeta, editGroupLabels);
       await request(`/api/workflows/${editing.id}`, {
         method: 'PATCH',
         data: {
@@ -376,6 +403,7 @@ export default function ComfyUIAPIManager() {
           tags: values.tags,
           exposureConfig,
           inputConfig,
+          fieldConfig,
         },
       });
       message.success('已保存');
@@ -434,6 +462,8 @@ export default function ComfyUIAPIManager() {
       );
       setExposureKeys(preset);
       setInputKeys(new Set((data.suggestedInputConfig?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`)));
+      setFieldMeta(Object.fromEntries((data.suggestedFieldConfig?.fields ?? []).map((f) => [`${f.nodeId}::${f.param}`, { label: f.label ?? '', description: f.description ?? '' }])));
+      setGroupLabels(Object.fromEntries((data.suggestedFieldConfig?.groups ?? []).map((g) => [g.nodeId, g.label])));
     } catch (e: any) {
       message.error(`转换失败：${e?.response?.data?.message || '未知错误'}`);
     } finally {
@@ -461,6 +491,7 @@ export default function ComfyUIAPIManager() {
         const idx = k.lastIndexOf('::'); const f = fieldByKey.get(k);
         return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text' };
       }) };
+      const fieldConfig = buildFieldConfig(fieldMeta, groupLabels);
       await request('/api/comfyui/workflows/import', {
         method: 'POST',
         data: {
@@ -471,6 +502,7 @@ export default function ComfyUIAPIManager() {
           tags: values.tags,
           exposure,
           inputConfig,
+          fieldConfig,
         },
       });
       message.success('导入成功');
@@ -524,6 +556,10 @@ export default function ComfyUIAPIManager() {
     setSelected: (next: Set<string>) => void,
     connectSelected?: Set<string>,
     setConnectSelected?: (next: Set<string>) => void,
+    metadata: Record<string, { label: string; description: string }> = {},
+    setMetadata?: (next: Record<string, { label: string; description: string }>) => void,
+    groups: Record<string, string> = {},
+    setGroups?: (next: Record<string, string>) => void,
   ) => {
     if (!schema || !schema.ok) {
       return (
@@ -569,35 +605,38 @@ export default function ComfyUIAPIManager() {
         <div style={{ maxHeight: '40vh', overflow: 'auto', border: '1px solid #f0f0f0', borderRadius: 6, padding: 8 }}>
           {editableGroups.map((g) => (
             <div key={g.nodeId} style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: '#999', margin: '4px 0' }}>
-                {g.nodeTitle}
-                <span style={{ marginLeft: 6 }}>
-                  {g.classType} · {g.nodeId}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0' }}>
+                <Input size="small" style={{ width: 220 }} value={groups[g.nodeId] ?? g.nodeTitle} placeholder="分组名称" onChange={(e) => setGroups?.({ ...groups, [g.nodeId]: e.target.value })} />
+                <span title={`${g.classType} · ${g.nodeId}`} style={{ fontSize: 11, color: '#aaa', cursor: 'help' }}>
+                  技术节点：{g.classType}
                 </span>
               </div>
               {g.fields.map((f) => {
                 const key = `${f.nodeId}::${f.param}`;
                 const connectable = f.control === 'upload' || f.valueType === 'IMAGE';
+                const meta = metadata[key] ?? { label: '', description: '' };
+                const updateMeta = (patch: Partial<typeof meta>) => setMetadata?.({ ...metadata, [key]: { ...meta, ...patch } });
                 return (
                   <div
                     key={key}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 2px 12px' }}
+                    style={{ padding: '6px 8px', marginLeft: 8, marginBottom: 6, border: '1px solid #f0f0f0', borderRadius: 6 }}
                   >
-                    <Checkbox
-                      checked={selected.has(key)}
-                      onChange={(e) => toggle(key, e.target.checked)}
-                    >
-                      <span style={{ fontSize: 13 }}>{f.label}</span>
-                    </Checkbox>
-                    <Tag style={{ fontSize: 11 }}>{controlLabel(f.control)}</Tag>
-                    {connectable && connectSelected && setConnectSelected ? (
-                      <Checkbox checked={connectSelected.has(key)} onChange={(e) => {
-                        const next = new Set(connectSelected); if (e.target.checked) next.add(key); else next.delete(key); setConnectSelected(next);
-                      }}>允许连线</Checkbox>
-                    ) : null}
-                    <span style={{ fontSize: 11, color: '#bbb', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {previewValue(f.current)}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <Checkbox checked={selected.has(key)} onChange={(e) => toggle(key, e.target.checked)}>
+                        <span style={{ fontSize: 13 }}>{f.param}</span>
+                      </Checkbox>
+                      <Tag style={{ fontSize: 11 }}>{controlLabel(f.control)}</Tag>
+                      {connectable && connectSelected && setConnectSelected ? (
+                        <Checkbox checked={connectSelected.has(key)} onChange={(e) => {
+                          const next = new Set(connectSelected); if (e.target.checked) next.add(key); else next.delete(key); setConnectSelected(next);
+                        }}>允许连线</Checkbox>
+                      ) : null}
+                      <span title={previewValue(f.current)} style={{ fontSize: 11, color: '#bbb', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>当前值：{previewValue(f.current)}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 0.7fr) minmax(240px, 1.3fr)', gap: 8 }}>
+                      <Input size="small" value={meta.label} placeholder="显示名称，例如：重绘强度" onChange={(e) => updateMeta({ label: e.target.value })} />
+                      <Input size="small" value={meta.description} placeholder="使用建议，例如：0.3–0.55 保留原图，0.65–0.8 明显重绘" onChange={(e) => updateMeta({ description: e.target.value })} />
+                    </div>
                   </div>
                 );
               })}
@@ -924,7 +963,7 @@ export default function ComfyUIAPIManager() {
             <div style={{ color: '#888', marginTop: 4 }}>正在分析可编辑参数…</div>
           </div>
         ) : (
-          renderExposureSelector(editSchema, editExposureKeys, setEditExposureKeys, editInputKeys, setEditInputKeys)
+          renderExposureSelector(editSchema, editExposureKeys, setEditExposureKeys, editInputKeys, setEditInputKeys, editFieldMeta, setEditFieldMeta, editGroupLabels, setEditGroupLabels)
         )}
         <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
           当前 JSON 节点数：{editing ? Object.keys(editing.apiJson as object).length : 0}
@@ -1030,7 +1069,7 @@ export default function ComfyUIAPIManager() {
               <Divider orientation="left" style={{ margin: '8px 0' }}>
                 <span style={{ fontSize: 13 }}>暴露字段配置</span>
               </Divider>
-              {renderExposureSelector(remotePreview.schema, exposureKeys, setExposureKeys, inputKeys, setInputKeys)}
+              {renderExposureSelector(remotePreview.schema, exposureKeys, setExposureKeys, inputKeys, setInputKeys, fieldMeta, setFieldMeta, groupLabels, setGroupLabels)}
             </>
           ) : (
             <Empty description={remoteLoading ? '正在拉取工作流列表…' : '请选择工作流进行预览'} />

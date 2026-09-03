@@ -70,14 +70,16 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 **决策**：
 - 每张工作流持久化一份「暴露配置」`exposureConfig: { version, fields: [{nodeId, param}] }`（存**已暴露**列表，而非隐藏列表，默认收起以免回到 44 项）。存于 `workflows.exposure_config`（simple-json，nullable；`synchronize:true` 自动建列，无需迁移）。
 - **导入时勾选**：`从 ComfyUI 导入` 弹窗预览阶段展示按节点分组的字段勾选表（字段名 / 类型 / 当前值），确定后随导入一起入库。
-- **智能预勾**：默认勾选「图片上传（LoadImage）」与「多行提示词（multiline STRING）」，其余默认不勾 → 进高级区。用户可增删。后端 `suggestExposure` 计算建议，前端可覆盖。
+- **智能预勾**：默认勾选「图片上传（LoadImage）」与「多行提示词（multiline STRING）」；图生图工作流额外默认勾选 `denoise`（重绘强度），其余默认不勾 → 进高级区。用户可增删。后端 `suggestExposure` 计算建议，前端可覆盖。
 - **运行面板分区**：按 exposureConfig 把 schema 字段拆为「主区（暴露字段，直接展开）」与「高级参数（未暴露，Collapse 折叠，可展开微调）」。**exposureConfig 为空 → 全部归主区（回退平铺）**，不破坏老数据。
 - **事后可改**：编辑弹窗内置同一勾选表（走 `GET /workflows/:id/schema` + `PATCH /workflows/:id` 存 exposureConfig）。
+- **字段名称、分组名称与使用建议**：每个自动表单字段可配置工作流级中文名称和使用说明，每个 ComfyUI 节点分组也可配置显示名称，统一持久化到 `workflows.field_config`。导入预览会为 `CLIPTextEncode`、`LoadImage`、`KSampler` 等常见节点生成中文分组名，并为 `denoise`、`steps`、`cfg`、`seed`、尺寸、提示词等常见参数生成可编辑的中文建议；编辑页可逐项覆盖。运行表单默认只显示友好名称，`class_type · nodeId` 移入标题悬浮提示，解决原始 key 难懂与重名字段难区分的问题。
 
 **接口变化**：
 - `POST /comfyui/workflows/preview` 增返 `schema`（字段分析）与 `suggestedExposure`（预勾建议）。
 - `POST /comfyui/workflows/import` body 增 `exposure` → 存 `exposureConfig`。
 - `POST /workflows`、`PATCH /workflows/:id` 支持 `exposureConfig`；`GET`/序列化返回 `exposureConfig`。
+- `POST /workflows`、`PATCH /workflows/:id` 支持 `fieldConfig`；schema 接口把字段配置合并进 `label` / `description` 后返回。
 
 ### 4.3 关键决策小结
 

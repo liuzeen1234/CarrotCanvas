@@ -27,6 +27,13 @@ export interface WorkflowInputConfig {
   fields: Array<ExposedField & { kind: WorkflowPortKind }>;
 }
 
+/** 工作流字段的用户可读名称与使用建议。 */
+export interface WorkflowFieldConfig {
+  version: number;
+  fields: Array<ExposedField & { label?: string; description?: string }>;
+  groups?: Array<{ nodeId: string; label: string }>;
+}
+
 @Entity('workflows')
 export class Workflow {
   @PrimaryGeneratedColumn('uuid')
@@ -59,6 +66,9 @@ export class Workflow {
 
   @Column({ type: 'simple-json', name: 'input_config', nullable: true })
   inputConfig: WorkflowInputConfig | null;
+
+  @Column({ type: 'simple-json', name: 'field_config', nullable: true })
+  fieldConfig: WorkflowFieldConfig | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -135,11 +135,8 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
       {groups.map((g) => (
         <div key={g.nodeId} style={{ marginBottom: 12 }}>
           <Divider orientation="left" style={{ margin: '8px 0' }}>
-            <span style={{ fontSize: 13 }}>
+            <span style={{ fontSize: 13, cursor: 'help' }} title={`${g.classType} · ${g.nodeId}`}>
               {g.nodeTitle}
-              <span style={{ color: '#999', marginLeft: 8, fontSize: 12 }}>
-                {g.classType} · {g.nodeId}
-              </span>
             </span>
           </Divider>
           <Row gutter={singleColumn ? 0 : 16}>
@@ -147,7 +144,9 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
               f.control === 'hidden' ? null : (
                 <Col span={singleColumn ? 24 : 12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4, position: 'relative' }}>
                   {renderInputConnector?.(f)}
-                  <div style={{ marginBottom: 2, fontSize: 12, color: invalidKeys?.has(fileKey(f)) ? '#ff4d4f' : '#555' }}>{f.label}{f.required ? ' *' : ''}</div>
+                  <div style={{ marginBottom: 2, fontSize: 12, color: invalidKeys?.has(fileKey(f)) ? '#ff4d4f' : '#555' }}>
+                    {f.label}{f.required ? ' *' : ''}
+                  </div>
                   <div className={invalidKeys?.has(fileKey(f)) ? 'comfy-field-invalid' : undefined}>
                   <FieldControl
                     field={f}
@@ -159,6 +158,7 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
                     connectedImage={f.control === 'upload' ? getConnectedImage?.(f) ?? null : null}
                   />
                   </div>
+                  {f.description ? <div style={{ marginTop: 3, color: '#8c8c8c', fontSize: 11, lineHeight: 1.4 }}>{f.description}</div> : null}
                 </Col>
               ),
             )}
