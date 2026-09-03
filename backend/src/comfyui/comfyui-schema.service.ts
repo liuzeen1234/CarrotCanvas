@@ -45,6 +45,8 @@ export interface SchemaField {
   options?: (string | number)[];
   multiline?: boolean;
   imageUpload?: boolean;
+  /** 来自 object_info.input.required；供画布节点提交前校验 */
+  required: boolean;
 }
 
 export interface SchemaNodeGroup {
@@ -144,8 +146,8 @@ export class ComfyUISchemaService {
   }
 
   /** 汇总 required + optional 的参数定义 */
-  private collectInputDefs(input: Record<string, unknown>): Map<string, InputDef> {
-    const map = new Map<string, InputDef>();
+  private collectInputDefs(input: Record<string, unknown>): Map<string, InputDef & { required: boolean }> {
+    const map = new Map<string, InputDef & { required: boolean }>();
     for (const section of ['required', 'optional']) {
       const obj = input[section] as Record<string, unknown> | undefined;
       if (!obj) continue;
@@ -155,7 +157,7 @@ export class ComfyUISchemaService {
             v[1] && typeof v[1] === 'object'
               ? (v[1] as Record<string, unknown>)
               : {};
-          map.set(k, [v[0], meta]);
+          map.set(k, Object.assign([v[0], meta] as InputDef, { required: section === 'required' }));
         }
       }
     }
@@ -178,7 +180,7 @@ export class ComfyUISchemaService {
     classType: string,
     param: string,
     value: unknown,
-    def: InputDef,
+    def: InputDef & { required: boolean },
   ): SchemaField | null {
     const [typeOrCombo, meta] = def;
     const common: Omit<SchemaField, 'control' | 'valueType'> = {
@@ -189,6 +191,7 @@ export class ComfyUISchemaService {
       label: param,
       current: value,
       default: meta.default,
+      required: def.required,
     };
 
     if (Array.isArray(typeOrCombo)) {

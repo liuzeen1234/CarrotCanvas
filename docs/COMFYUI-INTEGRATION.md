@@ -123,6 +123,10 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-03（配置）：MiniMax H3 文生视频与图生视频工作流的持久化采样步数统一从 20 调整为 8（高质量/快速分支均为 8），降低本机单次生成耗时。
+
+- 2026-09-03（修复/实机验收）：MiniMax H3 官方本地 T2V/I2V 工作流实跑通过。转换器将 `MarkdownNote` 归为仅 UI 展示的虚拟节点并跳过，避免 `/prompt` 报 `missing_node_type`；runner 输出收集增加按文件扩展名纠正媒体类型，兼容 `SaveVideo` 把 MP4 描述放在 `output.images` 的情况。实测产出 `MiniMax_H3_00009_.mp4`（T2V）与 `MiniMax_H3_00010_.mp4`（I2V），代理均返回 `video/mp4`。
+
 - 2026-09-02（文档）：阶段二画布方案独立成文 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（多画布一等实体 + 画布节点复用本文件运行引擎，一期仅文生图，图生图留二期）；本文件范围与结论不变。
 - 2026-09-02（实现）：新增「暴露字段配置」（§4.5）——`workflow` 实体加 `exposure_config`（simple-json，nullable，synchronize 自动建列）；`workflows.service` 透传 + `normalizeExposure`（去重、空归 null）；`comfyui.controller` preview 增返 `schema`/`suggestedExposure`（`suggestExposure`：图片 + 多行提示词预勾），import 接收 `exposure`。前端 `ComfyUIAPIManager.tsx`：可复用 `renderExposureSelector`（分组勾选表：字段名/类型/当前值 + 全选/全不选）接入「从 ComfyUI 导入」与「编辑」弹窗；运行面板 `splitByExposure` 拆主区/高级 Collapse，空配置回退平铺。后端 `tsc` 编译通过。
 - 2026-09-01（实现）：落地步骤④⑤⑥（入参动态表单 + 图片上传）——新增 `ComfyUISchemaService`（apiJson + /object_info → 表单描述，跳过连接输入，类型→控件映射）；`comfyui-client` 增加 /object_info 10min TTL 缓存与 /upload/image（FormData 转发）；controller 新增 GET /workflows/:id/schema、POST /upload/image；main.ts 引入 body-parser（JSON body 15mb）支持大图 base64；前端运行面板自动表单按节点分组渲染 + 值写回 + JSONText 双向切换 + LoadImage 上传/选择控件（flex 布局修复上传按钮不可见）；实测：schema 三工作流、改 filename_prefix 提交生效、465KB 图片上传被 ComfyUI 识别。

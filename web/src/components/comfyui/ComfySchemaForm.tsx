@@ -4,7 +4,7 @@
  * 设置页运行面板（ComfyRunModal）与画布生成节点（C5/C6）共用。
  */
 import React from 'react';
-import { Alert, Button, Collapse, Col, Divider, Input, InputNumber, Progress, Row, Select, Switch, Upload, message } from 'antd';
+import { Alert, Button, Collapse, Col, Divider, Image, Input, InputNumber, Progress, Row, Select, Switch, Upload, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import {
   ExposureConfig,
@@ -38,6 +38,12 @@ export interface ComfySchemaFormProps {
    * 画布节点须传 true：每个控件独占一行、宽度 100%，窄卡片内不遮挡文字/选项。
    */
   singleColumn?: boolean;
+  /** 提交校验失败的字段 key；画布节点用红框标记 */
+  invalidKeys?: ReadonlySet<string>;
+  /** 画布节点可为特定字段渲染带类型的输入端点。 */
+  renderInputConnector?: (field: SchemaField) => React.ReactNode;
+  /** 画布连线实际提供的图片；存在时优先于卡片自身保存的默认图片展示。 */
+  getConnectedImage?: (field: SchemaField) => { url: string; label?: string } | null;
 }
 
 /** schema 字段 → antd 控件（受控，值来自 props.values，key=`${nodeId}::${param}`） */
@@ -53,6 +59,9 @@ export function ComfySchemaForm({
   maxHeight = '58vh',
   scroll = true,
   singleColumn = false,
+  invalidKeys,
+  renderInputConnector,
+  getConnectedImage,
 }: ComfySchemaFormProps) {
   if (schemaLoading) {
     return (
@@ -79,7 +88,7 @@ export function ComfySchemaForm({
   return (
     <div style={scroll ? { maxHeight, overflow: 'auto', paddingRight: 8 } : { overflow: 'visible' }}>
       {primary.length > 0 ? (
-        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} />
+        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} />
       ) : (
         <Alert
           type="info"
@@ -96,7 +105,7 @@ export function ComfySchemaForm({
               key: 'advanced',
               label: `高级参数（${advancedCount} 项）`,
               children: (
-                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} />
+                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} />
               ),
             },
           ]}
@@ -114,10 +123,13 @@ interface RunGroupsProps {
   onUploadImage?: (field: SchemaField, file: File) => Promise<string>;
   uploading?: boolean;
   singleColumn?: boolean;
+  invalidKeys?: ReadonlySet<string>;
+  renderInputConnector?: (field: SchemaField) => React.ReactNode;
+  getConnectedImage?: (field: SchemaField) => { url: string; label?: string } | null;
 }
 
 /** 渲染一组节点分组的表单控件 */
-function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn }: RunGroupsProps) {
+function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn, invalidKeys, renderInputConnector, getConnectedImage }: RunGroupsProps) {
   return (
     <>
       {groups.map((g) => (
@@ -133,8 +145,10 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
           <Row gutter={singleColumn ? 0 : 16}>
             {g.fields.map((f) =>
               f.control === 'hidden' ? null : (
-                <Col span={singleColumn ? 24 : 12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4 }}>
-                  <div style={{ marginBottom: 2, fontSize: 12, color: '#555' }}>{f.label}</div>
+                <Col span={singleColumn ? 24 : 12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4, position: 'relative' }}>
+                  {renderInputConnector?.(f)}
+                  <div style={{ marginBottom: 2, fontSize: 12, color: invalidKeys?.has(fileKey(f)) ? '#ff4d4f' : '#555' }}>{f.label}{f.required ? ' *' : ''}</div>
+                  <div className={invalidKeys?.has(fileKey(f)) ? 'comfy-field-invalid' : undefined}>
                   <FieldControl
                     field={f}
                     value={values[fileKey(f)]}
@@ -142,7 +156,9 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
                     disabled={disabled}
                     onUploadImage={onUploadImage}
                     uploading={uploading}
+                    connectedImage={f.control === 'upload' ? getConnectedImage?.(f) ?? null : null}
                   />
+                  </div>
                 </Col>
               ),
             )}
@@ -160,9 +176,10 @@ interface FieldControlProps {
   disabled?: boolean;
   onUploadImage?: (field: SchemaField, file: File) => Promise<string>;
   uploading?: boolean;
+  connectedImage?: { url: string; label?: string } | null;
 }
 
-function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uploading }: FieldControlProps) {
+function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uploading, connectedImage }: FieldControlProps) {
   switch (f.control) {
     case 'input_number':
       return (
@@ -217,6 +234,7 @@ function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uplo
           disabled={disabled}
           onUploadImage={onUploadImage}
           uploading={uploading}
+          connectedImage={connectedImage}
         />
       );
     default:
@@ -231,40 +249,86 @@ interface UploadFieldProps {
   disabled?: boolean;
   onUploadImage?: (field: SchemaField, file: File) => Promise<string>;
   uploading?: boolean;
+  connectedImage?: { url: string; label?: string } | null;
 }
 
-/** upload 控件：从已有图片选择 + 上传新图片到 ComfyUI input 目录 */
-function UploadField({ field: f, value, onChange, disabled, onUploadImage, uploading }: UploadFieldProps) {
+/** ComfyUI input 图片代理地址。图片列表里的值可能包含子目录，需拆成 filename/subfolder。 */
+function inputImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const normalized = value.trim().replace(/\\/g, '/');
+  const slash = normalized.lastIndexOf('/');
+  const filename = slash >= 0 ? normalized.slice(slash + 1) : normalized;
+  const subfolder = slash >= 0 ? normalized.slice(0, slash) : '';
+  if (!filename) return null;
+  const query = new URLSearchParams({ filename, type: 'input' });
+  if (subfolder) query.set('subfolder', subfolder);
+  return `/api/comfyui/view?${query.toString()}`;
+}
+
+/** upload 控件：当前图片预览 + 从已有图片选择 + 上传新图片到 ComfyUI input 目录 */
+function UploadField({ field: f, value, onChange, disabled, onUploadImage, uploading, connectedImage }: UploadFieldProps) {
+  const previewUrl = connectedImage?.url || inputImageUrl(value);
   return (
-    <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-      <Select
-        style={{ flex: 1, minWidth: 0 }}
-        value={(value as string | number) ?? undefined}
-        showSearch
-        disabled={disabled}
-        placeholder="选择已有图片"
-        options={(f.options ?? []).map((o) => ({ value: o, label: String(o) }))}
-        onChange={(v) => onChange(v)}
-      />
-      {onUploadImage && (
-        <Upload
-          accept="image/*"
-          showUploadList={false}
-          disabled={disabled}
-          customRequest={async ({ file, onSuccess, onError }) => {
-            try {
-              const name = await onUploadImage(f, file as File);
-              message.success(`已上传 ${name}`);
-              onSuccess?.({});
-            } catch (e: any) {
-              message.error(`上传失败：${e?.response?.data?.message || '未知错误'}`);
-              onError?.(e as Error);
-            }
+    <div style={{ width: '100%' }}>
+      {previewUrl ? (
+        <div
+          style={{
+            width: '100%',
+            marginBottom: 8,
+            padding: 4,
+            border: '1px solid rgba(5, 5, 5, 0.1)',
+            borderRadius: 6,
+            background: '#fafafa',
+            boxSizing: 'border-box',
+            textAlign: 'center',
           }}
         >
-          <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled} />
-        </Upload>
-      )}
+          <Image
+            src={previewUrl}
+            alt={connectedImage?.label || String(value)}
+            width="100%"
+            style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 4, display: 'block' }}
+            fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='160' viewBox='0 0 320 160'%3E%3Crect width='320' height='160' fill='%23f5f5f5'/%3E%3Ctext x='160' y='84' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23999'%3E%E5%9B%BE%E7%89%87%E6%97%A0%E6%B3%95%E9%A2%84%E8%A7%88%3C/text%3E%3C/svg%3E"
+          />
+        </div>
+      ) : null}
+      {connectedImage ? (
+        <div style={{ color: '#52c41a', fontSize: 12, marginBottom: 4 }}>
+          来自连线{connectedImage.label ? ` · ${connectedImage.label}` : ''}
+        </div>
+      ) : null}
+      {!connectedImage ? (
+      <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+        <Select
+          style={{ flex: 1, minWidth: 0 }}
+          value={(value as string | number) ?? undefined}
+          showSearch
+          disabled={disabled}
+          placeholder="选择已有图片"
+          options={(f.options ?? []).map((o) => ({ value: o, label: String(o) }))}
+          onChange={(v) => onChange(v)}
+        />
+        {onUploadImage && (
+          <Upload
+            accept="image/*"
+            showUploadList={false}
+            disabled={disabled}
+            customRequest={async ({ file, onSuccess, onError }) => {
+              try {
+                const name = await onUploadImage(f, file as File);
+                message.success(`已上传 ${name}`);
+                onSuccess?.({});
+              } catch (e: any) {
+                message.error(`上传失败：${e?.response?.data?.message || '未知错误'}`);
+                onError?.(e as Error);
+              }
+            }}
+          >
+            <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled} />
+          </Upload>
+        )}
+      </div>
+      ) : null}
     </div>
   );
 }

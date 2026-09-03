@@ -127,8 +127,8 @@ export class AssetsService {
   }
 
   /** 创建文件读取流（由 controller 交给响应） */
-  createReadStream(absPath: string) {
-    return createReadStream(absPath);
+  createReadStream(absPath: string, options?: { start?: number; end?: number }) {
+    return createReadStream(absPath, options);
   }
 
   // ---------- 统计 ----------

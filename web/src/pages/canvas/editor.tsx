@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -13,19 +13,21 @@ import {
   type Edge,
   type EdgeChange,
   type IsValidConnection,
+  type OnConnectEnd,
+  type OnConnectStart,
   type Node,
   type NodeChange,
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, Spin, Tag, Typography } from 'antd';
+import { Button, Spin, Tag, Typography, message } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
-import { CanvasNodeDataContext } from '@/components/canvas/context';
+import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
-import { HANDLE_IMAGE_SOURCE, HANDLE_IMAGE_TARGET, createTxt2ImgNode } from '@/components/canvas/nodes/types';
+import { HANDLE_IMAGE_TARGET, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
-import { ComfyUIAPI } from '@/components/comfyui/types';
+import { ComfyUIAPI, type RunStateData } from '@/components/comfyui/types';
 
 const { Title, Text } = Typography;
 
@@ -41,6 +43,18 @@ interface CanvasDoc {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+
+/** 只持久化可恢复的 React Flow 数据，剔除选中/拖动/尺寸测量等瞬时 UI 状态。 */
+function createPersistedGraph(nodes: Node[], edges: Edge[], viewport: Viewport | null) {
+  return {
+    version: 1,
+    nodes: nodes.map(({ selected: _selected, dragging: _dragging, measured: _measured, ...node }) => node),
+    edges: edges.map(({ selected: _selected, ...edge }) => edge),
+    viewport,
+  };
 }
 
 /** ISO 时间 → YYYY-MM-DD HH:mm */
@@ -71,6 +85,21 @@ function CanvasEditorInner() {
   // 受控节点图：C5 编辑器内可添加/删除/连线；自动保存由 C7 落地
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const [viewport, setViewport] = useState<Viewport | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  /** 运行态只驻留内存，不进入 graph；结果节点通过 Context 读取上游状态。 */
+  const [nodeRuns, setNodeRuns] = useState<Record<string, RunStateData | null>>({});
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  const viewportRef = useRef(viewport);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+  viewportRef.current = viewport;
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlightRef = useRef(false);
+  const pendingSaveRef = useRef<{ graph: ReturnType<typeof createPersistedGraph>; snapshot: string } | null>(null);
+  const lastSavedSnapshotRef = useRef('');
 
   /** 右键分级菜单状态（右键屏幕坐标；null = 关闭） */
   const [menu, setMenu] = useState<CanvasContextMenuState | null>(null);
@@ -130,6 +159,9 @@ function CanvasEditorInner() {
     setReady(false);
     setNodes([]);
     setEdges([]);
+    setViewport(null);
+    setSaveStatus('idle');
+    setSavedAt(null);
     setLoading(true);
     setLoadError(null);
     request<CanvasDoc>(`/api/canvas/${id}`)
@@ -144,10 +176,62 @@ function CanvasEditorInner() {
   // doc 就绪 → 用持久化 graph 初始化受控节点图
   useEffect(() => {
     if (!doc) return;
-    setNodes(doc.graph?.nodes ?? []);
-    setEdges(doc.graph?.edges ?? []);
+    const initialNodes = doc.graph?.nodes ?? [];
+    const initialEdges = doc.graph?.edges ?? [];
+    const initialViewport = doc.graph?.viewport ?? null;
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+    setViewport(initialViewport);
+    setSavedAt(doc.updatedAt);
+    lastSavedSnapshotRef.current = JSON.stringify(createPersistedGraph(initialNodes, initialEdges, initialViewport));
     setReady(true);
   }, [doc]);
+
+  /** 串行写入最新 graph；保存期间继续变化时，完成后立刻追写最新版本，避免旧请求覆盖新状态。 */
+  const flushSave = useCallback(async () => {
+    if (!id || saveInFlightRef.current || !pendingSaveRef.current) return;
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    saveInFlightRef.current = true;
+    setSaveStatus('saving');
+    try {
+      const saved = await request<CanvasDoc>(`/api/canvas/${id}`, { method: 'PATCH', data: { graph: pending.graph } });
+      lastSavedSnapshotRef.current = pending.snapshot;
+      setSavedAt(saved.updatedAt);
+      setSaveStatus(pendingSaveRef.current ? 'dirty' : 'saved');
+    } catch (error: any) {
+      pendingSaveRef.current = pendingSaveRef.current ?? pending;
+      setSaveStatus('error');
+      message.error(error?.response?.data?.message || '画布自动保存失败');
+    } finally {
+      saveInFlightRef.current = false;
+      if (pendingSaveRef.current && pendingSaveRef.current.snapshot !== lastSavedSnapshotRef.current) {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => void flushSave(), 0);
+      }
+    }
+  }, [id]);
+
+  /** 节点、连线或视口变化后 800ms 防抖保存。 */
+  useEffect(() => {
+    if (!ready || !id) return;
+    const graph = createPersistedGraph(nodes, edges, viewport);
+    const snapshot = JSON.stringify(graph);
+    if (snapshot === lastSavedSnapshotRef.current) return;
+    pendingSaveRef.current = { graph, snapshot };
+    setSaveStatus('dirty');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => void flushSave(), 800);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [edges, flushSave, id, nodes, ready, viewport]);
+
+  // 离开编辑器时尽力提交最后一版（常规路由跳转可完成；浏览器强退不作同步阻塞）。
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    void flushSave();
+  }, [flushSave]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -158,17 +242,57 @@ function CanvasEditorInner() {
     [],
   );
 
-  /** 连线校验：一期只有 image 数据流（生成节点 → 结果节点，§4.4） */
+  /** 连线校验：媒体类型必须一致；结果端点或工作流声明的同类型输入。 */
   const isValidConnection: IsValidConnection = useCallback((conn) => {
     const s = conn.sourceHandle ?? '';
     const t = conn.targetHandle ?? '';
-    return s === HANDLE_IMAGE_SOURCE && t === HANDLE_IMAGE_TARGET;
+    const sourceKind = s.endsWith('-source') ? s.slice(0, -7) : '';
+    if (!sourceKind) return false;
+    if (t.endsWith('-target')) return t === `${sourceKind}-target`;
+    if (!t.startsWith('input:')) return false;
+    const targetNode = nodesRef.current.find((node) => node.id === conn.target);
+    const workflowId = (targetNode?.data as any)?.workflowId;
+    // 工作流字段的精确类型还会在运行时校验；当前已开放的可连接字段为 image。
+    return sourceKind === 'image' && !!workflowId;
   }, []);
 
   const onConnect = useCallback(
-    (conn: Connection) => setEdges((eds) => addEdge(conn, eds)),
+    (conn: Connection) => {
+      pendingConnectionRef.current = null;
+      setEdges((eds) => addEdge(conn, eds));
+    },
     [],
   );
+
+  const pendingConnectionRef = useRef<{ sourceNodeId: string; sourceHandle: string; kind: 'image' | 'video' | 'audio' | 'text' } | null>(null);
+
+  const onConnectStart: OnConnectStart = useCallback((_event, params) => {
+    if (params.handleType !== 'source' || !params.nodeId || !params.handleId) {
+      pendingConnectionRef.current = null;
+      return;
+    }
+    const kind = params.handleId.endsWith('-source') ? params.handleId.slice(0, -7) : '';
+    pendingConnectionRef.current = ['image', 'video', 'audio', 'text'].includes(kind)
+      ? { sourceNodeId: params.nodeId, sourceHandle: params.handleId, kind: kind as 'image' | 'video' | 'audio' | 'text' }
+      : null;
+  }, []);
+
+  /** 输出端点拖到画布空白处：打开只包含兼容输入工作流的创建菜单。 */
+  const onConnectEnd: OnConnectEnd = useCallback((event, connectionState) => {
+    const pending = pendingConnectionRef.current;
+    pendingConnectionRef.current = null;
+    if (connectionState.isValid || !pending) return;
+    const point = 'changedTouches' in event && event.changedTouches.length
+      ? event.changedTouches[0]
+      : event as MouseEvent;
+    setMenu({
+      screenX: point.clientX,
+      screenY: point.clientY,
+      connection: {
+        ...pending,
+      },
+    });
+  }, []);
 
   /** 节点 data 变更统一回写受控 state（自定义节点经 Context 调用） */
   const handleUpdateNodeData = useCallback((nodeId: string, patch: Record<string, unknown>) => {
@@ -178,9 +302,89 @@ function CanvasEditorInner() {
   }, []);
 
   /** 删除节点 + 其相连边（自定义节点经 Context 调用，二次确认在节点内） */
-  const handleDeleteNode = useCallback((nodeId: string) => {
+  const handleDeleteNode = useCallback(async (nodeId: string) => {
+    const node = nodesRef.current.find((n) => n.id === nodeId);
+    if (node?.type === NODE_TYPE_TXT2IMG && id) {
+      try {
+        await request('/api/assets/generated/by-node', {
+          method: 'DELETE',
+          params: { canvasId: id, nodeId },
+        });
+      } catch (error: any) {
+        message.error(error?.response?.data?.message || '生成资产清理失败，节点未删除');
+        throw error;
+      }
+    }
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+    setNodeRuns((runs) => {
+      if (!(nodeId in runs)) return runs;
+      const next = { ...runs };
+      delete next[nodeId];
+      return next;
+    });
+  }, [id]);
+
+  const ensureResultNode = useCallback((sourceNodeId: string, kind: 'image' | 'video' = 'image') => {
+    const sourceHandle = resultSourceHandle(kind);
+    const targetHandle = resultTargetHandle(kind);
+    const alreadyConnected = edgesRef.current.some((edge) =>
+      edge.source === sourceNodeId && edge.sourceHandle === sourceHandle &&
+      nodesRef.current.some((node) => node.id === edge.target && node.type === NODE_TYPE_RESULT),
+    );
+    if (alreadyConnected) return;
+    const source = nodesRef.current.find((node) => node.id === sourceNodeId);
+    if (!source) return;
+    const result = createResultNode({
+      x: source.position.x + CANVAS_NODE_WIDTH + 80,
+      y: source.position.y,
+    }, kind);
+    const edge: Edge = {
+      id: `edge-${sourceNodeId}-${result.id}`,
+      source: sourceNodeId,
+      sourceHandle,
+      target: result.id,
+      targetHandle,
+    };
+    setNodes((nds) => [...nds, result]);
+    setEdges((eds) => [...eds, edge]);
+  }, []);
+
+  const setNodeRunState = useCallback((nodeId: string, run: RunStateData | null) => {
+    setNodeRuns((prev) => ({ ...prev, [nodeId]: run }));
+  }, []);
+
+  const getResultState = useCallback((resultNodeId: string): CanvasResultState => {
+    const resultNode = nodes.find((item) => item.id === resultNodeId);
+    const kind = (resultNode?.data as any)?.kind === 'video' ? 'video' : 'image';
+    const targetHandle = resultTargetHandle(kind);
+    const edge = edges.find((item) => item.target === resultNodeId && item.targetHandle === targetHandle);
+    if (!edge) return { run: null, assets: [] };
+    let source = nodes.find((item) => item.id === edge.source);
+    if (source?.type === NODE_TYPE_RESULT) {
+      const upstreamKind = (source.data as any)?.kind === 'video' ? 'video' : 'image';
+      const resultInput = edges.find((item) => item.target === source!.id && item.targetHandle === resultTargetHandle(upstreamKind));
+      source = resultInput ? nodes.find((item) => item.id === resultInput.source) : undefined;
+    }
+    const assets = ((source?.data as any)?.lastAssets ?? []) as CanvasResultState['assets'];
+    return { run: nodeRuns[edge.source] ?? null, assets };
+  }, [edges, nodes, nodeRuns]);
+
+  const getUpstreamAsset = useCallback((targetNodeId: string, targetHandle: string, kind: string) => {
+    const edge = edges.find((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
+    if (!edge) return null;
+    let source = nodes.find((item) => item.id === edge.source);
+    if (source?.type === NODE_TYPE_RESULT) {
+      const upstreamKind = (source.data as any)?.kind === 'video' ? 'video' : 'image';
+      const resultInput = edges.find((item) => item.target === source!.id && item.targetHandle === resultTargetHandle(upstreamKind));
+      source = resultInput ? nodes.find((item) => item.id === resultInput.source) : undefined;
+    }
+    const assets = ((source?.data as any)?.lastAssets ?? []) as CanvasResultState['assets'];
+    return assets.find((asset) => asset.kind === kind) ?? null;
+  }, [edges, nodes]);
+
+  const handleMoveEnd = useCallback((_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
+    setViewport(nextViewport);
   }, []);
 
   const { screenToFlowPosition } = useReactFlow();
@@ -286,12 +490,34 @@ function CanvasEditorInner() {
       }
       const node = createTxt2ImgNode(pos, { id: wf.id, name: wf.name });
       setNodes((nds) => [...nds, node]);
+      if (menu?.connection) {
+        const input = wf.inputConfig?.fields?.find((field) => field.kind === menu.connection!.kind);
+        if (input) {
+          const edge: Edge = {
+            id: `edge-${menu.connection.sourceNodeId}-${node.id}-${input.nodeId}-${input.param}`,
+            source: menu.connection.sourceNodeId,
+            sourceHandle: menu.connection.sourceHandle,
+            target: node.id,
+            targetHandle: `input:${input.nodeId}:${input.param}`,
+          };
+          setEdges((eds) => [...eds, edge]);
+        }
+      }
       setMenu(null);
     },
     [menu, screenToFlowPosition],
   );
 
   const nodeCount = nodes.length;
+  const saveTag = useMemo(() => {
+    switch (saveStatus) {
+      case 'dirty': return { color: 'default', text: '待保存' };
+      case 'saving': return { color: 'processing', text: '保存中' };
+      case 'saved': return { color: 'success', text: '已保存' };
+      case 'error': return { color: 'error', text: '保存失败' };
+      default: return null;
+    }
+  }, [saveStatus]);
 
   // 窄屏：根容器测出自身顶部偏移后，改用 fixed 铺满 header 下方到屏幕底（bottom:0），
   // 不再依赖高度计算，避免 iOS visualViewport 误差导致画布铺不到底/留白。
@@ -348,8 +574,9 @@ function CanvasEditorInner() {
               {doc.name}
             </Title>
             <Tag color="blue" style={{ flexShrink: 0, marginInlineEnd: 0 }}>{nodeCount} 节点</Tag>
+            {saveTag ? <Tag color={saveTag.color} style={{ flexShrink: 0, marginInlineEnd: 0 }}>{saveTag.text}</Tag> : null}
             {!isNarrow ? (
-              <Text type="secondary" style={{ flexShrink: 0 }}>更新于 {formatTime(doc.updatedAt)}</Text>
+              <Text type="secondary" style={{ flexShrink: 0 }}>更新于 {formatTime(savedAt || doc.updatedAt)}</Text>
             ) : null}
           </>
         ) : null}
@@ -386,17 +613,28 @@ function CanvasEditorInner() {
             <Text type="danger">{loadError}</Text>
           </div>
         ) : doc && ready ? (
-          <CanvasNodeDataContext.Provider value={{ updateNodeData: handleUpdateNodeData, deleteNode: handleDeleteNode }}>
+          <CanvasNodeDataContext.Provider value={{
+            canvasId: id,
+            updateNodeData: handleUpdateNodeData,
+            deleteNode: handleDeleteNode,
+            ensureResultNode,
+            setNodeRunState,
+            getResultState,
+            getUpstreamAsset,
+          }}>
             <ReactFlow
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onConnectStart={onConnectStart}
+              onConnectEnd={onConnectEnd}
               isValidConnection={isValidConnection}
               nodeTypes={canvasNodeTypes}
               defaultViewport={doc.graph?.viewport ?? undefined}
-              fitView
+              fitView={!doc.graph?.viewport}
+              onMoveEnd={handleMoveEnd}
               proOptions={{ hideAttribution: true }}
             >
               <Background />

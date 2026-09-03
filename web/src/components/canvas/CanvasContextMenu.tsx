@@ -17,6 +17,8 @@ export interface CanvasContextMenuState {
   /** 屏幕坐标（右键处），既用于菜单定位也用于换算节点落点 */
   screenX: number;
   screenY: number;
+  /** 从输出端点拖到空白处时携带；菜单只展示有同类型输入的工作流。 */
+  connection?: { sourceNodeId: string; sourceHandle: string; kind: 'image' | 'video' | 'audio' | 'text' };
 }
 
 export interface CanvasContextMenuProps {
@@ -27,8 +29,8 @@ export interface CanvasContextMenuProps {
   onPick: (workflow: ComfyUIAPI) => void;
 }
 
-/** 一期唯一可用分类 */
-const ENABLED_CATEGORY = 'txt2img';
+/** 当前画布已支持的工作流分类。 */
+const ENABLED_CATEGORIES = new Set(['txt2img', 'img2img', 'txt2vid', 'img2vid']);
 
 export default function CanvasContextMenu({ state, onClose, onPick }: CanvasContextMenuProps) {
   const [workflows, setWorkflows] = useState<ComfyUIAPI[]>([]);
@@ -94,15 +96,17 @@ export default function CanvasContextMenu({ state, onClose, onPick }: CanvasCont
 
   const items: MenuProps['items'] = useMemo(() => {
     return WORKFLOW_CATEGORIES.map((cat) => {
-      const list = byCategory.get(cat.value) ?? [];
-      const enabled = cat.value === ENABLED_CATEGORY;
+      const list = (byCategory.get(cat.value) ?? []).filter((workflow) =>
+        !state?.connection || workflow.inputConfig?.fields?.some((field) => field.kind === state.connection!.kind),
+      );
+      const enabled = ENABLED_CATEGORIES.has(cat.value);
       if (!enabled) {
         // 其余分类一期未放开：置灰、不可展开（§4.2.1）
         return { key: `cat:${cat.value}`, label: cat.label, disabled: true };
       }
       if (list.length === 0) {
         // 已放开但无工作流：置灰
-        return { key: `cat:${cat.value}`, label: `${cat.label}（暂无工作流）`, disabled: true };
+        return { key: `cat:${cat.value}`, label: `${cat.label}（${state?.connection ? `不支持 ${state.connection.kind} 输入` : '暂无工作流'}）`, disabled: true };
       }
       // 已放开且有工作流：可展开二级列出具体工作流
       return {
@@ -111,7 +115,7 @@ export default function CanvasContextMenu({ state, onClose, onPick }: CanvasCont
         children: list.map((w) => ({ key: `wf:${w.id}`, label: w.name })),
       };
     });
-  }, [byCategory]);
+  }, [byCategory, state?.connection]);
 
   const handleClick: MenuProps['onClick'] = ({ key }) => {
     if (!key.startsWith('wf:')) return;

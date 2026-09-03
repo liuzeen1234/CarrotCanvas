@@ -62,7 +62,8 @@ interface ConvertContext {
 export class ComfyUIGraphConverter {
   private static readonly MODE_NEVER = 2;
   private static readonly MODE_BYPASS = 3;
-  private static readonly VIRTUAL_NODE_TYPES = new Set(['Reroute']);
+  /** 仅用于画布展示、不应进入 /prompt 的前端虚拟节点。 */
+  private static readonly VIRTUAL_NODE_TYPES = new Set(['Reroute', 'MarkdownNote']);
   private static readonly INPUT_NODE_ID = -10;
   private static readonly OUTPUT_NODE_ID = -20;
 

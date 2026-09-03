@@ -15,6 +15,13 @@ export const NODE_TYPE_RESULT = 'result';
 /** 句柄标识：image 数据流（一期唯一连线类型，§4.4），用于连线校验 */
 export const HANDLE_IMAGE_SOURCE = 'image-source';
 export const HANDLE_IMAGE_TARGET = 'image-target';
+export const HANDLE_VIDEO_SOURCE = 'video-source';
+export const HANDLE_VIDEO_TARGET = 'video-target';
+export const workflowOutputKind = (category?: string): 'image' | 'video' =>
+  category === 'txt2vid' || category === 'img2vid' ? 'video' : 'image';
+export const resultSourceHandle = (kind: string) => `${kind}-source`;
+export const resultTargetHandle = (kind: string) => `${kind}-target`;
+export const workflowInputHandle = (nodeId: string, param: string) => `input:${nodeId}:${param}`;
 
 /**
  * 文生图生成节点 data。
@@ -76,12 +83,12 @@ export function createTxt2ImgNode(
 }
 
 /** 结果节点工厂（一般由运行动作自动创建并连线，§4.3.1；也可单独落点） */
-export function createResultNode(position: { x: number; y: number }): Node<ResultNodeData, typeof NODE_TYPE_RESULT> {
+export function createResultNode(position: { x: number; y: number }, kind: 'image' | 'video' = 'image'): Node<ResultNodeData, typeof NODE_TYPE_RESULT> {
   return {
     id: newNodeId(NODE_TYPE_RESULT),
     type: NODE_TYPE_RESULT,
     position,
-    data: {},
+    data: { kind },
     style: { width: NODE_W },
   };
 }

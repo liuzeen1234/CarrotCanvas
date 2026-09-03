@@ -1,6 +1,8 @@
 # CarrotCanvas 项目现状总结
 
 > 最后更新：2026-09-02
+
+> 2026-09-03 增量：画布已支持图生图工作流与 `image → image` 跨工作流连线。工作流导入/编辑可将图片字段标记为可连接输入；结果卡图片输出可连接到下游图片字段，运行前自动将平台资产回灌 ComfyUI 并覆盖参数。视频、音频、文字端点类型已预留但尚未开放。
 > 本文件是对项目当前状态的完整快照，开发过程中行变更时应同步更新。
 
 ## 1. 项目定位
@@ -42,7 +44,7 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 │  ├─ README.md                 # 文档索引与约定
 │  ├─ PROJECT-SUMMARY.md        # 本文档
 │  ├─ COMFYUI-INTEGRATION.md    # ComfyUI 集成·运行功能设计（阶段一：独立工具箱，已落地①-⑦）
-│  └─ CANVAS-INTEGRATION.md     # Canvas 集成·画布节点调用工作流（阶段二：多画布/一期仅文生图，C1 后端数据层 + C2 产物捕获已完成）
+│  └─ CANVAS-INTEGRATION.md     # Canvas 集成·画布节点调用工作流（阶段二一期：C1–C7 已完成并实机验收）
 ├─ backend/                     # NestJS 后端
 │  ├─ src/
 │  │  ├─ main.ts                # 入口，端口 3100
@@ -101,7 +103,7 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 单元测试：Jest + ts-jest + supertest 测试栈，`pnpm test` 运行，**5 个 suite / 35 用例全绿**（canvas / assets 单测 + controller 接口测试 + `comfyui-capture` 捕获服务单测）；`AssetsService` 支持 `CARROT_ASSETS_ROOT` 环境变量覆盖资产根目录（测试隔离用，默认仍为 `data/assets`）
 - ✅ 画布列表与编辑器路由（Canvas C3）：`.umirc.ts` 路由 `/canvas → ./canvas/index`（画布工作台列表）、`/canvas/:id → ./canvas/editor`（编辑器）；列表页卡片网格（新建/打开/重命名/删除，删除二次确认，展示节点数/资产大小/更新时间）；编辑器加载画布 graph + React Flow 渲染节点/连线/视口 + 顶栏；旧 `pages/canvas.tsx` 骨架页已删除（已端到端手测：建→开→改名→删全通）
 - ✅ 画布共享运行组件（Canvas C4）：抽取共享运行逻辑到 `web/src/components/comfyui/`（`types.ts` + `useComfyRun` 钩子 + `ComfySchemaForm` + `ComfyRunModal`），设置页运行面板改走共享件（schema 按 workflowId 缓存），行为不回归
-- ⏳ 画布节点编排（Canvas C5–C7）待做：三类自定义节点（提示词/文生图/结果）、节点内运行出图、防抖自动保存与视口持久化；方案见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)（阶段二，一期仅文生图；后端 C1/C2 已完成，前端 C3 列表/编辑器路由、C4 共享运行组件已完成）
+- ✅ Canvas 阶段二一期 C1–C7 已完成并实机验收：多画布/资产库、产物捕获、列表与编辑器、共享运行组件、文生图/结果节点、节点内运行、graph/视口防抖保存与离线历史结果恢复均已闭环。方案与验收记录见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)。
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
 

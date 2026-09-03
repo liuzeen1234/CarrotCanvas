@@ -45,6 +45,7 @@ import ComfyRunModal from '@/components/comfyui/ComfyRunModal';
 import {
   ComfyUIAPI,
   ExposureConfig,
+  WorkflowInputConfig,
   SchemaAnalysis,
   SchemaField,
 } from '@/components/comfyui/types';
@@ -81,6 +82,7 @@ interface WorkflowPreview {
   format: string;
   schema: SchemaAnalysis | null;
   suggestedExposure: ExposureConfig;
+  suggestedInputConfig: WorkflowInputConfig;
 }
 
 const { Paragraph } = Typography;
@@ -113,6 +115,7 @@ export default function ComfyUIAPIManager() {
   const [editSchema, setEditSchema] = useState<SchemaAnalysis | null>(null);
   const [editSchemaLoading, setEditSchemaLoading] = useState(false);
   const [editExposureKeys, setEditExposureKeys] = useState<Set<string>>(new Set());
+  const [editInputKeys, setEditInputKeys] = useState<Set<string>>(new Set());
   const [importForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('file');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -133,6 +136,7 @@ export default function ComfyUIAPIManager() {
   const [remoteForm] = Form.useForm();
   // 导入弹窗：已勾选暴露字段（key=`${nodeId}::${param}`）
   const [exposureKeys, setExposureKeys] = useState<Set<string>>(new Set());
+  const [inputKeys, setInputKeys] = useState<Set<string>>(new Set());
 
   // 运行面板：由共享组件 ComfyRunModal 承接，这里只保留开关状态
   const [runOpen, setRunOpen] = useState(false);
@@ -286,6 +290,7 @@ export default function ComfyUIAPIManager() {
     setEditExposureKeys(
       new Set((w.exposureConfig?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`)),
     );
+    setEditInputKeys(new Set((w.inputConfig?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`)));
     setEditSchema(null);
     setEditSchemaLoading(true);
     setEditOpen(true);
@@ -357,6 +362,11 @@ export default function ComfyUIAPIManager() {
           return { nodeId: k.slice(0, idx), param: k.slice(idx + 2) };
         }),
       };
+      const fieldByKey = new Map(editSchema?.groups.flatMap((g) => g.fields).map((f) => [`${f.nodeId}::${f.param}`, f]) ?? []);
+      const inputConfig = { version: 1, fields: [...editInputKeys].map((k) => {
+        const idx = k.lastIndexOf('::'); const f = fieldByKey.get(k);
+        return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text' };
+      }) };
       await request(`/api/workflows/${editing.id}`, {
         method: 'PATCH',
         data: {
@@ -365,6 +375,7 @@ export default function ComfyUIAPIManager() {
           description: values.description,
           tags: values.tags,
           exposureConfig,
+          inputConfig,
         },
       });
       message.success('已保存');
@@ -422,6 +433,7 @@ export default function ComfyUIAPIManager() {
         (data.suggestedExposure?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`),
       );
       setExposureKeys(preset);
+      setInputKeys(new Set((data.suggestedInputConfig?.fields ?? []).map((f) => `${f.nodeId}::${f.param}`)));
     } catch (e: any) {
       message.error(`转换失败：${e?.response?.data?.message || '未知错误'}`);
     } finally {
@@ -444,6 +456,11 @@ export default function ComfyUIAPIManager() {
           return { nodeId: k.slice(0, idx), param: k.slice(idx + 2) };
         }),
       };
+      const fieldByKey = new Map(remotePreview?.schema?.groups.flatMap((g) => g.fields).map((f) => [`${f.nodeId}::${f.param}`, f]) ?? []);
+      const inputConfig = { version: 1, fields: [...inputKeys].map((k) => {
+        const idx = k.lastIndexOf('::'); const f = fieldByKey.get(k);
+        return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text' };
+      }) };
       await request('/api/comfyui/workflows/import', {
         method: 'POST',
         data: {
@@ -453,6 +470,7 @@ export default function ComfyUIAPIManager() {
           description: values.description,
           tags: values.tags,
           exposure,
+          inputConfig,
         },
       });
       message.success('导入成功');
@@ -504,6 +522,8 @@ export default function ComfyUIAPIManager() {
     schema: SchemaAnalysis | null,
     selected: Set<string>,
     setSelected: (next: Set<string>) => void,
+    connectSelected?: Set<string>,
+    setConnectSelected?: (next: Set<string>) => void,
   ) => {
     if (!schema || !schema.ok) {
       return (
@@ -557,6 +577,7 @@ export default function ComfyUIAPIManager() {
               </div>
               {g.fields.map((f) => {
                 const key = `${f.nodeId}::${f.param}`;
+                const connectable = f.control === 'upload' || f.valueType === 'IMAGE';
                 return (
                   <div
                     key={key}
@@ -569,6 +590,11 @@ export default function ComfyUIAPIManager() {
                       <span style={{ fontSize: 13 }}>{f.label}</span>
                     </Checkbox>
                     <Tag style={{ fontSize: 11 }}>{controlLabel(f.control)}</Tag>
+                    {connectable && connectSelected && setConnectSelected ? (
+                      <Checkbox checked={connectSelected.has(key)} onChange={(e) => {
+                        const next = new Set(connectSelected); if (e.target.checked) next.add(key); else next.delete(key); setConnectSelected(next);
+                      }}>允许连线</Checkbox>
+                    ) : null}
                     <span style={{ fontSize: 11, color: '#bbb', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {previewValue(f.current)}
                     </span>
@@ -898,7 +924,7 @@ export default function ComfyUIAPIManager() {
             <div style={{ color: '#888', marginTop: 4 }}>正在分析可编辑参数…</div>
           </div>
         ) : (
-          renderExposureSelector(editSchema, editExposureKeys, setEditExposureKeys)
+          renderExposureSelector(editSchema, editExposureKeys, setEditExposureKeys, editInputKeys, setEditInputKeys)
         )}
         <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
           当前 JSON 节点数：{editing ? Object.keys(editing.apiJson as object).length : 0}
@@ -1004,7 +1030,7 @@ export default function ComfyUIAPIManager() {
               <Divider orientation="left" style={{ margin: '8px 0' }}>
                 <span style={{ fontSize: 13 }}>暴露字段配置</span>
               </Divider>
-              {renderExposureSelector(remotePreview.schema, exposureKeys, setExposureKeys)}
+              {renderExposureSelector(remotePreview.schema, exposureKeys, setExposureKeys, inputKeys, setInputKeys)}
             </>
           ) : (
             <Empty description={remoteLoading ? '正在拉取工作流列表…' : '请选择工作流进行预览'} />

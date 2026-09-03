@@ -19,6 +19,14 @@ export interface ExposureConfig {
   fields: ExposedField[];
 }
 
+export type WorkflowPortKind = 'image' | 'video' | 'audio' | 'text';
+
+/** 允许由画布上游输出覆盖的工作流字段。 */
+export interface WorkflowInputConfig {
+  version: number;
+  fields: Array<ExposedField & { kind: WorkflowPortKind }>;
+}
+
 @Entity('workflows')
 export class Workflow {
   @PrimaryGeneratedColumn('uuid')
@@ -48,6 +56,9 @@ export class Workflow {
    */
   @Column({ type: 'simple-json', name: 'exposure_config', nullable: true })
   exposureConfig: ExposureConfig | null;
+
+  @Column({ type: 'simple-json', name: 'input_config', nullable: true })
+  inputConfig: WorkflowInputConfig | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

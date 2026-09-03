@@ -68,3 +68,29 @@
   align-items: center;
   justify-content: center;
 }
+
+.canvas-handle--video {
+  background: #722ed1;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+}
+
+.comfy-field-invalid .ant-input,
+.comfy-field-invalid .ant-input-number,
+.comfy-field-invalid .ant-select-selector {
+  border-color: #ff4d4f !important;
+}
+
+.canvas-result-image {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid rgba(5, 5, 5, 0.08);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.canvas-result-image .ant-image {
+  display: block;
+  margin-bottom: 6px;
+}

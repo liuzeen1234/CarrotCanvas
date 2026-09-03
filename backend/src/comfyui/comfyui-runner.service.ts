@@ -22,6 +22,14 @@ export interface RunNodeProgress {
   state: string;
 }
 
+function inferFileKind(filename: string, fallback: RunOutputFile['kind']): RunOutputFile['kind'] {
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  if (['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext)) return 'video';
+  if (['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac'].includes(ext)) return 'audio';
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif'].includes(ext)) return 'image';
+  return fallback;
+}
+
 export interface RunOutputFile {
   filename: string;
   subfolder: string;
@@ -73,7 +81,7 @@ const MAX_RUNS = 50;
 export class ComfyUIRunnerService implements OnModuleDestroy {
   private readonly logger = new Logger('ComfyUIRunner');
   private readonly runs = new Map<string, RunState>();
-  private readonly onComplete = new Map<string, (run: RunState) => void>();
+  private readonly onComplete = new Map<string, (run: RunState) => void | Promise<void>>();
 
   private ws: WebSocket | null = null;
   private readonly clientId = randomUUID();
@@ -100,7 +108,7 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
       workflowId?: string;
       canvasId?: string;
       nodeId?: string | null;
-      onComplete?: (run: RunState) => void;
+      onComplete?: (run: RunState) => void | Promise<void>;
     } = {},
   ): Promise<RunState> {
     // 先确保 WS 连接就绪再提交：ComfyUI 仅在提交时该 client 的 WS 已连接时下发 execution 消息，
@@ -284,10 +292,10 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
         break;
       }
       case 'execution_success': {
-        run.status = 'success';
-        run.finishedAt = Date.now();
         run.currentNode = null;
-        this.finish(run);
+        // 画布运行要等产物捕获完成后再对前端呈现 success，保证终态 outputs 已带 assetId/assetUrl。
+        // 工具箱运行没有异步回调，会立即完成。
+        void this.finishSuccess(run);
         break;
       }
       case 'execution_error': {
@@ -342,7 +350,9 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
           filename: rec.filename,
           subfolder,
           type,
-          kind,
+          // SaveVideo 等节点在部分 ComfyUI 版本中仍把文件放进 output.images，
+          // 以扩展名纠正媒体类型，避免 MP4 被当作图片预览/资产保存。
+          kind: inferFileKind(rec.filename, kind),
           url: `/api/comfyui/view?filename=${encodeURIComponent(rec.filename)}&type=${encodeURIComponent(type)}${subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : ''}`,
         });
       }
@@ -364,6 +374,26 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
         this.logger.error(`onComplete 回调失败：${(e as Error).message}`);
       }
     }
+  }
+
+  private async finishSuccess(run: RunState) {
+    const cb = this.onComplete.get(run.promptId);
+    this.onComplete.delete(run.promptId);
+    if (cb) {
+      run.currentNodeTitle = '正在保存平台资产';
+      try {
+        await cb(run);
+      } catch (e) {
+        run.status = 'error';
+        run.finishedAt = Date.now();
+        run.error = `生成完成，但平台资产保存失败：${(e as Error).message}`;
+        this.logger.error(run.error);
+        return;
+      }
+    }
+    run.status = 'success';
+    run.finishedAt = Date.now();
+    run.currentNodeTitle = undefined;
   }
 
   /** 节点标题映射：从 submitted prompt 的 _meta 构建（由 controller 注入） */

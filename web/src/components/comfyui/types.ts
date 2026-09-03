@@ -14,6 +14,12 @@ export interface ExposureConfig {
   fields: ExposedField[];
 }
 
+export type WorkflowPortKind = 'image' | 'video' | 'audio' | 'text';
+export interface WorkflowInputConfig {
+  version: number;
+  fields: Array<{ nodeId: string; param: string; kind: WorkflowPortKind }>;
+}
+
 export interface ComfyUIAPI {
   id: string;
   name: string;
@@ -24,6 +30,7 @@ export interface ComfyUIAPI {
   apiJson: unknown;
   thumbnailPath: string | null;
   exposureConfig: ExposureConfig | null;
+  inputConfig: WorkflowInputConfig | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +41,8 @@ export interface RunOutputFile {
   type: string;
   url: string;
   kind: 'image' | 'video' | 'audio' | 'other';
+  assetId?: string;
+  assetUrl?: string;
 }
 
 /** ComfyUI 运行终态（到达即停止轮询） */
@@ -73,6 +82,7 @@ export interface SchemaField {
   options?: (string | number)[];
   multiline?: boolean;
   imageUpload?: boolean;
+  required: boolean;
 }
 
 export interface SchemaNodeGroup {

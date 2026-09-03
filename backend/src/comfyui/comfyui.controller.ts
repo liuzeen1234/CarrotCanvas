@@ -8,7 +8,6 @@ import {
   Res,
   HttpException,
   HttpStatus,
-  Logger,
 } from '@nestjs/common';
 import { Readable } from 'stream';
 import { ComfyUIClientService } from './comfyui-client';
@@ -20,6 +19,8 @@ import { WorkflowsService } from '../workflows/workflows.service';
 import { ComfyUIValidator } from '../workflows/comfyui-validator';
 import { WorkflowCategory } from '../workflows/workflow-category';
 import { CanvasService } from '../canvas/canvas.service';
+import { AssetsService } from '../assets/assets.service';
+import { promises as fs } from 'fs';
 
 interface PreviewBody {
   filename: string;
@@ -32,6 +33,7 @@ interface ImportBody {
   description?: string;
   tags?: string[];
   exposure?: { version: number; fields: { nodeId: string; param: string }[] } | null;
+  inputConfig?: { version: number; fields: { nodeId: string; param: string; kind: 'image' | 'video' | 'audio' | 'text' }[] } | null;
 }
 
 interface RunBody {
@@ -46,8 +48,6 @@ interface RunBody {
 
 @Controller('comfyui')
 export class ComfyUIController {
-  private readonly logger = new Logger('ComfyUIController');
-
   constructor(
     private readonly client: ComfyUIClientService,
     private readonly runner: ComfyUIRunnerService,
@@ -55,6 +55,7 @@ export class ComfyUIController {
     private readonly schemaService: ComfyUISchemaService,
     private readonly capture: ComfyUIAssetCaptureService,
     private readonly canvas: CanvasService,
+    private readonly assets: AssetsService,
   ) {}
 
   // ---------- 步骤②：工作流导入 ----------
@@ -86,6 +87,7 @@ export class ComfyUIController {
     const suggestedExposure = schema
       ? this.suggestExposure(schema)
       : { version: 1, fields: [] };
+    const suggestedInputConfig = schema ? this.suggestInputs(schema) : { version: 1, fields: [] };
 
     const filename = body.filename.replace(/\.(json|bak)$/i, '');
     return {
@@ -100,6 +102,7 @@ export class ComfyUIController {
       format: this.detectFormat(uiJson),
       schema,
       suggestedExposure,
+      suggestedInputConfig,
     };
   }
 
@@ -128,6 +131,7 @@ export class ComfyUIController {
       tags: body.tags,
       content: JSON.stringify(result.apiJson),
       exposureConfig: body.exposure ?? null,
+      inputConfig: body.inputConfig ?? null,
     });
     return { workflow: created, warnings: result.warnings, nodeCount: result.nodeCount };
   }
@@ -182,15 +186,14 @@ export class ComfyUIController {
       canvasId: body.canvasId,
       nodeId: body.nodeId ?? null,
       // 画布节点运行成功 → 捕获输出字节进画布资产分区（C2）
-      onComplete: (finished) => {
+      onComplete: async (finished) => {
         if (!body.canvasId) return;
-        void this.capture
-          .captureRunOutputs(finished, body.canvasId, body.nodeId ?? null, workflow.id)
-          .catch((e) =>
-            this.logger.error(
-              `捕获画布 ${body.canvasId} 运行 ${finished.promptId} 产物失败：${(e as Error).message}`,
-            ),
-          );
+        await this.capture.captureRunOutputs(
+          finished,
+          body.canvasId,
+          body.nodeId ?? null,
+          workflow.id,
+        );
       },
       // 不再自动写回缩略图：改由前端在结果区点"作为封面"手动设置
     });
@@ -290,6 +293,25 @@ export class ComfyUIController {
           fields.push({ nodeId: f.nodeId, param: f.param });
         }
       }
+    }
+    return { version: 1, fields };
+  }
+
+  /** 将画布平台资产安全回灌到 ComfyUI input，供下游工作流字段使用。 */
+  @Post('upload/asset')
+  async uploadAsset(@Body() body: { canvasId?: string; assetId?: string }) {
+    if (!body.canvasId || !body.assetId) throw new HttpException('缺少 canvasId 或 assetId', HttpStatus.BAD_REQUEST);
+    const { asset, absPath } = await this.assets.read(body.assetId);
+    if (asset.canvasId !== body.canvasId) throw new HttpException('资产不属于当前画布', HttpStatus.BAD_REQUEST);
+    if (asset.kind !== 'image') throw new HttpException(`暂不支持回灌 ${asset.kind} 类型资产`, HttpStatus.BAD_REQUEST);
+    const file = await this.client.uploadImage(await fs.readFile(absPath), asset.originName || `${asset.id}.png`);
+    return { file, assetId: asset.id, kind: asset.kind };
+  }
+
+  private suggestInputs(schema: SchemaAnalysis) {
+    const fields: { nodeId: string; param: string; kind: 'image' }[] = [];
+    for (const group of schema.groups) for (const f of group.fields) {
+      if (f.control === 'upload' || f.valueType === 'IMAGE') fields.push({ nodeId: f.nodeId, param: f.param, kind: 'image' });
     }
     return { version: 1, fields };
   }
