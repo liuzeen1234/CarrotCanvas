@@ -1,0 +1,70 @@
+/* CarrotCanvas 画布节点外观（C5）。统一卡片式：头部（类型标签 + 绑定名）+ 主体（表单/预览）+ 底部（状态，C6）。 */
+
+.canvas-node {
+  background: #fff;
+  border: 1px solid rgba(5, 5, 5, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.88);
+  overflow: hidden;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.canvas-node.selected {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.25);
+}
+
+.canvas-node__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fafafa;
+  border-bottom: 1px solid rgba(5, 5, 5, 0.06);
+}
+
+.canvas-node__type {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.canvas-node__bind {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.canvas-node__body {
+  padding: 8px 10px;
+  box-sizing: border-box;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Handle 着色：image 蓝（一期唯一连线类型） */
+.canvas-handle--image {
+  background: #1677ff;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+}
+
+/* 生成节点表单主体（.canvas-node__form-body）按内容自然撑高、不内部滚动，
+   宽度随节点整体（style width），box-sizing/overflow 见 .canvas-node__body，
+   故此处无需额外规则。 */
+
+.canvas-node__result-body {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

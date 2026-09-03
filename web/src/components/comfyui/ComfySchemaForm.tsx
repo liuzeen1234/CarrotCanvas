@@ -25,8 +25,19 @@ export interface ComfySchemaFormProps {
   /** 提供时 upload 字段显示“上传新图”按钮；未提供则仅可从已有图选择 */
   onUploadImage?: (field: SchemaField, file: File) => Promise<string>;
   uploading?: boolean;
-  /** 表单滚动区最大高度 */
+  /** 表单滚动区最大高度（仅 scroll 为 true 时生效） */
   maxHeight?: string | number;
+  /**
+   * 是否内部滚动。默认 true（设置页弹窗：限高 + overflow auto）。
+   * 画布节点须传 false：节点按内容自然撑高、不出现内部滚动条，
+   * 否则与画布缩放/平移滚动冲突。
+   */
+  scroll?: boolean;
+  /**
+   * 单列布局。默认 false（设置页弹窗：两列 Col span=12）。
+   * 画布节点须传 true：每个控件独占一行、宽度 100%，窄卡片内不遮挡文字/选项。
+   */
+  singleColumn?: boolean;
 }
 
 /** schema 字段 → antd 控件（受控，值来自 props.values，key=`${nodeId}::${param}`） */
@@ -40,6 +51,8 @@ export function ComfySchemaForm({
   onUploadImage,
   uploading = false,
   maxHeight = '58vh',
+  scroll = true,
+  singleColumn = false,
 }: ComfySchemaFormProps) {
   if (schemaLoading) {
     return (
@@ -64,9 +77,9 @@ export function ComfySchemaForm({
   const advancedCount = advanced.reduce((n, g) => n + g.fields.length, 0);
 
   return (
-    <div style={{ maxHeight, overflow: 'auto', paddingRight: 8 }}>
+    <div style={scroll ? { maxHeight, overflow: 'auto', paddingRight: 8 } : { overflow: 'visible' }}>
       {primary.length > 0 ? (
-        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} />
+        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} />
       ) : (
         <Alert
           type="info"
@@ -83,7 +96,7 @@ export function ComfySchemaForm({
               key: 'advanced',
               label: `高级参数（${advancedCount} 项）`,
               children: (
-                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} />
+                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} />
               ),
             },
           ]}
@@ -100,10 +113,11 @@ interface RunGroupsProps {
   disabled?: boolean;
   onUploadImage?: (field: SchemaField, file: File) => Promise<string>;
   uploading?: boolean;
+  singleColumn?: boolean;
 }
 
 /** 渲染一组节点分组的表单控件 */
-function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading }: RunGroupsProps) {
+function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn }: RunGroupsProps) {
   return (
     <>
       {groups.map((g) => (
@@ -116,10 +130,10 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
               </span>
             </span>
           </Divider>
-          <Row gutter={16}>
+          <Row gutter={singleColumn ? 0 : 16}>
             {g.fields.map((f) =>
               f.control === 'hidden' ? null : (
-                <Col span={12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4 }}>
+                <Col span={singleColumn ? 24 : 12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4 }}>
                   <div style={{ marginBottom: 2, fontSize: 12, color: '#555' }}>{f.label}</div>
                   <FieldControl
                     field={f}
@@ -165,7 +179,8 @@ function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uplo
     case 'textarea':
       return (
         <Input.TextArea
-          rows={3}
+          autoSize={{ minRows: 3 }}
+          style={{ width: '100%' }}
           value={String(value ?? '')}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
@@ -174,6 +189,7 @@ function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uplo
     case 'input':
       return (
         <Input
+          style={{ width: '100%' }}
           value={String(value ?? '')}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
