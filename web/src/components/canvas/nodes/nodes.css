@@ -73,6 +73,10 @@
   justify-content: center;
 }
 
+.canvas-node__delete-action {
+  margin-left: 12px;
+}
+
 .canvas-handle--video {
   background: #722ed1;
   width: 10px;
@@ -85,6 +89,12 @@
 /* 手指需要比视觉圆点更大的命中区。伪元素不会改变端点位置或节点布局，
    但会把粗指针设备上的可触控范围从 10px 扩到约 30px。 */
 @media (pointer: coarse) {
+  .canvas-node__run-action,
+  .canvas-node__delete-action {
+    width: 44px;
+    height: 44px;
+  }
+
   .react-flow__handle.canvas-handle--image::after,
   .react-flow__handle.canvas-handle--video::after,
   .react-flow__handle.canvas-handle--text::after {

@@ -1,6 +1,6 @@
 import { useContext, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Alert, Button, Image, Popconfirm, Select, Space, Switch, Tag, Tooltip, Upload } from 'antd';
+import { Alert, Button, Image, Popconfirm, Select, Space, Switch, Tag, Upload } from 'antd';
 import { DeleteOutlined, DownloadOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { CanvasNodeDataContext } from '../context';
@@ -61,8 +61,10 @@ export default function CodexCapabilityNode(props: NodeProps) {
   return <div className={`canvas-node canvas-node--codex${props.selected ? ' selected' : ''}`}>
     {needsImage ? <Handle type="target" position={Position.Left} id={resultTargetHandle('image')} className="canvas-handle--image" title="图片输入" /> : null}
     <div className="canvas-node__header"><span className="canvas-node__type" style={{ background: '#fa8c16' }}>Codex2API</span><span className="canvas-node__bind">{LABELS[data.capability]}</span>
-      <Tooltip title="运行"><Button size="small" type="text" icon={<PlayCircleOutlined />} loading={busy} disabled={!canRun} className="nodrag" onClick={() => void run()} /></Tooltip>
-      <Popconfirm title="删除该节点？" okText="删除" cancelText="取消" onConfirm={() => deleteNode(props.id)}><Button size="small" type="text" danger icon={<DeleteOutlined />} className="nodrag" /></Popconfirm>
+      <Popconfirm title="确认运行该节点？" description="运行可能消耗 API 额度并需要一定时间。" okText="确认运行" cancelText="取消" onConfirm={() => void run()}>
+        <Button size="small" type="text" icon={<PlayCircleOutlined />} loading={busy} disabled={!canRun} className="nodrag canvas-node__run-action" aria-label="运行节点" />
+      </Popconfirm>
+      <Popconfirm title="删除该节点？" okText="删除" cancelText="取消" onConfirm={() => deleteNode(props.id)}><Button size="small" type="text" danger icon={<DeleteOutlined />} className="nodrag canvas-node__delete-action" aria-label="删除节点" /></Popconfirm>
     </div>
     <div className="canvas-node__body nodrag"><Space direction="vertical" size={8} style={{ width: '100%' }}>
       {needsImage ? <Upload accept="image/*" maxCount={1} fileList={files} beforeUpload={() => false} onChange={({ fileList }) => setFiles(fileList.slice(-1))} listType="picture"><Button icon={<UploadOutlined />}>{upstream ? '改用本地图片' : '上传图片'}</Button></Upload> : null}

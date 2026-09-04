@@ -1,7 +1,7 @@
 /** C6 结果节点：通过连线读取上游运行态与平台资产，不冗余持久化引用。 */
 import { useContext } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Alert, Button, Empty, Image, Popconfirm, Progress, Space, Spin, Tooltip } from 'antd';
+import { Alert, Button, Empty, Image, Popconfirm, Progress, Space, Spin } from 'antd';
 import { DeleteOutlined, DownloadOutlined } from '@ant-design/icons';
 import { CanvasNodeDataContext } from '../context';
 import { ResultNodeData, resultSourceHandle, resultTargetHandle } from './types';
@@ -24,7 +24,7 @@ export default function ResultNode(props: NodeProps) {
       <span className="canvas-node__type" style={{ background: '#722ed1' }}>结果</span>
       <span className="canvas-node__bind" style={{ color: '#999' }}>{running ? (run?.status === 'pending' ? '排队中' : run?.currentNodeTitle || '生成中') : mediaCount ? `${mediaCount} 个${kind === 'video' ? '视频' : '图片'}` : `${kind === 'video' ? '视频' : '图片'}预览`}</span>
       <Popconfirm title="删除该节点？" description="仅移除结果节点和连线，生成资产仍保留在上游节点。" okText="删除" okButtonProps={{ danger: true }} cancelText="取消" onConfirm={() => deleteNode(props.id)}>
-        <Tooltip title="删除节点"><Button size="small" type="text" danger icon={<DeleteOutlined />} className="nodrag" /></Tooltip>
+        <Button size="small" type="text" danger icon={<DeleteOutlined />} className="nodrag canvas-node__delete-action" aria-label="删除节点" />
       </Popconfirm>
     </div>
     <div className="canvas-node__body canvas-node__result-body nodrag">

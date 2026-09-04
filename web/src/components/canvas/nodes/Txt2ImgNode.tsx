@@ -1,7 +1,7 @@
 /** C6 文生图节点：schema 表单、提交校验、运行/中断与平台资产回写。 */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Alert, Button, Popconfirm, Progress, Spin, Tag, Tooltip, message } from 'antd';
+import { Alert, Button, Popconfirm, Progress, Spin, Tag, message } from 'antd';
 import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { request } from 'umi';
 import { ComfyUIAPI, RunStateData, SchemaField, applyFormValues, fileKey, splitByExposure } from '@/components/comfyui/types';
@@ -151,10 +151,12 @@ export default function Txt2ImgNode(props: NodeProps) {
       <span className="canvas-node__type" style={{ background: workflow?.category === 'img2img' ? '#52c41a' : '#1677ff' }}>{workflow?.categoryLabel || '工作流'}</span>
       <span className="canvas-node__bind" title={data.workflowName}>{data.workflowName || '未绑定工作流'}</span>
       {run.running
-        ? <Tooltip title="中断运行"><Button size="small" type="text" danger icon={<PauseCircleOutlined />} className="nodrag" onClick={() => void run.interrupt()} /></Tooltip>
-        : <Tooltip title={loadError || '运行'}><Button size="small" type="text" icon={<PlayCircleOutlined />} className="nodrag" disabled={!workflow || !!loadError || workflowLoading} loading={run.submitting} onClick={() => void handleRun()} /></Tooltip>}
+        ? <Button size="small" type="text" danger icon={<PauseCircleOutlined />} className="nodrag canvas-node__run-action" aria-label="中断运行" onClick={() => void run.interrupt()} />
+        : <Popconfirm title="确认运行该节点？" description="运行可能消耗 API 额度并需要一定时间。" okText="确认运行" cancelText="取消" onConfirm={() => void handleRun()}>
+            <Button size="small" type="text" icon={<PlayCircleOutlined />} className="nodrag canvas-node__run-action" aria-label="运行节点" disabled={!workflow || !!loadError || workflowLoading} loading={run.submitting} />
+          </Popconfirm>}
       <Popconfirm title="删除该节点？" description="将同时移除连线及该节点生成的资产，不可撤销。" okText="删除" okButtonProps={{ danger: true }} cancelText="取消" onConfirm={() => deleteNode(nodeId)}>
-        <Tooltip title="删除节点"><Button size="small" type="text" danger icon={<DeleteOutlined />} className="nodrag" /></Tooltip>
+        <Button size="small" type="text" danger icon={<DeleteOutlined />} className="nodrag canvas-node__delete-action" aria-label="删除节点" />
       </Popconfirm>
     </div>
     <div className="canvas-node__body canvas-node__form-body nodrag">

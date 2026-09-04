@@ -4,6 +4,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  Panel,
   applyEdgeChanges,
   applyNodeChanges,
   addEdge,
@@ -20,16 +21,17 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, Spin, Tag, Typography, message } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Button, Spin, Typography, message } from 'antd';
+import { ArrowLeftOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
 import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { ComfyUIAPI, type RunStateData } from '@/components/comfyui/types';
+import './editor.css';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /** 画布文档（含完整 graph） */
 interface CanvasDoc {
@@ -57,14 +59,6 @@ function createPersistedGraph(nodes: Node[], edges: Edge[], viewport: Viewport |
   };
 }
 
-/** ISO 时间 → YYYY-MM-DD HH:mm */
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export default function CanvasEditorPage() {
   // useReactFlow（右键落点 screenToFlowPosition）需要 ReactFlowProvider 祖先
   return (
@@ -87,7 +81,6 @@ function CanvasEditorInner() {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const [savedAt, setSavedAt] = useState<string | null>(null);
   /** 运行态只驻留内存，不进入 graph；结果节点通过 Context 读取上游状态。 */
   const [nodeRuns, setNodeRuns] = useState<Record<string, RunStateData | null>>({});
   const nodesRef = useRef(nodes);
@@ -108,37 +101,28 @@ function CanvasEditorInner() {
   const [isNarrow, setIsNarrow] = useState(
     typeof window !== 'undefined' ? window.innerWidth < 768 : false,
   );
+  const [miniMapOpen, setMiniMapOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem('carrot-canvas:minimap-open');
+    return stored == null ? window.innerWidth >= 768 : stored === 'true';
+  });
 
-  /** 编辑器根容器：测量它距视口顶部的真实偏移。
-      - 桌面（非窄屏）：用它精确算高度，避免猜 ProLayout header 高度留白/溢出。
-      - 窄屏：用它作为 fixed 定位的 top，容器随后 fixed 铺满到 bottom:0。 */
+  /** 桌面端测量内容区剩余高度；移动端直接覆盖系统框架并占满视口。 */
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [rootHeight, setRootHeight] = useState<number | null>(null);
-  /** 窄屏 fixed 定位用的顶部偏移；一旦 fixed，getBoundingClientRect().top 会等于它本身，
-      故只在“尚未 fixed”时更新，避免自锁 */
-  const [rootTop, setRootTop] = useState<number | null>(null);
-  const fixedLockedRef = useRef(false);
 
   useEffect(() => {
     const recompute = () => {
       const narrow = window.innerWidth < 768;
       setIsNarrow(narrow);
       const el = rootRef.current;
-      if (!el) return;
       if (narrow) {
-        if (!fixedLockedRef.current) {
-          // 尚未 fixed：此刻 top 是文档流中的真实偏移，锁定它
-          const top = el.getBoundingClientRect().top;
-          setRootTop(top);
-          fixedLockedRef.current = true;
-        }
+        setRootHeight(null);
       } else {
-        // 回到桌面：解除锁定，按高度计算
-        fixedLockedRef.current = false;
+        if (!el) return;
         const top = el.getBoundingClientRect().top;
         const vh = window.visualViewport?.height ?? window.innerHeight;
         setRootHeight(Math.max(240, Math.floor(vh - top)));
-        setRootTop(null);
       }
     };
     recompute();
@@ -161,7 +145,6 @@ function CanvasEditorInner() {
     setEdges([]);
     setViewport(null);
     setSaveStatus('idle');
-    setSavedAt(null);
     setLoading(true);
     setLoadError(null);
     request<CanvasDoc>(`/api/canvas/${id}`)
@@ -182,7 +165,6 @@ function CanvasEditorInner() {
     setNodes(initialNodes);
     setEdges(initialEdges);
     setViewport(initialViewport);
-    setSavedAt(doc.updatedAt);
     lastSavedSnapshotRef.current = JSON.stringify(createPersistedGraph(initialNodes, initialEdges, initialViewport));
     setReady(true);
   }, [doc]);
@@ -195,9 +177,8 @@ function CanvasEditorInner() {
     saveInFlightRef.current = true;
     setSaveStatus('saving');
     try {
-      const saved = await request<CanvasDoc>(`/api/canvas/${id}`, { method: 'PATCH', data: { graph: pending.graph } });
+      await request<CanvasDoc>(`/api/canvas/${id}`, { method: 'PATCH', data: { graph: pending.graph } });
       lastSavedSnapshotRef.current = pending.snapshot;
-      setSavedAt(saved.updatedAt);
       setSaveStatus(pendingSaveRef.current ? 'dirty' : 'saved');
     } catch (error: any) {
       pendingSaveRef.current = pendingSaveRef.current ?? pending;
@@ -306,6 +287,11 @@ function CanvasEditorInner() {
         touchStart: touch ? { x: touch.clientX, y: touch.clientY } : undefined,
       }
       : null;
+  }, []);
+
+  const setMiniMapVisibility = useCallback((open: boolean) => {
+    setMiniMapOpen(open);
+    window.localStorage.setItem('carrot-canvas:minimap-open', String(open));
   }, []);
 
   /** 输出端点拖到画布空白处：打开只包含兼容输入工作流的创建菜单。 */
@@ -585,10 +571,6 @@ function CanvasEditorInner() {
     }
   }, [saveStatus]);
 
-  // 窄屏：根容器测出自身顶部偏移后，改用 fixed 铺满 header 下方到屏幕底（bottom:0），
-  // 不再依赖高度计算，避免 iOS visualViewport 误差导致画布铺不到底/留白。
-  const narrowFixed = isNarrow && rootTop != null;
-
   return (
     <div
       ref={rootRef}
@@ -598,61 +580,24 @@ function CanvasEditorInner() {
         minHeight: 0,
         overflow: 'hidden',
         boxSizing: 'border-box',
-        ...(narrowFixed
+        ...(isNarrow
           ? {
               position: 'fixed',
-              top: rootTop as number,
+              top: 0,
               left: 0,
               right: 0,
               bottom: 0,
-              padding: '0 6px 6px',
+              padding: 0,
               background: '#fff',
-              zIndex: 1,
+              // 高于 ProLayout，但低于 Ant Design Popconfirm（默认 1030）。
+              zIndex: 1000,
             }
           : {
               height: rootHeight != null ? rootHeight : 'calc(100dvh - 56px)',
-              padding: '0 24px 24px',
+              padding: 0,
             }),
       }}
     >
-      {/* 顶栏：窄屏隐藏次要信息（更新时间 / 操作提示），避免被挤成竖排逐字换行 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flexWrap: 'nowrap',
-          padding: isNarrow ? '8px 0' : '12px 0',
-          minWidth: 0,
-        }}
-      >
-        <Link to="/canvas" style={{ flexShrink: 0 }}>
-          <Button icon={<ArrowLeftOutlined />} size={isNarrow ? 'small' : 'middle'}>
-            {isNarrow ? '' : '返回列表'}
-          </Button>
-        </Link>
-        {doc ? (
-          <>
-            <Title
-              level={isNarrow ? 5 : 4}
-              style={{ margin: 0, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-              {doc.name}
-            </Title>
-            <Tag color="blue" style={{ flexShrink: 0, marginInlineEnd: 0 }}>{nodeCount} 节点</Tag>
-            {saveTag ? <Tag color={saveTag.color} style={{ flexShrink: 0, marginInlineEnd: 0 }}>{saveTag.text}</Tag> : null}
-            {!isNarrow ? (
-              <Text type="secondary" style={{ flexShrink: 0 }}>更新于 {formatTime(savedAt || doc.updatedAt)}</Text>
-            ) : null}
-          </>
-        ) : null}
-        {!isNarrow ? (
-          <Text type="secondary" style={{ fontSize: 12, flexShrink: 0, marginLeft: 'auto' }}>
-            在画布空白处右键添加节点
-          </Text>
-        ) : null}
-      </div>
-
       {/* 画布主体 */}
       <div
         ref={containerRef}
@@ -661,8 +606,8 @@ function CanvasEditorInner() {
         style={{
           flex: 1,
           position: 'relative',
-          border: '1px solid rgba(5,5,5,0.06)',
-          borderRadius: 8,
+          border: isNarrow ? 0 : '1px solid rgba(5,5,5,0.06)',
+          borderRadius: isNarrow ? 0 : 8,
           overflow: 'hidden',
           // 抑制 iOS 长按的文字选择/放大镜；平移缩放交给 React Flow
           WebkitUserSelect: 'none',
@@ -706,7 +651,26 @@ function CanvasEditorInner() {
               proOptions={{ hideAttribution: true }}
             >
               <Background />
-              <MiniMap pannable zoomable />
+              <Panel position="top-left" className="canvas-floating-header">
+                <Link to="/canvas">
+                  <Button icon={<ArrowLeftOutlined />} aria-label="返回画布列表">{isNarrow ? null : '返回列表'}</Button>
+                </Link>
+                {doc ? (
+                  <div className="canvas-floating-title" title={doc.name}>
+                    <span>{doc.name}</span>
+                    {saveTag && saveTag.text !== '已保存' ? <small className={`is-${saveStatus}`}>{saveTag.text}</small> : null}
+                  </div>
+                ) : null}
+              </Panel>
+              {miniMapOpen ? (
+                <Panel position="bottom-right" className="canvas-minimap-panel" onDoubleClickCapture={() => setMiniMapVisibility(false)}>
+                  <MiniMap pannable zoomable />
+                </Panel>
+              ) : (
+                <Panel position="bottom-right" className="canvas-minimap-toggle">
+                  <Button shape="circle" icon={<EnvironmentOutlined />} aria-label="打开缩略图" onClick={() => setMiniMapVisibility(true)} />
+                </Panel>
+              )}
               <Controls />
             </ReactFlow>
 
