@@ -318,9 +318,12 @@ export class ComfyUIController {
   }
 
   private suggestInputs(schema: SchemaAnalysis) {
-    const fields: { nodeId: string; param: string; kind: 'image' }[] = [];
+    const fields: { nodeId: string; param: string; kind: 'image' | 'text' }[] = [];
     for (const group of schema.groups) for (const f of group.fields) {
       if (f.control === 'upload' || f.valueType === 'IMAGE') fields.push({ nodeId: f.nodeId, param: f.param, kind: 'image' });
+      else if (f.valueType === 'STRING' && (f.control === 'textarea' || f.control === 'input')) {
+        fields.push({ nodeId: f.nodeId, param: f.param, kind: 'text' });
+      }
     }
     return { version: 1, fields };
   }

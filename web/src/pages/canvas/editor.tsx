@@ -25,7 +25,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
-import { HANDLE_IMAGE_TARGET, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle, type CodexCapability } from '@/components/canvas/nodes/types';
+import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { ComfyUIAPI, type RunStateData } from '@/components/comfyui/types';
 
@@ -248,18 +248,38 @@ function CanvasEditorInner() {
     const t = conn.targetHandle ?? '';
     const sourceKind = s.endsWith('-source') ? s.slice(0, -7) : '';
     if (!sourceKind) return false;
+    if (!conn.source || !conn.target || conn.source === conn.target) return false;
+    // 若目标节点沿已有出边已经能到达源节点，再添加 source → target 会形成环路。
+    const visited = new Set<string>();
+    const reachesSource = (nodeId: string): boolean => {
+      if (nodeId === conn.source) return true;
+      if (visited.has(nodeId)) return false;
+      visited.add(nodeId);
+      return edgesRef.current
+        .filter((edge) => edge.source === nodeId)
+        .some((edge) => reachesSource(edge.target));
+    };
+    if (reachesSource(conn.target)) return false;
     if (t.endsWith('-target')) return t === `${sourceKind}-target`;
     if (!t.startsWith('input:')) return false;
     const targetNode = nodesRef.current.find((node) => node.id === conn.target);
     const workflowId = (targetNode?.data as any)?.workflowId;
-    // 工作流字段的精确类型还会在运行时校验；当前已开放的可连接字段为 image。
-    return sourceKind === 'image' && !!workflowId;
+    if (!workflowId) return false;
+    // 图片端点沿用历史格式 input:<node>:<param>；新增类型显式写入 input:<kind>:...。
+    const targetKind = t.startsWith('input:text:') ? 'text'
+      : t.startsWith('input:video:') ? 'video'
+        : t.startsWith('input:audio:') ? 'audio'
+          : 'image';
+    return sourceKind === targetKind;
   }, []);
 
   const onConnect = useCallback(
     (conn: Connection) => {
       pendingConnectionRef.current = null;
-      setEdges((eds) => addEdge(conn, eds));
+      // 一个输入字段只能有一个来源；新连线替换该端口原有入线。
+      setEdges((eds) => addEdge(conn, eds.filter((edge) =>
+        !(edge.target === conn.target && edge.targetHandle === conn.targetHandle),
+      )));
     },
     [],
   );
@@ -401,6 +421,13 @@ function CanvasEditorInner() {
     return assets.find((asset) => asset.kind === kind) ?? null;
   }, [edges, nodes]);
 
+  const getUpstreamText = useCallback((targetNodeId: string, targetHandle: string) => {
+    const edge = edges.find((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
+    if (!edge) return { connected: false, text: '' };
+    const source = nodes.find((item) => item.id === edge.source);
+    return { connected: true, text: String((source?.data as any)?.lastText ?? '') };
+  }, [edges, nodes]);
+
   const handleMoveEnd = useCallback((_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
     setViewport(nextViewport);
   }, []);
@@ -516,7 +543,7 @@ function CanvasEditorInner() {
             source: menu.connection.sourceNodeId,
             sourceHandle: menu.connection.sourceHandle,
             target: node.id,
-            targetHandle: `input:${input.nodeId}:${input.param}`,
+            targetHandle: workflowInputHandle(input.nodeId, input.param, input.kind),
           };
           setEdges((eds) => [...eds, edge]);
         }
@@ -529,7 +556,21 @@ function CanvasEditorInner() {
   const handlePickCapability = useCallback((capability: CodexCapability) => {
     let pos = { x: 0, y: 0 };
     try { pos = menu ? screenToFlowPosition({ x: menu.screenX, y: menu.screenY }) : pos; } catch { /* 画布尚未就绪时落在原点 */ }
-    setNodes((items) => [...items, createCodexCapabilityNode(pos, capability)]);
+    const node = createCodexCapabilityNode(pos, capability);
+    setNodes((items) => [...items, node]);
+    if (menu?.connection) {
+      const targetHandle = menu.connection.kind === 'text'
+        ? capabilityPromptHandle()
+        : resultTargetHandle(menu.connection.kind);
+      const edge: Edge = {
+        id: `edge-${menu.connection.sourceNodeId}-${node.id}-${targetHandle}`,
+        source: menu.connection.sourceNodeId,
+        sourceHandle: menu.connection.sourceHandle,
+        target: node.id,
+        targetHandle,
+      };
+      setEdges((items) => [...items, edge]);
+    }
     setMenu(null);
   }, [menu, screenToFlowPosition]);
 
@@ -646,6 +687,7 @@ function CanvasEditorInner() {
             setNodeRunState,
             getResultState,
             getUpstreamAsset,
+            getUpstreamText,
           }}>
             <ReactFlow
               nodes={nodes}

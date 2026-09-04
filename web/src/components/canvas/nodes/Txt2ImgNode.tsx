@@ -14,7 +14,7 @@ const isEmpty = (value: unknown) => value === undefined || value === null || (ty
 
 export default function Txt2ImgNode(props: NodeProps) {
   const data = props.data as Txt2ImgNodeData;
-  const { canvasId, updateNodeData, deleteNode, ensureResultNode, setNodeRunState, getUpstreamAsset } = useContext(CanvasNodeDataContext);
+  const { canvasId, updateNodeData, deleteNode, ensureResultNode, setNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
   const [workflow, setWorkflow] = useState<ComfyUIAPI | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -72,11 +72,17 @@ export default function Txt2ImgNode(props: NodeProps) {
     (workflow?.inputConfig?.fields ?? []).map((f) => [`${f.nodeId}::${f.param}`, f.kind]),
   ), [workflow]);
 
-  const upstreamFor = useCallback((field: { nodeId: string; param: string }) => {
+  const upstreamAssetFor = useCallback((field: { nodeId: string; param: string }) => {
     const key = `${field.nodeId}::${field.param}`;
     const kind = inputKinds.get(key);
-    return kind ? getUpstreamAsset(nodeId, workflowInputHandle(field.nodeId, field.param), kind) : null;
+    return kind && kind !== 'text' ? getUpstreamAsset(nodeId, workflowInputHandle(field.nodeId, field.param, kind), kind) : null;
   }, [getUpstreamAsset, inputKinds, nodeId]);
+
+  const upstreamTextFor = useCallback((field: { nodeId: string; param: string }) => {
+    const key = `${field.nodeId}::${field.param}`;
+    if (inputKinds.get(key) !== 'text') return { connected: false, text: '' };
+    return getUpstreamText(nodeId, workflowInputHandle(field.nodeId, field.param, 'text'));
+  }, [getUpstreamText, inputKinds, nodeId]);
 
   const handleRun = async () => {
     if (!run.schema || !workflow) return;
@@ -84,7 +90,9 @@ export default function Txt2ImgNode(props: NodeProps) {
     for (const group of run.schema.groups) for (const field of group.fields) {
       const key = fileKey(field);
       if (!exposedKeys.has(key) || field.control === 'hidden') continue;
-      if ((field.required || field.control === 'upload') && isEmpty(run.formValues[key]) && !upstreamFor(field)) missing.add(key);
+      const upstreamText = upstreamTextFor(field);
+      const effectiveValue = upstreamText.connected ? upstreamText.text : run.formValues[key];
+      if ((field.required || field.control === 'upload') && isEmpty(effectiveValue) && !upstreamAssetFor(field)) missing.add(key);
     }
     setMissingKeys(missing);
     if (missing.size) { message.warning(`请先填写 ${missing.size} 个必填参数`); return; }
@@ -92,7 +100,15 @@ export default function Txt2ImgNode(props: NodeProps) {
     try {
       const resolvedValues = { ...run.formValues };
       for (const input of workflow.inputConfig?.fields ?? []) {
-        const asset = upstreamFor(input);
+        if (input.kind === 'text') {
+          const upstreamText = upstreamTextFor(input);
+          if (upstreamText.connected) {
+            if (isEmpty(upstreamText.text)) throw new Error('上游文本节点尚未输出内容');
+            resolvedValues[`${input.nodeId}::${input.param}`] = upstreamText.text;
+          }
+          continue;
+        }
+        const asset = upstreamAssetFor(input);
         if (!asset) continue;
         if (input.kind !== 'image') throw new Error(`暂不支持 ${input.kind} 输入回灌`);
         const uploaded = await request<{ file: { name: string } }>('/api/comfyui/upload/asset', {
@@ -109,17 +125,22 @@ export default function Txt2ImgNode(props: NodeProps) {
     const key = `${field.nodeId}::${field.param}`;
     const kind = inputKinds.get(key);
     if (!kind) return null;
-    const connected = !!upstreamFor(field);
-    return <Handle type="target" position={Position.Left} id={workflowInputHandle(field.nodeId, field.param)}
+    const connected = kind === 'text' ? upstreamTextFor(field).connected : !!upstreamAssetFor(field);
+    return <Handle type="target" position={Position.Left} id={workflowInputHandle(field.nodeId, field.param, kind)}
       className={`canvas-handle--${kind}`} style={{ left: -15, top: 18, background: connected ? '#52c41a' : undefined }}
       title={`${field.label} · ${kind} 输入${connected ? '（已连接）' : ''}`} />;
-  }, [inputKinds, upstreamFor]);
+  }, [inputKinds, upstreamAssetFor, upstreamTextFor]);
 
   const getConnectedImage = useCallback((field: SchemaField) => {
-    const asset = upstreamFor(field);
+    const asset = upstreamAssetFor(field);
     if (!asset || asset.kind !== 'image') return null;
     return { url: asset.url, label: asset.filename || '上游生成图片' };
-  }, [upstreamFor]);
+  }, [upstreamAssetFor]);
+
+  const getConnectedText = useCallback((field: SchemaField) => {
+    const upstream = upstreamTextFor(field);
+    return upstream.connected ? { text: upstream.text } : null;
+  }, [upstreamTextFor]);
 
   const progress = run.runState?.progress;
   const percent = progress?.max ? Math.round((progress.value / progress.max) * 100) : undefined;
@@ -140,7 +161,7 @@ export default function Txt2ImgNode(props: NodeProps) {
       {!data.workflowId ? <Alert type="warning" showIcon message="未绑定工作流" />
         : workflowLoading || run.schemaLoading ? <div style={{ textAlign: 'center', padding: '16px 0' }}><Spin size="small" /><div style={{ color: '#999', marginTop: 6 }}>加载入参表单…</div></div>
         : loadError || run.schemaError ? <Alert type="warning" showIcon message={loadError || run.schemaError} description={data.lastAssets?.length ? '历史结果仍可在结果节点查看。' : undefined} />
-        : <ComfySchemaForm schema={run.schema} values={run.formValues} onChange={(key, value) => { run.handleFormChange(key, value); setMissingKeys((prev) => { const next = new Set(prev); next.delete(key); return next; }); }} disabled={run.running} exposure={workflow?.exposureConfig ?? null} onUploadImage={run.uploadImage} uploading={run.uploading} scroll={false} singleColumn invalidKeys={missingKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} />}
+        : <ComfySchemaForm schema={run.schema} values={run.formValues} onChange={(key, value) => { run.handleFormChange(key, value); setMissingKeys((prev) => { const next = new Set(prev); next.delete(key); return next; }); }} disabled={run.running} exposure={workflow?.exposureConfig ?? null} onUploadImage={run.uploadImage} uploading={run.uploading} scroll={false} singleColumn invalidKeys={missingKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} />}
       {missingKeys.size > 0 && <Alert style={{ marginTop: 8 }} type="error" showIcon message={`还有 ${missingKeys.size} 个必填参数未填写`} />}
       {run.runState && <div style={{ marginTop: 8 }}>
         {run.running ? <Progress size="small" percent={percent} status="active" showInfo={percent !== undefined} /> : null}

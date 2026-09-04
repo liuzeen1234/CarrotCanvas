@@ -13,6 +13,11 @@ export interface CanvasResultState {
   assets: { assetId: string; url: string; kind: string; filename?: string }[];
 }
 
+export interface CanvasUpstreamTextState {
+  connected: boolean;
+  text: string;
+}
+
 export interface CanvasNodeDataApi {
   /** 局部更新某节点 data（浅合并） */
   updateNodeData: (nodeId: string, patch: Record<string, unknown>) => void;
@@ -23,6 +28,8 @@ export interface CanvasNodeDataApi {
   setNodeRunState: (nodeId: string, run: RunStateData | null) => void;
   getResultState: (resultNodeId: string) => CanvasResultState;
   getUpstreamAsset: (targetNodeId: string, targetHandle: string, kind: string) => CanvasResultState['assets'][number] | null;
+  /** 读取文本输入端口连接的上游节点最后一次完整输出。 */
+  getUpstreamText: (targetNodeId: string, targetHandle: string) => CanvasUpstreamTextState;
 }
 
 export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
@@ -32,4 +39,5 @@ export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
   setNodeRunState: () => {},
   getResultState: () => ({ run: null, assets: [] }),
   getUpstreamAsset: () => null,
+  getUpstreamText: () => ({ connected: false, text: '' }),
 });

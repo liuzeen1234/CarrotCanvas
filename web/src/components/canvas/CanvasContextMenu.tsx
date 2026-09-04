@@ -97,14 +97,24 @@ export default function CanvasContextMenu({ state, onClose, onPick, onPickCapabi
   }, [workflows]);
 
   const items: MenuProps['items'] = useMemo(() => {
-    const capabilityItems: MenuProps['items'] = state?.connection ? [] : [{
+    const compatibleCapabilities: CodexCapability[] = !state?.connection
+      ? ['text', 'image', 'edit', 'analyze']
+      : state.connection.kind === 'text'
+        ? ['text', 'image', 'edit', 'analyze']
+        : state.connection.kind === 'image'
+          ? ['edit', 'analyze']
+          : [];
+    const capabilityLabels: Record<CodexCapability, string> = {
+      text: '文生文', image: '文生图', edit: '图生图', analyze: '图像理解',
+    };
+    const capabilityItems: MenuProps['items'] = compatibleCapabilities.length ? [{
       key: 'codex', label: 'AI 能力（Codex2API）', children: [
-        { key: 'cap:text', label: '文生文' },
-        { key: 'cap:image', label: '文生图' },
-        { key: 'cap:edit', label: '图生图' },
-        { key: 'cap:analyze', label: '图像理解' },
+        ...compatibleCapabilities.map((capability) => ({
+          key: `cap:${capability}`,
+          label: capabilityLabels[capability],
+        })),
       ],
-    }, { type: 'divider' }];
+    }, { type: 'divider' }] : [];
     return [...capabilityItems, ...WORKFLOW_CATEGORIES.map((cat) => {
       const list = (byCategory.get(cat.value) ?? []).filter((workflow) =>
         !state?.connection || workflow.inputConfig?.fields?.some((field) => field.kind === state.connection!.kind),

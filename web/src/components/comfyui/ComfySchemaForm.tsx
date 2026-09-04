@@ -4,8 +4,9 @@
  * 设置页运行面板（ComfyRunModal）与画布生成节点（C5/C6）共用。
  */
 import React from 'react';
-import { Alert, Button, Collapse, Col, Divider, Image, Input, InputNumber, Progress, Row, Select, Switch, Upload, message } from 'antd';
+import { Alert, Button, Collapse, Col, Divider, Image, InputNumber, Progress, Row, Select, Switch, Upload, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
+import { ImeSafeInput, ImeSafeTextArea } from '@/components/canvas/ImeSafeInput';
 import {
   ExposureConfig,
   SchemaAnalysis,
@@ -44,6 +45,7 @@ export interface ComfySchemaFormProps {
   renderInputConnector?: (field: SchemaField) => React.ReactNode;
   /** 画布连线实际提供的图片；存在时优先于卡片自身保存的默认图片展示。 */
   getConnectedImage?: (field: SchemaField) => { url: string; label?: string } | null;
+  getConnectedText?: (field: SchemaField) => { text: string } | null;
 }
 
 /** schema 字段 → antd 控件（受控，值来自 props.values，key=`${nodeId}::${param}`） */
@@ -62,6 +64,7 @@ export function ComfySchemaForm({
   invalidKeys,
   renderInputConnector,
   getConnectedImage,
+  getConnectedText,
 }: ComfySchemaFormProps) {
   if (schemaLoading) {
     return (
@@ -88,7 +91,7 @@ export function ComfySchemaForm({
   return (
     <div style={scroll ? { maxHeight, overflow: 'auto', paddingRight: 8 } : { overflow: 'visible' }}>
       {primary.length > 0 ? (
-        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} />
+        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} />
       ) : (
         <Alert
           type="info"
@@ -105,7 +108,7 @@ export function ComfySchemaForm({
               key: 'advanced',
               label: `高级参数（${advancedCount} 项）`,
               children: (
-                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} />
+                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} />
               ),
             },
           ]}
@@ -126,10 +129,11 @@ interface RunGroupsProps {
   invalidKeys?: ReadonlySet<string>;
   renderInputConnector?: (field: SchemaField) => React.ReactNode;
   getConnectedImage?: (field: SchemaField) => { url: string; label?: string } | null;
+  getConnectedText?: (field: SchemaField) => { text: string } | null;
 }
 
 /** 渲染一组节点分组的表单控件 */
-function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn, invalidKeys, renderInputConnector, getConnectedImage }: RunGroupsProps) {
+function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn, invalidKeys, renderInputConnector, getConnectedImage, getConnectedText }: RunGroupsProps) {
   return (
     <>
       {groups.map((g) => (
@@ -156,6 +160,7 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
                     onUploadImage={onUploadImage}
                     uploading={uploading}
                     connectedImage={f.control === 'upload' ? getConnectedImage?.(f) ?? null : null}
+                    connectedText={f.control === 'textarea' || f.control === 'input' ? getConnectedText?.(f) ?? null : null}
                   />
                   </div>
                   {f.description ? <div style={{ marginTop: 3, color: '#8c8c8c', fontSize: 11, lineHeight: 1.4 }}>{f.description}</div> : null}
@@ -177,9 +182,10 @@ interface FieldControlProps {
   onUploadImage?: (field: SchemaField, file: File) => Promise<string>;
   uploading?: boolean;
   connectedImage?: { url: string; label?: string } | null;
+  connectedText?: { text: string } | null;
 }
 
-function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uploading, connectedImage }: FieldControlProps) {
+function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uploading, connectedImage, connectedText }: FieldControlProps) {
   switch (f.control) {
     case 'input_number':
       return (
@@ -195,21 +201,23 @@ function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uplo
       );
     case 'textarea':
       return (
-        <Input.TextArea
+        <ImeSafeTextArea
           autoSize={{ minRows: 3 }}
           style={{ width: '100%' }}
-          value={String(value ?? '')}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
+          value={connectedText ? connectedText.text : String(value ?? '')}
+          disabled={disabled || !!connectedText}
+          placeholder={connectedText && !connectedText.text ? '等待上游输出文本' : undefined}
+          onChange={(value) => onChange(value)}
         />
       );
     case 'input':
       return (
-        <Input
+        <ImeSafeInput
           style={{ width: '100%' }}
-          value={String(value ?? '')}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
+          value={connectedText ? connectedText.text : String(value ?? '')}
+          disabled={disabled || !!connectedText}
+          placeholder={connectedText && !connectedText.text ? '等待上游输出文本' : undefined}
+          onChange={(value) => onChange(value)}
         />
       );
     case 'select':

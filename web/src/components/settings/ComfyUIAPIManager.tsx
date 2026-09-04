@@ -613,7 +613,8 @@ export default function ComfyUIAPIManager() {
               </div>
               {g.fields.map((f) => {
                 const key = `${f.nodeId}::${f.param}`;
-                const connectable = f.control === 'upload' || f.valueType === 'IMAGE';
+                const connectable = f.control === 'upload' || f.valueType === 'IMAGE' ||
+                  (f.valueType === 'STRING' && (f.control === 'textarea' || f.control === 'input'));
                 const meta = metadata[key] ?? { label: '', description: '' };
                 const updateMeta = (patch: Partial<typeof meta>) => setMetadata?.({ ...metadata, [key]: { ...meta, ...patch } });
                 return (
@@ -629,7 +630,7 @@ export default function ComfyUIAPIManager() {
                       {connectable && connectSelected && setConnectSelected ? (
                         <Checkbox checked={connectSelected.has(key)} onChange={(e) => {
                           const next = new Set(connectSelected); if (e.target.checked) next.add(key); else next.delete(key); setConnectSelected(next);
-                        }}>允许连线</Checkbox>
+                        }}>允许{f.control === 'upload' || f.valueType === 'IMAGE' ? '图片' : '文本'}连线</Checkbox>
                       ) : null}
                       <span title={previewValue(f.current)} style={{ fontSize: 11, color: '#bbb', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>当前值：{previewValue(f.current)}</span>
                     </div>

@@ -23,7 +23,11 @@ export const workflowOutputKind = (category?: string): 'image' | 'video' =>
   category === 'txt2vid' || category === 'img2vid' ? 'video' : 'image';
 export const resultSourceHandle = (kind: string) => `${kind}-source`;
 export const resultTargetHandle = (kind: string) => `${kind}-target`;
-export const workflowInputHandle = (nodeId: string, param: string) => `input:${nodeId}:${param}`;
+/** Codex2API 能力卡片当前只有一个可连接文本字段：提示词。 */
+export const capabilityPromptHandle = () => resultTargetHandle('text');
+/** 图片端点保留旧 id 兼容已保存画布；其他类型在 id 中携带 kind 供连线校验。 */
+export const workflowInputHandle = (nodeId: string, param: string, kind: string = 'image') =>
+  kind === 'image' ? `input:${nodeId}:${param}` : `input:${kind}:${nodeId}:${param}`;
 
 /**
  * 文生图生成节点 data。

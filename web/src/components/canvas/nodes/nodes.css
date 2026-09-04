@@ -7,7 +7,8 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   font-size: 12px;
   color: rgba(0, 0, 0, 0.88);
-  overflow: hidden;
+  /* 输入/输出 Handle 需要伸出卡片边缘；hidden 会裁掉字段级文本端口。 */
+  overflow: visible;
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
@@ -23,6 +24,7 @@
   padding: 6px 10px;
   background: #fafafa;
   border-bottom: 1px solid rgba(5, 5, 5, 0.06);
+  border-radius: 8px 8px 0 0;
 }
 
 .canvas-node__type {
@@ -47,7 +49,9 @@
   padding: 8px 10px;
   box-sizing: border-box;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
+  background: #fff;
+  border-radius: 0 0 8px 8px;
 }
 
 /* Handle 着色：image 蓝（一期唯一连线类型） */
