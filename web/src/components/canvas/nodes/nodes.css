@@ -76,6 +76,23 @@
   border: 2px solid #fff;
 }
 
+.canvas-handle--text { background: #13c2c2; width: 10px; height: 10px; border: 2px solid #fff; }
+
+/* 手指需要比视觉圆点更大的命中区。伪元素不会改变端点位置或节点布局，
+   但会把粗指针设备上的可触控范围从 10px 扩到约 30px。 */
+@media (pointer: coarse) {
+  .react-flow__handle.canvas-handle--image::after,
+  .react-flow__handle.canvas-handle--video::after,
+  .react-flow__handle.canvas-handle--text::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    touch-action: none;
+  }
+}
+.canvas-codex-text { max-height: 220px; overflow: auto; white-space: pre-wrap; line-height: 1.6; padding: 8px; border-radius: 6px; background: #f6ffed; border: 1px solid #d9f7be; }
+
 .comfy-field-invalid .ant-input,
 .comfy-field-invalid .ant-input-number,
 .comfy-field-invalid .ant-select-selector {

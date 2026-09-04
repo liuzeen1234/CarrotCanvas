@@ -7,11 +7,13 @@
 import { NodeTypes } from '@xyflow/react';
 import Txt2ImgNode from './Txt2ImgNode';
 import ResultNode from './ResultNode';
-import { NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG } from './types';
+import CodexCapabilityNode from './CodexCapabilityNode';
+import { NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG } from './types';
 import './nodes.css';
 
 /** React Flow 节点类型注册表 */
 export const canvasNodeTypes: NodeTypes = {
   [NODE_TYPE_TXT2IMG]: Txt2ImgNode,
   [NODE_TYPE_RESULT]: ResultNode,
+  [NODE_TYPE_CODEX]: CodexCapabilityNode,
 };

@@ -25,7 +25,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
-import { HANDLE_IMAGE_TARGET, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle } from '@/components/canvas/nodes/types';
+import { HANDLE_IMAGE_TARGET, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { ComfyUIAPI, type RunStateData } from '@/components/comfyui/types';
 
@@ -264,16 +264,27 @@ function CanvasEditorInner() {
     [],
   );
 
-  const pendingConnectionRef = useRef<{ sourceNodeId: string; sourceHandle: string; kind: 'image' | 'video' | 'audio' | 'text' } | null>(null);
+  const pendingConnectionRef = useRef<{
+    sourceNodeId: string;
+    sourceHandle: string;
+    kind: 'image' | 'video' | 'audio' | 'text';
+    touchStart?: { x: number; y: number };
+  } | null>(null);
 
-  const onConnectStart: OnConnectStart = useCallback((_event, params) => {
+  const onConnectStart: OnConnectStart = useCallback((event, params) => {
     if (params.handleType !== 'source' || !params.nodeId || !params.handleId) {
       pendingConnectionRef.current = null;
       return;
     }
     const kind = params.handleId.endsWith('-source') ? params.handleId.slice(0, -7) : '';
+    const touch = 'touches' in event && event.touches.length ? event.touches[0] : null;
     pendingConnectionRef.current = ['image', 'video', 'audio', 'text'].includes(kind)
-      ? { sourceNodeId: params.nodeId, sourceHandle: params.handleId, kind: kind as 'image' | 'video' | 'audio' | 'text' }
+      ? {
+        sourceNodeId: params.nodeId,
+        sourceHandle: params.handleId,
+        kind: kind as 'image' | 'video' | 'audio' | 'text',
+        touchStart: touch ? { x: touch.clientX, y: touch.clientY } : undefined,
+      }
       : null;
   }, []);
 
@@ -285,6 +296,13 @@ function CanvasEditorInner() {
     const point = 'changedTouches' in event && event.changedTouches.length
       ? event.changedTouches[0]
       : event as MouseEvent;
+    // React Flow 支持“点一下源端点，再点一下目标端点”。触屏轻点时同样会经历
+    // connect start/end；这里不能把它误判为“拖到空白处”，否则创建菜单会盖住第二次点按。
+    if (pending.touchStart) {
+      const dx = point.clientX - pending.touchStart.x;
+      const dy = point.clientY - pending.touchStart.y;
+      if (dx * dx + dy * dy < 144) return;
+    }
     setMenu({
       screenX: point.clientX,
       screenY: point.clientY,
@@ -304,7 +322,7 @@ function CanvasEditorInner() {
   /** 删除节点 + 其相连边（自定义节点经 Context 调用，二次确认在节点内） */
   const handleDeleteNode = useCallback(async (nodeId: string) => {
     const node = nodesRef.current.find((n) => n.id === nodeId);
-    if (node?.type === NODE_TYPE_TXT2IMG && id) {
+    if ((node?.type === NODE_TYPE_TXT2IMG || node?.type === NODE_TYPE_CODEX) && id) {
       try {
         await request('/api/assets/generated/by-node', {
           method: 'DELETE',
@@ -508,6 +526,13 @@ function CanvasEditorInner() {
     [menu, screenToFlowPosition],
   );
 
+  const handlePickCapability = useCallback((capability: CodexCapability) => {
+    let pos = { x: 0, y: 0 };
+    try { pos = menu ? screenToFlowPosition({ x: menu.screenX, y: menu.screenY }) : pos; } catch { /* 画布尚未就绪时落在原点 */ }
+    setNodes((items) => [...items, createCodexCapabilityNode(pos, capability)]);
+    setMenu(null);
+  }, [menu, screenToFlowPosition]);
+
   const nodeCount = nodes.length;
   const saveTag = useMemo(() => {
     switch (saveStatus) {
@@ -630,6 +655,7 @@ function CanvasEditorInner() {
               onConnect={onConnect}
               onConnectStart={onConnectStart}
               onConnectEnd={onConnectEnd}
+              connectOnClick
               isValidConnection={isValidConnection}
               nodeTypes={canvasNodeTypes}
               defaultViewport={doc.graph?.viewport ?? undefined}
@@ -642,7 +668,7 @@ function CanvasEditorInner() {
               <Controls />
             </ReactFlow>
 
-            <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} />
+            <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} />
 
             {/* 空白画布提示 */}
             {nodeCount === 0 ? (
@@ -661,8 +687,8 @@ function CanvasEditorInner() {
               >
                 <Text type="secondary">
                   {isNarrow
-                    ? '空白画布 · 长按选择「文生图 → 工作流」添加节点'
-                    : '空白画布 · 右键选择「文生图 → 工作流」添加节点'}
+                    ? '空白画布 · 长按选择 AI 能力或 ComfyUI 工作流'
+                    : '空白画布 · 右键选择 AI 能力或 ComfyUI 工作流'}
                 </Text>
               </div>
             ) : null}

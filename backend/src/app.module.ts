@@ -7,6 +7,7 @@ import { SettingsModule } from './settings/settings.module';
 import { ComfyuiModule } from './comfyui/comfyui.module';
 import { CanvasModule } from './canvas/canvas.module';
 import { AssetsModule } from './assets/assets.module';
+import { Codex2ApiModule } from './codex2api/codex2api.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AssetsModule } from './assets/assets.module';
     ComfyuiModule,
     CanvasModule,
     AssetsModule,
+    Codex2ApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

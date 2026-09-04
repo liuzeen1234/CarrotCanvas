@@ -11,6 +11,8 @@ import { Node } from '@xyflow/react';
 /** 节点类型标识（与 editor nodeTypes key 对应） */
 export const NODE_TYPE_TXT2IMG = 'txt2img';
 export const NODE_TYPE_RESULT = 'result';
+export const NODE_TYPE_CODEX = 'codex-capability';
+export type CodexCapability = 'text' | 'image' | 'edit' | 'analyze';
 
 /** 句柄标识：image 数据流（一期唯一连线类型，§4.4），用于连线校验 */
 export const HANDLE_IMAGE_SOURCE = 'image-source';
@@ -46,12 +48,25 @@ export interface ResultNodeData {
   [key: string]: unknown;
 }
 
+export interface CodexCapabilityNodeData {
+  capability: CodexCapability;
+  prompt: string;
+  model: string;
+  size?: string;
+  responseFormat?: 'url' | 'b64_json';
+  stream?: boolean;
+  lastText?: string;
+  lastAssets?: { assetId: string; url: string; kind: string; filename?: string }[];
+  [key: string]: unknown;
+}
+
 export type CanvasNodeData = Txt2ImgNodeData | ResultNodeData;
 
 /** 节点类型 → 显示名 */
 export const NODE_TYPE_LABEL: Record<string, string> = {
   [NODE_TYPE_TXT2IMG]: '文生图',
   [NODE_TYPE_RESULT]: '结果',
+  [NODE_TYPE_CODEX]: 'AI 能力',
 };
 
 let nodeSeq = 0;
@@ -89,6 +104,28 @@ export function createResultNode(position: { x: number; y: number }, kind: 'imag
     type: NODE_TYPE_RESULT,
     position,
     data: { kind },
+    style: { width: NODE_W },
+  };
+}
+
+
+const CAPABILITY_DEFAULTS: Record<CodexCapability, string> = {
+  text: '请用三点总结一个优秀创意方案应包含的核心内容。',
+  image: '一只戴着护目镜的橙色兔子，在未来感画室里操作发光的绘图台，电影级光影',
+  edit: '保留主体构图，把场景改成温暖的日落海边，写实摄影风格',
+  analyze: '请详细描述图片中的内容。',
+};
+
+export function createCodexCapabilityNode(
+  position: { x: number; y: number },
+  capability: CodexCapability,
+): Node<CodexCapabilityNodeData, typeof NODE_TYPE_CODEX> {
+  return {
+    id: newNodeId(NODE_TYPE_CODEX), type: NODE_TYPE_CODEX, position,
+    data: {
+      capability, prompt: CAPABILITY_DEFAULTS[capability], model: 'codex',
+      size: '1024x1024', responseFormat: 'url', stream: true,
+    },
     style: { width: NODE_W },
   };
 }

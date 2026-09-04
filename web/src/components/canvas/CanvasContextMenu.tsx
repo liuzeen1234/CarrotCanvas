@@ -12,6 +12,7 @@ import { Menu, Spin, type MenuProps } from 'antd';
 import { request } from 'umi';
 import { ComfyUIAPI } from '@/components/comfyui/types';
 import { WORKFLOW_CATEGORIES } from './workflowCategories';
+import type { CodexCapability } from './nodes/types';
 
 export interface CanvasContextMenuState {
   /** 屏幕坐标（右键处），既用于菜单定位也用于换算节点落点 */
@@ -27,12 +28,13 @@ export interface CanvasContextMenuProps {
   onClose: () => void;
   /** 选中某分类下的具体工作流 */
   onPick: (workflow: ComfyUIAPI) => void;
+  onPickCapability: (capability: CodexCapability) => void;
 }
 
 /** 当前画布已支持的工作流分类。 */
 const ENABLED_CATEGORIES = new Set(['txt2img', 'img2img', 'txt2vid', 'img2vid']);
 
-export default function CanvasContextMenu({ state, onClose, onPick }: CanvasContextMenuProps) {
+export default function CanvasContextMenu({ state, onClose, onPick, onPickCapability }: CanvasContextMenuProps) {
   const [workflows, setWorkflows] = useState<ComfyUIAPI[]>([]);
   const [loading, setLoading] = useState(false);
   const loadedRef = useRef(false);
@@ -95,7 +97,15 @@ export default function CanvasContextMenu({ state, onClose, onPick }: CanvasCont
   }, [workflows]);
 
   const items: MenuProps['items'] = useMemo(() => {
-    return WORKFLOW_CATEGORIES.map((cat) => {
+    const capabilityItems: MenuProps['items'] = state?.connection ? [] : [{
+      key: 'codex', label: 'AI 能力（Codex2API）', children: [
+        { key: 'cap:text', label: '文生文' },
+        { key: 'cap:image', label: '文生图' },
+        { key: 'cap:edit', label: '图生图' },
+        { key: 'cap:analyze', label: '图像理解' },
+      ],
+    }, { type: 'divider' }];
+    return [...capabilityItems, ...WORKFLOW_CATEGORIES.map((cat) => {
       const list = (byCategory.get(cat.value) ?? []).filter((workflow) =>
         !state?.connection || workflow.inputConfig?.fields?.some((field) => field.kind === state.connection!.kind),
       );
@@ -114,10 +124,15 @@ export default function CanvasContextMenu({ state, onClose, onPick }: CanvasCont
         label: cat.label,
         children: list.map((w) => ({ key: `wf:${w.id}`, label: w.name })),
       };
-    });
+    })];
   }, [byCategory, state?.connection]);
 
   const handleClick: MenuProps['onClick'] = ({ key }) => {
+    if (key.startsWith('cap:')) {
+      onPickCapability(key.slice(4) as CodexCapability);
+      onClose();
+      return;
+    }
     if (!key.startsWith('wf:')) return;
     const id = key.slice(3);
     const wf = workflows.find((w) => w.id === id);

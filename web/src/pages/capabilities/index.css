@@ -1,0 +1,107 @@
+.codex-workbench {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px;
+  overflow-x: clip;
+}
+
+.codex-workbench__stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.codex-workbench__header {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.codex-workbench__header > div:first-child,
+.codex-workbench__tabs,
+.codex-workbench__tabs .ant-tabs-content-holder,
+.codex-workbench__tabs .ant-tabs-content,
+.codex-workbench__tabs .ant-tabs-tabpane,
+.codex-workbench__tool-card,
+.codex-workbench__tool-card .ant-card-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.codex-workbench__result-card .ant-typography,
+.codex-workbench__tool-card .ant-alert,
+.codex-workbench__tool-card .ant-alert-description {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  /* ProLayout 默认在手机宽度仍保留 40px 横向内边距，会显著压缩工作区。 */
+  /* 不依赖 :has，兼容较旧的手机浏览器；其余页面在窄屏下也同步获得合理留白。 */
+  .ant-pro-layout-content {
+    padding-inline: 12px !important;
+  }
+
+  .codex-workbench {
+    padding: 8px 0 20px;
+    overflow-x: hidden;
+  }
+
+  .codex-workbench__stack { gap: 16px; }
+
+  .codex-workbench__header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .codex-workbench__header .ant-typography { margin-bottom: 0; }
+
+  .codex-workbench__actions {
+    width: 100%;
+    row-gap: 8px !important;
+  }
+
+  .codex-workbench__actions .ant-space-item:not(:first-child) {
+    flex: 1 1 120px;
+  }
+
+  .codex-workbench__actions .ant-btn { width: 100%; }
+
+  .codex-workbench__tabs .ant-tabs-nav {
+    max-width: 100%;
+    margin-bottom: 12px;
+  }
+
+  .codex-workbench__tabs .ant-tabs-nav-wrap {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .codex-workbench__tabs .ant-tabs-nav-wrap::-webkit-scrollbar { display: none; }
+  .codex-workbench__tabs .ant-tabs-nav-list { width: max-content; min-width: 100%; }
+  .codex-workbench__tabs .ant-tabs-tab { flex: 1 0 auto; justify-content: center; padding: 8px 10px; }
+  .codex-workbench__tabs .ant-tabs-tab .anticon { margin-right: 4px; }
+
+  .codex-workbench__tool-card > .ant-card-body { padding: 16px; }
+  .codex-workbench__tool-card .ant-row { max-width: calc(100% + 16px); }
+  .codex-workbench__tool-card .ant-select,
+  .codex-workbench__tool-card .ant-input-number,
+  .codex-workbench__tool-card textarea { max-width: 100%; }
+
+  .codex-workbench .ant-upload-wrapper,
+  .codex-workbench .ant-upload-list { max-width: 100%; }
+
+  .codex-workbench .ant-upload-list-picture-card { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .codex-workbench__tabs .ant-tabs-tab { padding-inline: 9px; }
+  .codex-workbench__tabs .ant-tabs-tab .anticon { display: none; }
+}
