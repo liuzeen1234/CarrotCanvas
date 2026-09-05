@@ -30,6 +30,17 @@ interface CanvasListItem {
   updatedAt: string;
   nodeCount: number;
   assetSize: number;
+  revision: number;
+}
+
+async function withCanvasControl<T>(item: CanvasListItem, operation: (proof: Record<string, unknown>) => Promise<T>): Promise<T> {
+  const holderId = `human-list-${crypto.randomUUID()}`;
+  const lease = await request<{ leaseToken: string; epoch: number }>(`/api/canvas/${item.id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId } });
+  try {
+    return await operation({ leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: item.revision, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: holderId });
+  } finally {
+    try { await request(`/api/canvas/${item.id}/control/release`, { method: 'POST', data: { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch } }); } catch { /* TTL 会兜底释放 */ }
+  }
 }
 
 /** 字节数格式化：B / KB / MB */
@@ -107,10 +118,7 @@ export default function CanvasListPage() {
     }
     setRenaming(true);
     try {
-      await request(`/api/canvas/${renameTarget.id}`, {
-        method: 'PATCH',
-        data: { name },
-      });
+      await withCanvasControl(renameTarget, (proof) => request(`/api/canvas/${renameTarget.id}`, { method: 'PATCH', data: { name, ...proof } }));
       message.success('已重命名');
       setRenameTarget(null);
       load();
@@ -124,7 +132,7 @@ export default function CanvasListPage() {
   /** 删除画布（级联清理资产） */
   const handleDelete = async (item: CanvasListItem) => {
     try {
-      await request(`/api/canvas/${item.id}`, { method: 'DELETE' });
+      await withCanvasControl(item, (proof) => request(`/api/canvas/${item.id}`, { method: 'DELETE', data: proof }));
       message.success(`已删除「${item.name}」`);
       load();
     } catch (e: any) {

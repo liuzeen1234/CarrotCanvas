@@ -1,13 +1,27 @@
+body.canvas-editor-page {
+  overflow: hidden;
+}
+
+body.canvas-editor-page .ant-pro-layout-content {
+  height: 100dvh;
+  min-height: 0;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
 .canvas-floating-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  z-index: 10;
   max-width: calc(100% - 32px);
   margin: 16px;
 }
 
 .canvas-floating-header .ant-btn,
+.canvas-save-panel,
 .canvas-floating-title,
+.canvas-control-chip,
 .canvas-minimap-toggle .ant-btn {
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
@@ -33,14 +47,107 @@
   white-space: nowrap;
 }
 
-.canvas-floating-title small {
+.canvas-save-panel {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
-  color: #8c8c8c;
-  font-weight: 400;
+  gap: 4px;
+  height: 32px;
+  padding: 0 4px 0 10px;
+  border: 1px solid rgba(5, 5, 5, 0.06);
+  border-radius: 6px;
 }
 
-.canvas-floating-title small.is-error {
+.canvas-save-status {
+  flex-shrink: 0;
+  color: #8c8c8c;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.canvas-save-panel.is-saving .canvas-save-status {
+  color: #1677ff;
+}
+
+.canvas-save-panel.is-saved .canvas-save-status {
+  color: #52c41a;
+}
+
+.canvas-save-panel.is-error .canvas-save-status {
   color: #ff4d4f;
+}
+
+.canvas-save-panel.is-readonly .canvas-save-status {
+  color: #d48806;
+}
+
+.canvas-save-panel .ant-btn {
+  box-shadow: none;
+  background: transparent;
+}
+
+.canvas-control-chip {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.canvas-control-chip.is-editable {
+  border-color: #95de64;
+  background: rgba(246, 255, 237, 0.94);
+  color: #389e0d;
+}
+
+.canvas-control-chip.is-readonly {
+  border-color: #ffd591;
+  background: rgba(255, 247, 230, 0.94);
+  color: #d46b08;
+}
+
+.canvas-control-chip.is-handoff {
+  border-color: #91caff;
+  background: rgba(230, 244, 255, 0.94);
+  color: #1677ff;
+}
+
+.canvas-control-detail {
+  display: grid;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 48px));
+  font-size: 13px;
+}
+
+.canvas-control-holder-id,
+.canvas-control-note {
+  overflow-wrap: anywhere;
+}
+
+.canvas-control-note {
+  color: #8c8c8c;
+}
+
+.canvas-floating-title:not(.is-editing) {
+  cursor: text;
+}
+
+.canvas-floating-title.is-editing {
+  padding: 0 4px;
+}
+
+.canvas-title-input {
+  min-width: 120px;
+}
+
+.canvas-title-input.ant-input {
+  height: 26px;
+  padding: 1px 7px;
+  font-weight: 600;
 }
 
 .canvas-minimap-panel {
@@ -65,6 +172,16 @@
   margin: 16px;
 }
 
+.canvas-edge-actions {
+  margin: 16px;
+}
+
+.canvas-edge-actions .ant-btn {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+}
+
 @media (max-width: 767px) {
   .canvas-floating-header {
     margin: max(10px, env(safe-area-inset-top)) 10px 10px max(10px, env(safe-area-inset-left));
@@ -81,12 +198,22 @@
   }
 
   .canvas-minimap-panel,
-  .canvas-minimap-toggle {
+  .canvas-minimap-toggle,
+  .canvas-edge-actions {
     margin-right: max(10px, env(safe-area-inset-right));
+  }
+
+  .canvas-minimap-panel,
+  .canvas-minimap-toggle {
     margin-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .canvas-minimap-toggle .ant-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .canvas-edge-actions .ant-btn {
     width: 44px;
     height: 44px;
   }

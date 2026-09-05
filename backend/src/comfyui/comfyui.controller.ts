@@ -45,6 +45,9 @@ interface RunBody {
   canvasId?: string;
   /** 画布内节点 id（覆盖清理键，需与 canvasId 同传） */
   nodeId?: string;
+  leaseToken?: string;
+  leaseEpoch?: number;
+  expectedRevision?: number;
 }
 
 @Controller('comfyui')
@@ -168,7 +171,7 @@ export class ComfyUIController {
 
     // 画布节点发起：先确认画布存在，避免把产物捕获到不存在的分区
     if (body.canvasId) {
-      await this.canvas.findOne(body.canvasId);
+      await this.canvas.assertWriteAccess(body.canvasId, body as any);
     }
 
     let apiJson: Record<string, unknown>;

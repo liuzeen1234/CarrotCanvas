@@ -105,10 +105,11 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 画布多实例 CRUD（Canvas C1）：`/api/canvas` 建/列/取/改/删，列表只回元信息 + 节点数 + 资产大小；新建画布自动创建 `data/assets/<canvasId>/` 分区；删画布级联清理其资产分区与 asset 行（已端到端验证）
 - ✅ 平台资产库（Canvas C1）：`assets` 表（12 列与设计一致）+ `data/assets/<canvasId>` 分区读写（`saveGenerated`/`saveUpload` 服务层）+ `/api/assets/:id` 读取、`/api/assets/:id/download` 下载
 - ✅ 画布产物捕获（Canvas C2）：`POST /api/comfyui/runs` 扩展 `canvasId/nodeId`（画布生成节点发起），运行成功后经 `ComfyUIAssetCaptureService` 把输出字节从 ComfyUI `/view` 拉取落盘进该画布 `generated/` 分区并回填 `assetId/assetUrl` 到 run.outputs；同节点重跑按 §4.6.4 覆盖清理旧产物（`deleteGeneratedByNode` 支持 `keepIds` 保留本次新捕获，先建新后清旧）；不带 canvasId 的工具箱运行维持代理不落盘（已端到端验证：出图落盘 → 同节点重跑旧资产 404 只留新一组 → 删画布级联清目录）
-- ✅ 单元测试：Jest + ts-jest + supertest 测试栈，`pnpm test` 运行，**5 个 suite / 35 用例全绿**（canvas / assets 单测 + controller 接口测试 + `comfyui-capture` 捕获服务单测）；`AssetsService` 支持 `CARROT_ASSETS_ROOT` 环境变量覆盖资产根目录（测试隔离用，默认仍为 `data/assets`）
+- ✅ 单元与集成测试：Jest + ts-jest + supertest 测试栈，**6 个 suite / 43 用例全绿**；除 canvas/assets/controller/comfyui-capture 外，SQLite 集成测试覆盖单写者、正常交接、新 epoch、旧 lease 拒绝、TTL/进程实例失效、revision 冲突、幂等及事务回滚。`AssetsService` 支持 `CARROT_ASSETS_ROOT` 环境变量覆盖资产根目录（测试隔离用，默认仍为 `data/assets`）
 - ✅ 画布列表与编辑器路由（Canvas C3）：`.umirc.ts` 路由 `/canvas → ./canvas/index`（画布工作台列表）、`/canvas/:id → ./canvas/editor`（编辑器）；列表页卡片网格（新建/打开/重命名/删除，删除二次确认，展示节点数/资产大小/更新时间）；编辑器加载画布 graph + React Flow 渲染节点/连线/视口 + 顶栏；旧 `pages/canvas.tsx` 骨架页已删除（已端到端手测：建→开→改名→删全通）
 - ✅ 画布共享运行组件（Canvas C4）：抽取共享运行逻辑到 `web/src/components/comfyui/`（`types.ts` + `useComfyRun` 钩子 + `ComfySchemaForm` + `ComfyRunModal`），设置页运行面板改走共享件（schema 按 workflowId 缓存），行为不回归
 - ✅ Canvas 阶段二一期 C1–C7 已完成并实机验收：多画布/资产库、产物捕获、列表与编辑器、共享运行组件、文生图/结果节点、节点内运行、graph/视口防抖保存与离线历史结果恢复均已闭环。方案与验收记录见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)。
+- ✅ AI Native Canvas Phase 0A 已完成并通过真实双向交接验收：Action Registry、Agent View、revision + lease/epoch、幂等受控 operations、人工/AI 单写者、只读限制、保存排空交接、旧 lease 拒绝与 TTL 恢复均已落地；人工打开画布默认只读观察，空闲时主动“取得编辑权”，有控制者时才“请求交接”。完整证据见 [AI-NATIVE-CANVAS.md](./AI-NATIVE-CANVAS.md)。
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
 
@@ -159,10 +160,11 @@ pnpm start     # 生产运行后端（需先 build）
 
 - [x] ComfyUI 运行执行（独立菜单/卡片式 + 提交与进度）——核心已落地，入参表单/文件占位符见步骤④⑤（`docs/COMFYUI-INTEGRATION.md`）
 - [x] ComfyUI 客户端（HTTP + WebSocket 任务监听）
-- [ ] SQLite 数据表补全：generation_runs / assets / canvas_docs（运行状态当前为内存态，未持久化）
-- [ ] 画布自定义节点：提示词、ComfyUI 生成、结果预览（从已导入工作流渲染节点）
+- [ ] SQLite 数据表继续补全：generation_runs（assets / canvas_docs 已落地；运行状态当前仍为内存态）
+- [x] 画布自定义节点：提示词、Codex/ComfyUI 生成、结果预览与类型化连线
 - [x] 入参动态表单（/object_info 拉取 + schema 分析，步骤④⑤）
 - [ ] 生成任务历史持久化（generation_runs 表）
+- [ ] AI Native Canvas Phase 0B：节点/连线语义 operations、完整图校验、Operation Log、Checkpoint 与 inverse undo
 - [x] ComfyUI 配置界面（服务地址）
 - [ ] 前端产物由 NestJS 静态托管（单端口）
 - [ ] 单文件 exe 打包（bun build --compile / pkg）

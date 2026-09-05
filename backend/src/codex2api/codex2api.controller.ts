@@ -3,10 +3,11 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Codex2ApiService, UploadFile } from './codex2api.service';
+import { CanvasService } from '../canvas/canvas.service';
 
 @Controller('codex2api')
 export class Codex2ApiController {
-  constructor(private readonly service: Codex2ApiService) {}
+  constructor(private readonly service: Codex2ApiService, private readonly canvas: CanvasService) {}
 
   @Get('config')
   getConfig() { return this.service.getPublicConfig(); }
@@ -83,7 +84,8 @@ export class Codex2ApiController {
 
   @Post('images/generations')
   async generate(@Body() body: any) {
-    const { canvasId, nodeId, ...upstreamBody } = body || {};
+    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, ...upstreamBody } = body || {};
+    if (canvasId) await this.canvas.assertWriteAccess(canvasId, { leaseToken, leaseEpoch, expectedRevision });
     const payload = await this.service.forwardJson('/v1/images/generations', upstreamBody, 600_000);
     return this.service.captureImages(payload, canvasId, nodeId);
   }
@@ -91,7 +93,8 @@ export class Codex2ApiController {
   @Post('images/edits')
   @UseInterceptors(FilesInterceptor('image', 10, { limits: { fileSize: 15 * 1024 * 1024 } }))
   async edit(@UploadedFiles() files: UploadFile[], @Body() body: Record<string, unknown>) {
-    const { canvasId, nodeId, ...fields } = body || {};
+    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, ...fields } = body || {};
+    if (canvasId) await this.canvas.assertWriteAccess(String(canvasId), { leaseToken: String(leaseToken || ''), leaseEpoch: Number(leaseEpoch), expectedRevision: Number(expectedRevision) });
     const payload = await this.service.forwardMultipart('/v1/images/edits', files || [], fields);
     return this.service.captureImages(payload, String(canvasId || ''), String(nodeId || ''));
   }

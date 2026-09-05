@@ -7,6 +7,7 @@
 | 文档 | 内容 |
 |---|---|
 | [PROJECT-SUMMARY.md](./PROJECT-SUMMARY.md) | 项目现状总结（技术栈、结构、运行状态、已解决问题） |
+| [AI-NATIVE-CANVAS.md](./AI-NATIVE-CANVAS.md) | AI 原生画布控制、人机交接、生成历史、自主视频生产与 Agent Skill 的设计决策和实施进度 |
 | [COMFYUI-INTEGRATION.md](./COMFYUI-INTEGRATION.md) | ComfyUI 集成·运行功能设计（阶段一：独立菜单/卡片式/JSONText+文件占位符/object_info 自动表单） |
 | [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md) | Canvas 集成·画布节点调用工作流设计（阶段二：多画布/三类节点，一期仅文生图，C1 后端数据层 + C2 产物捕获 + C3 列表/编辑器路由 + C4 共享运行组件已完成） |
 | [CODEX2API-INTEGRATION.md](./CODEX2API-INTEGRATION.md) | Codex2API 通用能力工具箱、统一代理与画布节点集成 |

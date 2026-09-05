@@ -13,6 +13,7 @@ describe('CanvasController (e2e)', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    agentView: jest.fn(), controlStatus: jest.fn(), acquire: jest.fn(), renew: jest.fn(), release: jest.fn(), requestHandoff: jest.fn(), forceTakeover: jest.fn(), applyOperations: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -76,7 +77,7 @@ describe('CanvasController (e2e)', () => {
 
   it('DELETE /api/canvas/:id → 204', async () => {
     service.remove.mockResolvedValue(undefined);
-    await request(app.getHttpServer()).delete('/api/canvas/c1').expect(204);
-    expect(service.remove).toHaveBeenCalledWith('c1');
+    await request(app.getHttpServer()).delete('/api/canvas/c1').send({ leaseToken: 'x', leaseEpoch: 1 }).expect(204);
+    expect(service.remove).toHaveBeenCalledWith('c1', { leaseToken: 'x', leaseEpoch: 1 });
   });
 });

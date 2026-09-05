@@ -8,6 +8,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { AssetsController } from './assets.controller';
 import { AssetsService } from './assets.service';
+import { CanvasService } from '../canvas/canvas.service';
 
 describe('AssetsController (e2e)', () => {
   let app: INestApplication;
@@ -27,7 +28,7 @@ describe('AssetsController (e2e)', () => {
     writeFileSync(unicodeFilePath, Buffer.from('unicode-png'));
     const moduleRef = await Test.createTestingModule({
       controllers: [AssetsController],
-      providers: [{ provide: AssetsService, useValue: service }],
+      providers: [{ provide: AssetsService, useValue: service }, { provide: CanvasService, useValue: { assertWriteAccess: jest.fn() } }],
     }).compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api');
@@ -65,6 +66,10 @@ describe('AssetsController (e2e)', () => {
     const disposition = String(res.headers['content-disposition'] || '');
     expect(disposition).toContain('attachment');
     expect(disposition).toContain('hello.png');
+    expect(res.headers['content-length']).toBe('14');
+    expect(res.headers['accept-ranges']).toBe('bytes');
+    expect(res.headers['cache-control']).toBe('private, no-transform');
+    expect(res.body).toEqual(Buffer.from('fake-png-bytes'));
   });
 
   it('视频 Range 请求 → 206 分段响应，供浏览器播放器 seek/解码', async () => {

@@ -29,7 +29,7 @@ export interface UseComfyRunArgs {
   /** 当前绑定的工作流；为 null 时保持空闲。提交以最新传入值为准 */
   workflow: ComfyUIAPI | null;
   /** 画布运行上下文（可选）：画布节点发起时携带，运行成功触发资产捕获；工具箱运行不传 */
-  canvas?: { canvasId?: string; nodeId?: string };
+  canvas?: { canvasId?: string; nodeId?: string; leaseToken?: string; leaseEpoch?: number; expectedRevision?: number };
   /** schema 初始化完成后回调（画布节点用于恢复持久化表单值） */
   onSchemaReady?: (schema: SchemaAnalysis, setValues: (v: Record<string, unknown>) => void) => void;
   /** 提交成功（拿到 promptId，可能仍在排队/运行）后回调 */
@@ -248,6 +248,9 @@ export function useComfyRun(args: UseComfyRunArgs) {
           apiJson,
           canvasId: canvasRef.current?.canvasId,
           nodeId: canvasRef.current?.nodeId,
+          leaseToken: canvasRef.current?.leaseToken,
+          leaseEpoch: canvasRef.current?.leaseEpoch,
+          expectedRevision: canvasRef.current?.expectedRevision,
         },
       });
       setRunState(data.run);

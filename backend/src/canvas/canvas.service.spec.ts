@@ -6,6 +6,8 @@ describe('CanvasService', () => {
   let service: CanvasService;
   let repo: any;
   let assets: any;
+  let leases: any;
+  let receipts: any;
 
   const baseDoc = (over: Partial<CanvasDoc> = {}): CanvasDoc =>
     ({
@@ -14,6 +16,13 @@ describe('CanvasService', () => {
       graph: emptyCanvasGraph(),
       createdAt: new Date(),
       updatedAt: new Date(),
+      revision: 0,
+      schemaVersion: 1,
+      brief: null,
+      activeCheckpointId: null,
+      lastHandoffId: null,
+      updatedByType: null,
+      updatedById: null,
       ...over,
     } as CanvasDoc);
 
@@ -23,14 +32,25 @@ describe('CanvasService', () => {
       findOne: jest.fn(),
       create: jest.fn((x: any) => ({ id: 'uuid-1', ...x })),
       save: jest.fn(async (x: any) => x),
+      update: jest.fn(async (_where: any, patch: any) => { Object.assign(repo.currentDoc, patch); return { affected: 1 }; }),
       remove: jest.fn(),
+      currentDoc: null,
     };
     assets = {
       ensureCanvasPartition: jest.fn(async () => undefined),
       deleteCanvas: jest.fn(async () => undefined),
       getCanvasAssetSizes: jest.fn(async () => ({})),
     };
-    service = new CanvasService(repo as any, assets as any);
+    leases = { findOne: jest.fn(async () => ({ canvasId: 'c1', epoch: 1, holderType: 'human', holderId: 'h1', tokenHash: 'ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb', status: 'active', expiresAt: new Date(Date.now() + 60000), serverInstanceId: '' })), create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) };
+    receipts = { findOne: jest.fn(async () => null), create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) };
+    repo.manager = {
+      transaction: jest.fn(async (work: any) => work({
+        getRepository: (entity: any) => entity === CanvasDoc
+          ? { findOne: repo.findOne, findOneOrFail: jest.fn(async () => repo.currentDoc), update: repo.update }
+          : receipts,
+      })),
+    };
+    service = new CanvasService(repo as any, leases as any, receipts as any, assets as any);
   });
 
   describe('create', () => {
@@ -66,6 +86,7 @@ describe('CanvasService', () => {
   describe('findOne', () => {
     it('存在返回完整画布', async () => {
       const d = baseDoc();
+      repo.currentDoc = d;
       repo.findOne.mockResolvedValue(d);
       await expect(service.findOne('c1')).resolves.toEqual(d);
     });
@@ -79,6 +100,7 @@ describe('CanvasService', () => {
   describe('update', () => {
     it('改名并保存 graph', async () => {
       const d = baseDoc();
+      repo.currentDoc = d;
       repo.findOne.mockResolvedValue(d);
       const graph = {
         version: 1,
@@ -86,16 +108,16 @@ describe('CanvasService', () => {
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
       };
-      await service.update('c1', { name: ' 新名字 ', graph });
+      await service.update('c1', { name: ' 新名字 ', graph, leaseToken: 'a', leaseEpoch: 1, expectedRevision: 0, idempotencyKey: 'k1' });
       expect(d.name).toBe('新名字');
       expect(d.graph).toBe(graph);
-      expect(repo.save).toHaveBeenCalledWith(d);
+      expect(repo.update).toHaveBeenCalledWith({ id: 'c1', revision: 0 }, expect.objectContaining({ name: '新名字', graph }));
     });
 
     it('空名抛 BadRequest', async () => {
       const d = baseDoc();
       repo.findOne.mockResolvedValue(d);
-      await expect(service.update('c1', { name: '   ' })).rejects.toThrow(
+      await expect(service.update('c1', { name: '   ', leaseToken: 'a', leaseEpoch: 1, expectedRevision: 0, idempotencyKey: 'k2' })).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -105,7 +127,7 @@ describe('CanvasService', () => {
       repo.findOne.mockResolvedValue(d);
       await expect(
         service.update('c1', {
-          graph: { version: 'x', nodes: [], edges: [] },
+          graph: { version: 'x', nodes: [], edges: [] }, leaseToken: 'a', leaseEpoch: 1, expectedRevision: 0, idempotencyKey: 'k3'
         } as any),
       ).rejects.toThrow(BadRequestException);
     });
@@ -115,14 +137,14 @@ describe('CanvasService', () => {
     it('级联删除资产并删画布', async () => {
       const d = baseDoc();
       repo.findOne.mockResolvedValue(d);
-      await service.remove('c1');
+      await service.remove('c1', { leaseToken: 'a', leaseEpoch: 1, expectedRevision: 0 });
       expect(assets.deleteCanvas).toHaveBeenCalledWith('c1');
       expect(repo.remove).toHaveBeenCalledWith(d);
     });
 
     it('不存在抛 NotFound', async () => {
       repo.findOne.mockResolvedValue(null);
-      await expect(service.remove('nope')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('nope', { leaseToken: 'a', leaseEpoch: 1, expectedRevision: 0 })).rejects.toThrow(NotFoundException);
     });
   });
 });

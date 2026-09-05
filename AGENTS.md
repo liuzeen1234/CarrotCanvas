@@ -4,6 +4,7 @@
 
 ## 关键入口
 
+- **AI 原生画布控制、人机交接、生成历史与自主视频生产的当前设计、已拍板决策及阶段进度**：`docs/AI-NATIVE-CANVAS.md`。任何涉及 Agent API、画布 revision/lease、人工与 AI 交接、操作日志、Checkpoint、持久化 Run、候选资产、选片、Shot Plan 或 AI 操作 Skill 的需求，必须先完整阅读该文档；实现后同步更新其中的阶段状态与变更记录。
 - **ComfyUI 运行功能的当前设计、已拍板决策与落地进度**：`docs/COMFYUI-INTEGRATION.md`。任何涉及 ComfyUI API 运行/入参/提交的需求，先读该文档再动手。
 - 项目现状快照（技术栈、运行状态、已知环境问题）：`docs/PROJECT-SUMMARY.md`。
 - 文档索引与命名约定：`docs/README.md`。

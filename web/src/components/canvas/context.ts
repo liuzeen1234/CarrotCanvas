@@ -19,6 +19,9 @@ export interface CanvasUpstreamTextState {
 }
 
 export interface CanvasNodeDataApi {
+  /** 当前画布是否只读；节点内所有共享副作用必须服从此标志。 */
+  readOnly: boolean;
+  control?: { leaseToken: string; leaseEpoch: number; expectedRevision: number };
   /** 局部更新某节点 data（浅合并） */
   updateNodeData: (nodeId: string, patch: Record<string, unknown>) => void;
   /** 删除某节点（同时移除其相连边）。二次确认由节点自身 UI 负责。 */
@@ -33,6 +36,7 @@ export interface CanvasNodeDataApi {
 }
 
 export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
+  readOnly: true,
   updateNodeData: () => {},
   deleteNode: () => {},
   ensureResultNode: () => {},

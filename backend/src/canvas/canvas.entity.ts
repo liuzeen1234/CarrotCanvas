@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 /** 序列化节点图：React Flow 图 + 视口。见 docs/CANVAS-INTEGRATION.md §4.1 */
@@ -39,9 +40,100 @@ export class CanvasDoc {
   @Column({ type: 'simple-json' })
   graph: CanvasGraph;
 
+  @Column({ type: 'integer', default: 0 })
+  revision: number;
+
+  @Column({ name: 'schema_version', type: 'integer', default: 1 })
+  schemaVersion: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  brief: Record<string, unknown> | null;
+
+  @Column({ name: 'active_checkpoint_id', type: 'text', nullable: true })
+  activeCheckpointId: string | null;
+
+  @Column({ name: 'last_handoff_id', type: 'text', nullable: true })
+  lastHandoffId: string | null;
+
+  @Column({ name: 'updated_by_type', type: 'text', nullable: true })
+  updatedByType: 'human' | 'agent' | null;
+
+  @Column({ name: 'updated_by_id', type: 'text', nullable: true })
+  updatedById: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+}
+
+@Entity('canvas_control_leases')
+export class CanvasControlLease {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'canvas_id', type: 'text', unique: true })
+  canvasId: string;
+
+  @Column({ type: 'integer', default: 0 })
+  epoch: number;
+
+  @Column({ name: 'holder_type', type: 'text' })
+  holderType: 'human' | 'agent';
+
+  @Column({ name: 'holder_id', type: 'text' })
+  holderId: string;
+
+  @Column({ name: 'token_hash', type: 'text' })
+  tokenHash: string;
+
+  @Column({ type: 'text', default: 'expired' })
+  status: 'active' | 'handoff_pending' | 'expired' | 'revoked';
+
+  @Column({ name: 'handoff_requested_by_type', type: 'text', nullable: true })
+  handoffRequestedByType: 'human' | 'agent' | null;
+
+  @Column({ name: 'handoff_requested_by_id', type: 'text', nullable: true })
+  handoffRequestedById: string | null;
+
+  @Column({ name: 'last_takeover_reason', type: 'text', nullable: true })
+  lastTakeoverReason: string | null;
+
+  @Column({ name: 'acquired_at', type: 'datetime' })
+  acquiredAt: Date;
+
+  @Column({ name: 'last_heartbeat_at', type: 'datetime' })
+  lastHeartbeatAt: Date;
+
+  @Column({ name: 'expires_at', type: 'datetime' })
+  expiresAt: Date;
+
+  @Column({ name: 'server_instance_id', type: 'text' })
+  serverInstanceId: string;
+}
+
+@Entity('canvas_operation_receipts')
+@Index(['canvasId', 'idempotencyKey'], { unique: true })
+export class CanvasOperationReceipt {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'canvas_id', type: 'text' })
+  canvasId: string;
+
+  @Column({ name: 'idempotency_key', type: 'text' })
+  idempotencyKey: string;
+
+  @Column({ name: 'request_hash', type: 'text' })
+  requestHash: string;
+
+  @Column({ name: 'result_revision', type: 'integer' })
+  resultRevision: number;
+
+  @Column({ type: 'simple-json' })
+  response: Record<string, unknown>;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
 }

@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
 import { Workflow } from '../workflows/workflow.entity';
 import { Setting } from '../settings/setting.entity';
-import { CanvasDoc } from '../canvas/canvas.entity';
+import { CanvasControlLease, CanvasDoc, CanvasOperationReceipt } from '../canvas/canvas.entity';
 import { Asset } from '../assets/asset.entity';
 
 @Global()
@@ -12,7 +12,7 @@ import { Asset } from '../assets/asset.entity';
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: join(__dirname, '..', '..', 'data', 'carrot-canvas.sqlite'),
-      entities: [Workflow, Setting, CanvasDoc, Asset],
+      entities: [Workflow, Setting, CanvasDoc, CanvasControlLease, CanvasOperationReceipt, Asset],
       synchronize: true,
     }),
   ],
