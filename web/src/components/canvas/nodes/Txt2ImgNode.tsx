@@ -1,24 +1,26 @@
 /** C6 文生图节点：schema 表单、提交校验、运行/中断与平台资产回写。 */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Alert, Button, Popconfirm, Progress, Spin, Tag, message } from 'antd';
-import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { Alert, Button, Image, Popconfirm, Progress, Space, Spin, Tag, message } from 'antd';
+import { DeleteOutlined, DownloadOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { request } from 'umi';
 import { ComfyUIAPI, RunStateData, SchemaField, applyFormValues, fileKey, splitByExposure } from '@/components/comfyui/types';
 import { ComfySchemaForm } from '@/components/comfyui/ComfySchemaForm';
 import { useComfyRun } from '@/components/comfyui/useComfyRun';
 import { CanvasNodeDataContext } from '../context';
 import { Txt2ImgNodeData, resultSourceHandle, workflowInputHandle, workflowOutputKind } from './types';
+import NodeOutputHistory from '../NodeOutputHistory';
 
 const isEmpty = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 
 export default function Txt2ImgNode(props: NodeProps) {
   const data = props.data as Txt2ImgNodeData;
-  const { canvasId, control, readOnly, updateNodeData, deleteNode, ensureResultNode, setNodeRunState, getNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
+  const { canvasId, control, readOnly, updateNodeData, deleteNode, setNodeRunState, getNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
   const [workflow, setWorkflow] = useState<ComfyUIAPI | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [missingKeys, setMissingKeys] = useState<Set<string>>(new Set());
+  const [historyVersion, setHistoryVersion] = useState(0);
   const initializedRef = useRef(false);
   const nodeId = props.id;
 
@@ -28,6 +30,7 @@ export default function Txt2ImgNode(props: NodeProps) {
     if (state.status !== 'success') return;
     const assets = state.outputs.filter((o) => o.assetId && o.assetUrl).map((o) => ({ assetId: o.assetId!, url: o.assetUrl!, kind: o.kind, filename: o.filename }));
     if (assets.length) updateNodeData(nodeId, { lastAssets: assets });
+    setHistoryVersion((value) => value + 1);
   }, [nodeId, setNodeRunState, updateNodeData]);
 
   const run = useComfyRun({ workflow, canvas: { canvasId, nodeId, ...control }, onRunStarted, onRunFinished });
@@ -97,7 +100,6 @@ export default function Txt2ImgNode(props: NodeProps) {
     }
     setMissingKeys(missing);
     if (missing.size) { message.warning(`请先填写 ${missing.size} 个必填参数`); return; }
-    ensureResultNode(nodeId, workflowOutputKind(workflow.category));
     try {
       const resolvedValues = { ...run.formValues };
       for (const input of workflow.inputConfig?.fields ?? []) {
@@ -144,6 +146,7 @@ export default function Txt2ImgNode(props: NodeProps) {
   }, [upstreamTextFor]);
 
   const visibleRunState = run.runState ?? getNodeRunState(nodeId);
+  const outputKind = workflowOutputKind(workflow?.category);
   const visibleRunning = visibleRunState?.status === 'pending' || visibleRunState?.status === 'running';
   const progress = visibleRunState?.progress;
   const percent = progress?.max ? Math.round((progress.value / progress.max) * 100) : undefined;
@@ -173,7 +176,9 @@ export default function Txt2ImgNode(props: NodeProps) {
         <Tag color={visibleRunState.status === 'success' ? 'success' : visibleRunState.status === 'error' ? 'error' : visibleRunState.status === 'interrupted' ? 'warning' : 'processing'}>{statusLabel[visibleRunState.status] || visibleRunState.status}</Tag>
         {visibleRunState.error ? <div style={{ color: '#ff4d4f', marginTop: 4, wordBreak: 'break-word' }}>{visibleRunState.error}</div> : null}
       </div>}
+      {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset) => <div key={asset.assetId}>{asset.kind === 'video' ? <video src={asset.url} controls playsInline preload="metadata" style={{ width: '100%', display: 'block' }} /> : <Image src={asset.url} width="100%" />}<Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
+      <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={historyVersion} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} />
     </div>
-    <Handle type="source" position={Position.Right} id={resultSourceHandle(workflowOutputKind(workflow?.category))} className={`canvas-handle--${workflowOutputKind(workflow?.category)}`} title={`${workflowOutputKind(workflow?.category) === 'video' ? '视频' : '图片'}输出`} />
+    <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={`${outputKind === 'video' ? '视频' : '图片'}输出`} />
   </div>;
 }

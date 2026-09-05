@@ -251,6 +251,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
           leaseToken: canvasRef.current?.leaseToken,
           leaseEpoch: canvasRef.current?.leaseEpoch,
           expectedRevision: canvasRef.current?.expectedRevision,
+          idempotencyKey: crypto.randomUUID(),
         },
       });
       setRunState(data.run);

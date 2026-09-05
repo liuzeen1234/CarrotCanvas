@@ -166,6 +166,7 @@ function validateNode(node: CanvasNode) {
   if (node.type === 'codex-capability' && (!['text', 'image', 'edit', 'analyze'].includes(String(node.data.capability)) || typeof node.data.prompt !== 'string' || typeof node.data.model !== 'string')) bad('INVALID_NODE_DATA', 'AI 能力节点字段不合法');
 }
 function handleKind(handle: string, source: boolean): string | null {
+  if (source && (handle === 'text-positive-source' || handle === 'text-negative-source')) return 'text';
   const suffix = source ? '-source' : '-target';
   if (handle.endsWith(suffix)) return handle.slice(0, -suffix.length);
   if (!source && handle.startsWith('input:')) return handle.startsWith('input:text:') ? 'text' : handle.startsWith('input:video:') ? 'video' : handle.startsWith('input:audio:') ? 'audio' : 'image';

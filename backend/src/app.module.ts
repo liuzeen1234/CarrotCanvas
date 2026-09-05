@@ -8,6 +8,7 @@ import { ComfyuiModule } from './comfyui/comfyui.module';
 import { CanvasModule } from './canvas/canvas.module';
 import { AssetsModule } from './assets/assets.module';
 import { Codex2ApiModule } from './codex2api/codex2api.module';
+import { RunsModule } from './runs/runs.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { Codex2ApiModule } from './codex2api/codex2api.module';
     CanvasModule,
     AssetsModule,
     Codex2ApiModule,
+    RunsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

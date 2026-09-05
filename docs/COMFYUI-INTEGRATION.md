@@ -121,10 +121,12 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 - [x] ④ 后端：schema 分析接口（入参 API JSON + `/object_info` → 返回表单描述 `[{param, type, default, constraints, control}]`）——已落地（`ComfyUISchemaService.analyze`：跳过连接输入 / schema 未定义参数，类型→控件映射 INT/FLOAT→input_number、STRING multiline→textarea、COMBO→select、BOOLEAN→switch、IMAGE→upload；实测 minimaxh3v1=19 项可编辑、Z-Image 三视图=44 项含子图 78:xx 分组）
 - [x] ⑤ 前端：动态表单渲染 + 值写回 JSON + JSONText 模式切换——已落地（`ComfyUIAPIManager.tsx` 运行面板：自动表单按节点分组渲染，值级写回 apiJson 后再提交 /runs；Segmented 自动表单/JSON 双向切换；实测修改 filename_prefix 后提交，ComfyUI 输出文件名生效）
 - [x] ⑥ 后端：文件上传（写 input 目录）+ 模板渲染（占位符值级替换）——已落地（POST /api/comfyui/upload/image 收 base64 → 转发 ComfyUI /upload/image 写 input 目录；前端 LoadImage 控件 Select 选已有图 + Upload 上传新图；实测 465KB 图片上传被 ComfyUI /object_info 识别；main.ts body 限制 15mb）
-- [x] ⑦ 提交 `/prompt` + WebSocket 进度监听 + 结果展示——已落地（`ComfyUIRunnerService`：提交 /prompt + WS 监控 + 输出收集 + 缩略图写回 workflows.thumbnail_path + 前端运行面板）；`generation_runs` 表持久化待做
+- [x] ⑦ 提交 `/prompt` + WebSocket 进度监听 + 结果展示——已落地（`ComfyUIRunnerService`：提交 /prompt + WS 监控 + 输出收集 + 前端运行面板）；2026-09-05 已接入统一持久化 `generation_runs` 与候选历史，画布节点重跑改为追加候选，不再覆盖清理旧产物
 
 ## 6. 变更日志
 
+- 2026-09-05（AI Native 1A）：ComfyUI 每次提交会先创建平台 GenerationRun，保存最终 API JSON、工作流版本与画布/节点/资产 lineage；成功产物追加进候选组。服务重启后无法确认的 queued/running 任务标记 `needs_attention`；由于底层 interrupt 为全局语义，并发运行时明确拒绝伪装成精确取消。
+- 2026-09-05（实机验收）：Z-Image 文生图在同一画布节点连续运行两次均成功；第二次命中 ComfyUI 缓存但平台仍生成独立 Run 和独立资产，候选组保留两个资产。后端重启后 Run、候选与 selected 状态保持，历史页面可见。
 - 2026-09-03（配置）：MiniMax H3 文生视频与图生视频工作流的持久化采样步数统一从 20 调整为 8（高质量/快速分支均为 8），降低本机单次生成耗时。
 
 - 2026-09-03（修复/实机验收）：MiniMax H3 官方本地 T2V/I2V 工作流实跑通过。转换器将 `MarkdownNote` 归为仅 UI 展示的虚拟节点并跳过，避免 `/prompt` 报 `missing_node_type`；runner 输出收集增加按文件扩展名纠正媒体类型，兼容 `SaveVideo` 把 MP4 描述放在 `output.images` 的情况。实测产出 `MiniMax_H3_00009_.mp4`（T2V）与 `MiniMax_H3_00010_.mp4`（I2V），代理均返回 `video/mp4`。

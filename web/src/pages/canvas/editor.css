@@ -218,3 +218,13 @@ body.canvas-editor-page .ant-pro-layout-content {
     height: 44px;
   }
 }
+.canvas-node-history { margin-top: 10px; border-top: 1px solid #f0f0f0; padding-top: 8px; }
+.canvas-node-history__rail { display: flex; gap: 8px; overflow-x: auto; padding: 6px 1px 4px; scrollbar-width: thin; }
+.canvas-node-history__media { flex: 0 0 92px; padding: 2px; border: 2px solid transparent; border-radius: 8px; background: #fafafa; }
+.canvas-node-history__media.is-current, .canvas-node-history__text.is-current { border-color: #1677ff; background: #e6f4ff; }
+.canvas-node-history__media video { width: 88px; height: 66px; display: block; object-fit: cover; border-radius: 5px; }
+.canvas-node-history__text { position: relative; flex: 0 0 180px; height: 86px; overflow: hidden; text-align: left; border: 2px solid transparent; border-radius: 8px; padding: 9px 30px 9px 9px; background: #fafafa; color: inherit; cursor: pointer; }
+.canvas-node-history__text-summary { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.45; }
+.canvas-node-history__mode { display: inline-block; margin: 0 0 4px; padding: 1px 5px; border-radius: 4px; background: #e6f4ff; color: #1677ff; font-size: 10px; line-height: 16px; }
+.canvas-node-history__mode.is-video { background: #f9f0ff; color: #722ed1; }
+.canvas-node-history__current { position: absolute; top: 7px; right: 7px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #1677ff; color: #fff; font-size: 11px; box-shadow: 0 1px 3px rgba(22, 119, 255, 0.3); }

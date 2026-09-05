@@ -9,6 +9,11 @@
 > 2026-09-04 修复：画布字段级文本端口不再被卡片 overflow 裁剪；Codex2API 与 ComfyUI 文本框增加移动端中文 IME composition 保护，避免组合输入期间节点重渲染造成重复乱码。
 > 2026-09-04 交互优化：画布节点每次运行均需二次确认，运行/删除操作增大触控间距并移除可见气泡提示；编辑器改为悬浮返回与画布名称，移动端全屏、桌面端充满内容区，缩略图支持双击折叠并记忆选择（移动端首次默认折叠）。
 > 2026-09-05 增量：AI Native Canvas Phase 0B 完成，加入节点/连线语义 operations、完整图校验、Operation Log、Checkpoint、inverse undo、恢复点资产保护、只读 revision/Comfy 进度同步，以及可响应人工交接的 Agent lease 守护器。详见 `AI-NATIVE-CANVAS.md`。
+> 2026-09-05 增量：AI Native Canvas Phase 1A 已完成真实消耗验收：统一持久化 GenerationRun、候选组、lineage、选片/人工批准保护与分页历史 UI；ComfyUI/Codex2API 各连续生图两次，候选追加、幂等、重启恢复与页面展示均通过。
+> 2026-09-05 交互完善：Codex2API/ComfyUI 卡片统一内嵌当前产物和成功版本横向历史，文字输出完整持久化并显示摘要；人工切换旧版本会持续生效，下一次成功生成自动切至最新。失败只进入可记录错误的画布生成流水；流水支持文字折叠展开，图片/视频预览下载。Codex 无详细事件时显示动画 70%，ComfyUI 保留真实进度与当前节点。
+> 2026-09-05 提示词路由：Codex2API 文生文增加普通文本/图像提示词模式；图像提示词以同一 Run 结构化保存正向、负向两部分，并同时提供合并、正向、负向输出端口，可分别适配 Codex 单输入与 ComfyUI 双文本输入。
+> 2026-09-05 视频提示词：文生文与图像理解增加视频提示词模式，分别面向文生视频和保持原图一致性的图生视频；沿用结构化正负提示词、三路输出、历史切换及模式标识。
+> 2026-09-05 验收结论：用户已完成 Phase 1A 最终手动验证，统一卡片输出、生成历史、版本选择、正负提示词连线及图像/视频提示词模式均未发现问题；Phase 1A 正式完成，后续进入 Phase 1B。
 > 本文件是对项目当前状态的完整快照，开发过程中行变更时应同步更新。
 
 ## 1. 项目定位
@@ -106,7 +111,7 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 画布多实例 CRUD（Canvas C1）：`/api/canvas` 建/列/取/改/删，列表只回元信息 + 节点数 + 资产大小；新建画布自动创建 `data/assets/<canvasId>/` 分区；删画布级联清理其资产分区与 asset 行（已端到端验证）
 - ✅ 平台资产库（Canvas C1）：`assets` 表（12 列与设计一致）+ `data/assets/<canvasId>` 分区读写（`saveGenerated`/`saveUpload` 服务层）+ `/api/assets/:id` 读取、`/api/assets/:id/download` 下载
 - ✅ 画布产物捕获（Canvas C2）：`POST /api/comfyui/runs` 扩展 `canvasId/nodeId`（画布生成节点发起），运行成功后经 `ComfyUIAssetCaptureService` 把输出字节从 ComfyUI `/view` 拉取落盘进该画布 `generated/` 分区并回填 `assetId/assetUrl` 到 run.outputs；同节点重跑先建新再清理无引用旧产物，但任一 Checkpoint graph 引用的 `assetId` 都是强引用，Codex2API/ComfyUI 重跑和节点清理不得删除，保证恢复点不会破图。
-- ✅ 单元与集成测试：Jest + ts-jest + supertest 测试栈，**7 个 suite / 60 用例全绿**；覆盖 canvas/assets/controller/comfyui-capture、单写者、正常交接、新 epoch、旧 lease、TTL/进程实例失效、revision、幂等、事务回滚、完整图校验、Checkpoint 资产保护，以及 Agent heartbeat 响应人工交接并主动释放。
+- ✅ 单元与集成测试：Jest + ts-jest + supertest 测试栈，**8 个 suite / 64 用例全绿**；覆盖 canvas/assets/controller/comfyui-capture、持久化 Run/文字候选、单写者、正常交接、新 epoch、旧 lease、TTL/进程实例失效、revision、幂等、事务回滚、完整图校验、Checkpoint 资产保护，以及 Agent heartbeat 响应人工交接并主动释放。
 - ✅ 画布列表与编辑器路由（Canvas C3）：`.umirc.ts` 路由 `/canvas → ./canvas/index`（画布工作台列表）、`/canvas/:id → ./canvas/editor`（编辑器）；列表页卡片网格（新建/打开/重命名/删除，删除二次确认，展示节点数/资产大小/更新时间）；编辑器加载画布 graph + React Flow 渲染节点/连线/视口 + 顶栏；旧 `pages/canvas.tsx` 骨架页已删除（已端到端手测：建→开→改名→删全通）
 - ✅ 画布共享运行组件（Canvas C4）：抽取共享运行逻辑到 `web/src/components/comfyui/`（`types.ts` + `useComfyRun` 钩子 + `ComfySchemaForm` + `ComfyRunModal`），设置页运行面板改走共享件（schema 按 workflowId 缓存），行为不回归
 - ✅ Canvas 阶段二一期 C1–C7 已完成并实机验收：多画布/资产库、产物捕获、列表与编辑器、共享运行组件、文生图/结果节点、节点内运行、graph/视口防抖保存与离线历史结果恢复均已闭环。方案与验收记录见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)。
@@ -161,12 +166,12 @@ pnpm start     # 生产运行后端（需先 build）
 
 - [x] ComfyUI 运行执行（独立菜单/卡片式 + 提交与进度）——核心已落地，入参表单/文件占位符见步骤④⑤（`docs/COMFYUI-INTEGRATION.md`）
 - [x] ComfyUI 客户端（HTTP + WebSocket 任务监听）
-- [ ] SQLite 数据表继续补全：generation_runs（assets / canvas_docs 已落地；运行状态当前仍为内存态）
+- [x] SQLite 数据表补全：generation_runs 与 generation_candidate_groups（ComfyUI 保留实时内存镜像，权威历史已持久化）
 - [x] 画布自定义节点：提示词、Codex/ComfyUI 生成、结果预览与类型化连线
 - [x] 入参动态表单（/object_info 拉取 + schema 分析，步骤④⑤）
-- [ ] 生成任务历史持久化（generation_runs 表）
+- [x] 生成任务历史持久化（generation_runs + 候选组 + lineage）
 - [x] AI Native Canvas Phase 0B：节点/连线语义 operations、完整图校验、Operation Log、Checkpoint、inverse undo 与 Agent lease 守护
-- [ ] AI Native Canvas Phase 1A：持久化 GenerationRun、卡片生成历史、候选/选片/批准保护与后端重启恢复
+- [x] AI Native Canvas Phase 1A：持久化 Run、候选历史、选片/批准保护、lineage、重启恢复及双 provider 实机 E2E
 - [x] ComfyUI 配置界面（服务地址）
 - [ ] 前端产物由 NestJS 静态托管（单端口）
 - [ ] 单文件 exe 打包（bun build --compile / pkg）

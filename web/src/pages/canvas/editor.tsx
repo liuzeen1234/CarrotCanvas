@@ -21,8 +21,8 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, Drawer, Input, List, Popconfirm, Popover, Space, Spin, Tag, Typography, message } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, EnvironmentOutlined, HistoryOutlined, SaveOutlined } from '@ant-design/icons';
+import { Button, Drawer, Image, Input, List, Popconfirm, Popover, Space, Spin, Tag, Typography, message } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EnvironmentOutlined, HistoryOutlined, PictureOutlined, SaveOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
@@ -53,6 +53,11 @@ interface CanvasControlHolder { holderType: 'human' | 'agent'; holderId: string;
 interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: string | null; }
 interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
 interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
+interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; createdAt: string; }
+
+const sourceHandleKind = (handle: string) => handle === 'text-positive-source' || handle === 'text-negative-source'
+  ? 'text'
+  : handle.endsWith('-source') ? handle.slice(0, -7) : '';
 
 function humanHolderId() {
   const key = 'carrot-canvas:human-holder-id';
@@ -149,6 +154,9 @@ function CanvasEditorInner() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [operationLogs, setOperationLogs] = useState<OperationLogItem[]>([]);
   const [checkpoints, setCheckpoints] = useState<CheckpointItem[]>([]);
+  const [generationHistoryOpen, setGenerationHistoryOpen] = useState(false);
+  const [generationHistoryLoading, setGenerationHistoryLoading] = useState(false);
+  const [generationRuns, setGenerationRuns] = useState<GenerationRunItem[]>([]);
   /** 运行态只驻留内存，不进入 graph；结果节点通过 Context 读取上游状态。 */
   const [nodeRuns, setNodeRuns] = useState<Record<string, RunStateData | null>>({});
   const nodesRef = useRef(nodes);
@@ -384,6 +392,16 @@ function CanvasEditorInner() {
     finally { setHistoryLoading(false); }
   }, [id]);
 
+  const loadGenerationHistory = useCallback(async () => {
+    if (!id) return;
+    setGenerationHistoryLoading(true);
+    try {
+      const result = await request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=100`);
+      setGenerationRuns(result.items ?? []);
+    } catch (error: any) { message.error(error?.response?.data?.message || '读取生成历史失败'); }
+    finally { setGenerationHistoryLoading(false); }
+  }, [id]);
+
   const adoptCanvas = useCallback((canvas: CanvasDoc) => {
     revisionRef.current = canvas.revision; setDoc(canvas); setCanvasName(canvas.name);
     setSaveStatus('saved'); setLastSavedAt(new Date(canvas.updatedAt)); setSaveError('');
@@ -594,7 +612,7 @@ function CanvasEditorInner() {
   const isValidConnection: IsValidConnection = useCallback((conn) => {
     const s = conn.sourceHandle ?? '';
     const t = conn.targetHandle ?? '';
-    const sourceKind = s.endsWith('-source') ? s.slice(0, -7) : '';
+    const sourceKind = sourceHandleKind(s);
     if (!sourceKind) return false;
     if (!conn.source || !conn.target || conn.source === conn.target) return false;
     // 若目标节点沿已有出边已经能到达源节点，再添加 source → target 会形成环路。
@@ -645,7 +663,7 @@ function CanvasEditorInner() {
       pendingConnectionRef.current = null;
       return;
     }
-    const kind = params.handleId.endsWith('-source') ? params.handleId.slice(0, -7) : '';
+    const kind = sourceHandleKind(params.handleId);
     const touch = 'touches' in event && event.touches.length ? event.touches[0] : null;
     pendingConnectionRef.current = ['image', 'video', 'audio', 'text'].includes(kind)
       ? {
@@ -772,7 +790,9 @@ function CanvasEditorInner() {
     const edge = edges.find((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
     if (!edge) return { connected: false, text: '' };
     const source = nodes.find((item) => item.id === edge.source);
-    return { connected: true, text: String((source?.data as any)?.lastText ?? '') };
+    const sourceData = (source?.data ?? {}) as any;
+    const part = edge.sourceHandle === 'text-positive-source' ? 'positive' : edge.sourceHandle === 'text-negative-source' ? 'negative' : null;
+    return { connected: true, text: String(part ? sourceData.lastTextParts?.[part] ?? '' : sourceData.lastText ?? '') };
   }, [edges, nodes]);
 
   const handleMoveEnd = useCallback((_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
@@ -1110,6 +1130,9 @@ function CanvasEditorInner() {
                 <Button icon={<HistoryOutlined />} onClick={() => { setHistoryOpen(true); void loadHistory(); }} aria-label="操作历史与恢复点">
                   {isNarrow ? null : '历史'}
                 </Button>
+                <Button icon={<PictureOutlined />} onClick={() => { setGenerationHistoryOpen(true); void loadGenerationHistory(); }} aria-label="画布生成流水">
+                  {isNarrow ? null : '生成历史'}
+                </Button>
               </Panel>
               {selectedEdge ? (
                 <Panel position="top-right" className="canvas-edge-actions">
@@ -1194,6 +1217,21 @@ function CanvasEditorInner() {
               />
             </div>
           </Space>
+        </Spin>
+      </Drawer>
+      <Drawer title="画布生成流水" open={generationHistoryOpen} onClose={() => setGenerationHistoryOpen(false)} width={isNarrow ? '100%' : 620}>
+        <Spin spinning={generationHistoryLoading}>
+          <List dataSource={generationRuns} locale={{ emptyText: '还没有生成记录' }} renderItem={(run) => (
+            <List.Item>
+              <div style={{ width: '100%' }}>
+                <Space wrap><Tag color={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'error' : run.status === 'needs_attention' ? 'warning' : 'processing'}>{run.status}</Tag><Tag>{run.provider}</Tag><Text type="secondary">尝试 {run.attemptCount}</Text><Text type="secondary">{new Date(run.createdAt).toLocaleString()}</Text></Space>
+                <div style={{ marginTop: 6 }}><Text>节点：{run.nodeId ?? '工具箱'} · 能力：{run.capabilityId ?? '-'}</Text></div>
+                {run.error?.message ? <div style={{ color: '#ff4d4f', marginTop: 4 }}>{run.error.message}</div> : null}
+                {run.outputText ? <Typography.Paragraph style={{ marginTop: 10, whiteSpace: 'pre-wrap' }} ellipsis={{ rows: 4, expandable: true, symbol: '展开全文' }}>{run.outputText}</Typography.Paragraph> : null}
+                {run.outputAssetIds.length ? <Image.PreviewGroup><Space wrap style={{ marginTop: 10 }}>{run.outputAssetIds.map((assetId) => <div key={assetId} style={{ width: 112 }}><Image src={`/api/assets/${assetId}`} alt="生成产物" width={112} height={84} style={{ objectFit: 'cover', borderRadius: 6 }} preview={{ mask: '放大预览' }} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download onClick={(event) => event.stopPropagation()} style={{ marginTop: 4 }}>下载</Button></div>)}</Space></Image.PreviewGroup> : null}
+              </div>
+            </List.Item>
+          )} />
         </Spin>
       </Drawer>
     </div>

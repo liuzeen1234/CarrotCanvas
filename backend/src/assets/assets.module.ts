@@ -5,9 +5,10 @@ import { CanvasCheckpoint } from '../canvas/canvas.entity';
 import { AssetsService } from './assets.service';
 import { AssetsController } from './assets.controller';
 import { CanvasModule } from '../canvas/canvas.module';
+import { GenerationCandidateGroup } from '../runs/generation-run.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Asset, CanvasCheckpoint]), forwardRef(() => CanvasModule)],
+  imports: [TypeOrmModule.forFeature([Asset, CanvasCheckpoint, GenerationCandidateGroup]), forwardRef(() => CanvasModule)],
   controllers: [AssetsController],
   providers: [AssetsService],
   exports: [AssetsService],

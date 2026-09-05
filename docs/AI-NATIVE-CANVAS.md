@@ -1,6 +1,6 @@
 # AI 原生画布与人机接力
 
-> 状态：Phase 0B 已实现并通过行为级验收
+> 状态：Phase 1A 已实现并通过行为级验收
 > 最后更新：2026-09-05  
 > GitHub Issue：[Issue #1](https://github.com/liuzeen1234/CarrotCanvas/issues/1)
 
@@ -240,20 +240,38 @@ Handoff 至少保存：
 - AI 守护交接页面验收：在“人机协作体验2”上，正式 `AgentLeaseGuard` 以 epoch 8 持有并每 10 秒 heartbeat；人工点击“申请编辑权限”后，守护器在下一周期识别 `handoff_pending`、主动 release 并退出进程，页面自动取得人工 epoch 9。人工确认短暂等待后恢复编辑，API 核对 holder 为 human 且守护进程已退出。
 - 已知阶段边界：Checkpoint 当前保护其引用资产且没有删除入口，因此受保护资产不会进入 GC；Checkpoint 清理与高影响历史保留策略后续单独设计。只读运行态展示目前仅覆盖进程内 ComfyUI Run，后端重启会丢失，Codex2API 也没有共享进度；统一持久化 GenerationRun、候选历史和批准保护仍属于 Phase 1A。
 
-### Phase 1A：持久化 Run 与生成历史——未开始
+### Phase 1A：持久化 Run 与生成历史——已完成（2026-09-05）
 
 这是正式开放 AI 自主/批量生成、运行中接力和选片的硬前置条件，不阻塞 Phase 0A/0B。
 
-- [ ] 持久化 GenerationRun，保留成功、失败、取消和未完成任务。
-- [ ] 保存最终输入、能力/工作流版本、操作者、上游资产、产物、错误和时间。
-- [ ] ComfyUI 与 Codex2API 统一接入 Persistent RunService。
-- [ ] 重跑追加候选，不自动删除旧产物。
-- [ ] 候选组、`candidateAssetIds`、`selectedAssetId`、`approvedAssetId`。
-- [ ] 已批准产物不能被 AI 静默替换或删除。
-- [ ] 按画布、节点、镜头查询生成历史的 API 和 UI。
-- [ ] run/get/list/wait/cancel/retry/adopt。
-- [ ] 后端重启后核对与恢复未完成 Run。
-- [ ] 统一 Asset 导入、lineage 和浏览器上传先落 `assetId`。
+- [x] 持久化 GenerationRun，保留成功、失败、取消和未完成任务。
+- [x] 保存最终输入、能力/工作流版本、操作者、上游资产、产物、错误和时间。
+- [x] ComfyUI 与 Codex2API 统一接入 Persistent RunService。
+- [x] 重跑追加候选，不自动删除旧产物。
+- [x] 候选组、`candidateAssetIds`、`selectedAssetId`、`approvedAssetId`。
+- [x] 已批准产物不能被 AI 静默替换或删除。
+- [x] 按画布、节点、镜头查询生成历史的 API 和 UI。
+- [x] run/get/list/wait/cancel/retry/adopt。
+- [x] 后端重启后核对与恢复未完成 Run。
+- [x] 统一 Asset 导入、lineage 和浏览器上传先落 `assetId`。
+
+实现说明与当前验收证据：
+
+- 新增 `generation_runs` 与 `generation_candidate_groups` 持久表。Run 保存 provider、平台/provider run ID、画布/节点/镜头/parent run、脱敏后的最终输入快照、能力或工作流版本、输入/输出资产、actor、attempt、错误与完整时间状态；同一 idempotency key 重放不重复提交，不同输入复用同一 key 返回冲突。
+- ComfyUI 和 Codex2API 的文本生成、生图、编辑、图像理解均在 provider 请求前创建 Run；ComfyUI 继续使用 provider prompt ID，Codex2API 同步请求也得到平台 runId。历史 API 支持分页与 canvas/node/shot/status/provider 过滤，并提供 lineage、wait、retry、adopt 与诚实的 cancel 能力边界。
+- ComfyUI/Codex2API 重跑改为追加资产，不再按节点自动删除旧产物。成功输出追加到同一 canvas/node/shot 候选组；人工可选择和批准，批准必须声明人工 actor，批准后不可改批，节点资产清理也会保留已批准资产。
+- 生成卡片统一内嵌当前产物与横向版本历史：成功的文字、图片、视频进入节点历史，失败任务只进入画布级流水并保留错误。人工选择旧版本后会持续作为当前输出；下一次成功生成会自动切换到最新成功版本。文字 Run 持久化完整 `outputText`，节点历史显示确定性截断摘要，不额外调用模型生成摘要。
+- 画布级“生成流水”是只读时间线，包含成功、失败、取消及文字产物，不提供选择/批准操作；长文字默认折叠并可展开。旧 Result 节点继续兼容，但新的 ComfyUI 运行直接在原卡片内展示产物，不再自动创建独立结果卡。
+- 运行反馈按 provider 能力区分：Codex2API 无细粒度事件时从开始到结束显示动画 70%，成功或失败后隐藏；ComfyUI 沿用真实进度和当前处理节点名称。
+- 服务启动时把遗留 queued/running 任务标为 `needs_attention` 并记录 `PROVIDER_STATE_UNCONFIRMED`，不伪造成功。ComfyUI 并发存在时拒绝其全局 interrupt，返回 `CANCEL_NOT_PRECISE`。
+- 画布顶栏新增“生成历史”，展示 provider、状态、时间、尝试次数、节点、错误及全部候选缩略图，并提供选择/批准。真实 Chrome 页面已验证入口和空历史状态可见。
+- 自动化：8 个 Jest suite / 64 个用例通过；新增持久 Run 幂等（含 JSON 字段顺序无关）、连续重跑候选追加、批准保护、文字产物持久化/自动选择/手工回切、重启核对测试。后端 TypeScript 与前端生产构建通过；3100 重启健康，SQLite 自动建表，Action Registry 已包含文字候选切换 action。
+- 真实 provider E2E：在独立画布 `eb731614-68b6-4a06-83bc-fc9a8e2ebfd6` 上，ComfyUI “Z-Image文生图”连续运行两次，平台 Run `ed5a9521-300f-4139-9c88-03f59ccc01e3`、`19b2ca92-aba6-48a1-bc7c-3a2627b1bf6e` 均成功，候选组保留两个独立平台资产；Codex2API `codex` 生图连续运行两次，Run `0a190571-3b83-4e68-a73d-adf30d0e0139`、`9465c836-476a-4c26-b4dc-f94ad39f1096` 均成功并保留两个候选。
+- 重启与幂等 E2E：重启 3100 后仍查询到 4 条 `succeeded` Run、两组各 2 个候选、ComfyUI `selectedAssetId=67599c51-a5cc-4e0a-aa8a-df0d142c92be`、Codex2API `approvedAssetId=22ce85f5-efa4-40b8-8509-2196dfbb9519`，批准资产 HTTP 200 且 lineage 返回对应输出资产。相同 Codex2API 幂等键重放返回原 Run `9465c836-476a-4c26-b4dc-f94ad39f1096`，总数保持 4，未再次提交 provider；实测过程中发现并修复 JSON 字段顺序导致的误冲突。
+- 真实 UI E2E：Chrome 打开验收画布后，“生成历史与候选”抽屉展示全部 4 条 Run 和缩略图，跨重启准确显示“已选择”与“已批准”；尝试把批准切换到另一个 Codex2API 候选返回 `409 APPROVED_ASSET_PROTECTED`。
+- 真实文字与节点历史 E2E：在画布 `07be6538-74f8-4e26-a4e3-6b75fae1e56e` 连续真实调用 Codex2API 两次，Run `16fa8b6c-0dfd-4620-961c-9570822be91b` 为最新成功版本并自动生效。Chrome 人工切换旧文字后，节点正文及“当前”标识同步迁移并保存；画布生成流水显示两条文字记录、摘要折叠和“展开全文”，随后已恢复选择最新版本。长调用期间原 lease 过期后的 graph 写入被正确拒绝，重新取得新 lease 后安全保存至 revision 2。
+- 最终人工验收：2026-09-05 用户手动验证统一卡片产物、节点内历史与当前态样式、文字/图片版本切换、ComfyUI 正负提示词连线，以及文生文/图像理解的普通文本、图像提示词和视频提示词模式，未发现问题；Phase 1A 正式完成，可进入 Phase 1B。
+- 已知边界：`retry` 当前创建带 parent lineage 的新尝试记录，由调用方按保存的输入重新提交；provider 自动重投与运行中 adopt 属于 1B 接力执行器范围。ComfyUI 第二次运行命中其缓存，provider 输出文件名相同，但平台仍形成独立 Run 和独立捕获资产，候选历史未覆盖。
 
 ### Phase 1B：运行中双向接力——未开始
 
@@ -487,6 +505,14 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-05：用户完成 Phase 1A 最终手动验收，确认未发现问题；文档状态保持“已实现并通过行为级验收”，下一阶段为 Phase 1B 运行中双向接力。
+- 2026-09-05：文生文和图像理解新增“视频提示词（正负分开）”，复用合并/正向/负向三路输出和 `outputParts` 历史；文生文针对文生视频描述动作、运镜、节奏及连续性，图像理解针对图生视频约束主体/服装/构图一致性。Run 记录输出模式，节点历史以紫色“视频提示词”标识。真实 Codex2API 文生视频提示词 Run `aa7306b0-07db-46c9-b7d5-f22659962cd8` 结构化生成成功。
+- 2026-09-05：图像理解卡片同步支持普通文本/图像提示词模式；图像提示词模式从图片生成同版本正负提示词，保存 `outputParts` 并提供合并、正向、负向三路输出，沿用文字候选历史与整体切换语义。
+- 2026-09-05：文生文卡片新增“普通文本 / 图像提示词（正负分开）”输出模式。仅图像提示词模式注入结构化 system message并强制非流式，Run 新增 `outputParts` 保存同版本正负提示词；节点同时暴露合并、正向、负向三路文本输出，分别兼容 Codex 单提示词输入与 ComfyUI 双 STRING 输入，历史切换同步恢复三路内容。真实 Codex2API 生成 Run `469af823-33e9-4c03-bcfc-b30a12e3a55a` 已验证结构化落库和页面展示。
+- 2026-09-05：统一 Codex2API 与 ComfyUI 生成卡片：当前产物直接内嵌，节点下方提供成功产物横向历史；文字 Run 保存完整输出并显示本地截断摘要，图片/视频可预览下载。人工可切换任意旧版本且持续生效，下一次成功生成自动切到最新版本；失败仅进入包含错误信息的画布生成流水。画布流水取消选片/批准控件，文字可折叠展开；Codex2API 运行显示动画 70%，ComfyUI 保留真实进度和当前节点。真实文字双生成与人工回切/恢复最新通过。
+- 2026-09-05：生成历史候选缩略图支持点击放大预览，并为每个候选提供平台资产下载入口；真实历史页面验证预览层与 4 个下载链接均可用。
+- 2026-09-05：完成 Phase 1A 真实消耗验收：ComfyUI 与 Codex2API 各连续生图两次，4 条 Run/4 个资产持久化；选择、批准、lineage、批准替换拒绝、后端重启恢复、页面历史展示和幂等不重复提交通过。实测发现并修复幂等输入比较受 JSON 字段顺序影响的问题，Phase 1A 标记完成。
+- 2026-09-05：Phase 1A 核心实现落地：统一持久化 GenerationRun/候选组与 lineage，ComfyUI、Codex2API 全能力接入，重跑改为追加候选，人工选片/批准保护、分页历史 UI、重启 `needs_attention` 核对和取消能力限制上线。
 - 2026-09-05：完成 AI lease 守护器人工页面验收：AI epoch 8 持有期间人工申请编辑，守护器在下一 heartbeat 主动释放并退出，人工自动取得 epoch 9；确认“持续占用”模式不再阻塞正常交接。
 - 2026-09-05：实现通用 `AgentLeaseGuard` 和 HTTP transport，AI heartbeat 不再只保活：renew 返回 `handoff_pending` 时先关闭新写入闸门，执行调用方最小排空回调，再主动 release；任务结束主动释放，旧 epoch/过期则进入 lost 且不自动重取。新增单元测试及真实 CanvasService 的 agent→human 新 epoch 集成测试。
 - 2026-09-05：根据持续占用实测补充 AI 持权合同：Agent 必须持续续租并解析 renew 响应，`handoff_pending` 时停止新工作、排空最小收尾并主动 release；“只维持控制权”的守护模式也不得阻塞人工交接。新增一个续租周期内响应人工请求的验收门槛，并明确 TTL 只用于故障兜底。

@@ -7,6 +7,7 @@ import { existsSync, createReadStream } from 'fs';
 import { promises as fs } from 'fs';
 import { Asset, AssetKind, AssetSource } from './asset.entity';
 import { CanvasCheckpoint } from '../canvas/canvas.entity';
+import { GenerationCandidateGroup } from '../runs/generation-run.entity';
 
 /**
  * 平台资产根目录：默认与 SQLite 文件同目录（backend/data/assets/）。
@@ -57,6 +58,9 @@ export class AssetsService {
     @Optional()
     @InjectRepository(CanvasCheckpoint)
     private readonly checkpoints?: Repository<CanvasCheckpoint>,
+    @Optional()
+    @InjectRepository(GenerationCandidateGroup)
+    private readonly candidateGroups?: Repository<GenerationCandidateGroup>,
   ) {}
 
   // ---------- 分区 ----------
@@ -175,6 +179,10 @@ export class AssetsService {
       where: { canvasId, nodeId, source: 'generated' },
     });
     const protectedIds = await this.checkpointAssetIds(canvasId);
+    if (this.candidateGroups) {
+      const groups = await this.candidateGroups.find({ where: { canvasId } });
+      for (const group of groups) if (group.approvedAssetId) protectedIds.add(group.approvedAssetId);
+    }
     for (const asset of assets) {
       if (keepIds?.includes(asset.id) || protectedIds.has(asset.id)) continue;
       await this.removeAssetRowAndFile(asset);

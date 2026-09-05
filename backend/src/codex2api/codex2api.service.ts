@@ -133,9 +133,6 @@ export class Codex2ApiService {
         downloadUrl: `/api/assets/${asset.id}/download`,
       });
     }
-    if (captured.length) {
-      await this.assets.deleteGeneratedByNode(canvasId, nodeId, captured.map((item) => item.assetId));
-    }
     return { ...payload, data: captured.length ? captured : payload.data };
   }
 
