@@ -4,7 +4,7 @@ import { join } from 'path';
 import type { AssetsService as AssetsServiceType } from './assets.service';
 
 let ASSETS_ROOT: string;
-let AssetsService: new (repo: any) => AssetsServiceType;
+let AssetsService: new (repo: any, checkpoints?: any) => AssetsServiceType;
 let safeName: (name: string | null | undefined, fallback: string) => string;
 
 /** 构造 mock 仓库（TypeORM Repository 的子集） */
@@ -173,6 +173,35 @@ describe('AssetsService', () => {
       expect(repo.delete).toHaveBeenCalledWith('g2');
       expect(existsSync(join(ASSETS_ROOT, 'c1', g1))).toBe(true);
       expect(existsSync(join(ASSETS_ROOT, 'c1', g2))).toBe(false);
+    });
+
+    it('恢复点引用的旧资产在同节点重跑时仍被保留', async () => {
+      const repo = makeRepo();
+      const oldPath = 'generated/old__checkpoint.png';
+      const newPath = 'generated/new__latest.png';
+      const stalePath = 'generated/stale__unused.png';
+      const dir = join(ASSETS_ROOT, 'c1', 'generated');
+      mkdirSync(dir, { recursive: true });
+      for (const relPath of [oldPath, newPath, stalePath]) writeFileSync(join(ASSETS_ROOT, 'c1', relPath), relPath);
+      repo.find.mockResolvedValue([
+        { id: 'old', canvasId: 'c1', nodeId: 'n1', source: 'generated', relPath: oldPath },
+        { id: 'new', canvasId: 'c1', nodeId: 'n1', source: 'generated', relPath: newPath },
+        { id: 'stale', canvasId: 'c1', nodeId: 'n1', source: 'generated', relPath: stalePath },
+      ]);
+      const checkpoints = makeRepo({ find: jest.fn(async () => [{
+        canvasId: 'c1',
+        graph: { version: 1, nodes: [{ id: 'n1', data: { lastAssets: [{ assetId: 'old', url: '/api/assets/old', kind: 'image' }] } }], edges: [], viewport: null },
+      }]) });
+      const service = new AssetsService(repo, checkpoints);
+
+      await service.deleteGeneratedByNode('c1', 'n1', ['new']);
+
+      expect(checkpoints.find).toHaveBeenCalledWith({ where: { canvasId: 'c1' } });
+      expect(repo.delete).toHaveBeenCalledTimes(1);
+      expect(repo.delete).toHaveBeenCalledWith('stale');
+      expect(existsSync(join(ASSETS_ROOT, 'c1', oldPath))).toBe(true);
+      expect(existsSync(join(ASSETS_ROOT, 'c1', newPath))).toBe(true);
+      expect(existsSync(join(ASSETS_ROOT, 'c1', stalePath))).toBe(false);
     });
   });
 

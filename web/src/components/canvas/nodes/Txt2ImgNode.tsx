@@ -14,7 +14,7 @@ const isEmpty = (value: unknown) => value === undefined || value === null || (ty
 
 export default function Txt2ImgNode(props: NodeProps) {
   const data = props.data as Txt2ImgNodeData;
-  const { canvasId, control, readOnly, updateNodeData, deleteNode, ensureResultNode, setNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
+  const { canvasId, control, readOnly, updateNodeData, deleteNode, ensureResultNode, setNodeRunState, getNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
   const [workflow, setWorkflow] = useState<ComfyUIAPI | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -143,9 +143,11 @@ export default function Txt2ImgNode(props: NodeProps) {
     return upstream.connected ? { text: upstream.text } : null;
   }, [upstreamTextFor]);
 
-  const progress = run.runState?.progress;
+  const visibleRunState = run.runState ?? getNodeRunState(nodeId);
+  const visibleRunning = visibleRunState?.status === 'pending' || visibleRunState?.status === 'running';
+  const progress = visibleRunState?.progress;
   const percent = progress?.max ? Math.round((progress.value / progress.max) * 100) : undefined;
-  const statusLabel: Record<string, string> = { pending: '排队中', running: run.runState?.currentNodeTitle || '生成中', success: '生成完成', error: '运行失败', interrupted: '已中断', unknown: '状态未知' };
+  const statusLabel: Record<string, string> = { pending: '排队中', running: visibleRunState?.currentNodeTitle || '生成中', success: '生成完成', error: '运行失败', interrupted: '已中断', unknown: '状态未知' };
 
   return <div className={`canvas-node canvas-node--txt2img${props.selected ? ' selected' : ''}`}>
     <div className="canvas-node__header">
@@ -166,10 +168,10 @@ export default function Txt2ImgNode(props: NodeProps) {
         : loadError || run.schemaError ? <Alert type="warning" showIcon message={loadError || run.schemaError} description={data.lastAssets?.length ? '历史结果仍可在结果节点查看。' : undefined} />
         : <ComfySchemaForm schema={run.schema} values={run.formValues} onChange={(key, value) => { run.handleFormChange(key, value); setMissingKeys((prev) => { const next = new Set(prev); next.delete(key); return next; }); }} disabled={readOnly || run.running} exposure={workflow?.exposureConfig ?? null} onUploadImage={readOnly ? undefined : run.uploadImage} uploading={run.uploading} scroll={false} singleColumn invalidKeys={missingKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} />}
       {missingKeys.size > 0 && <Alert style={{ marginTop: 8 }} type="error" showIcon message={`还有 ${missingKeys.size} 个必填参数未填写`} />}
-      {run.runState && <div style={{ marginTop: 8 }}>
-        {run.running ? <Progress size="small" percent={percent} status="active" showInfo={percent !== undefined} /> : null}
-        <Tag color={run.runState.status === 'success' ? 'success' : run.runState.status === 'error' ? 'error' : run.runState.status === 'interrupted' ? 'warning' : 'processing'}>{statusLabel[run.runState.status] || run.runState.status}</Tag>
-        {run.runState.error ? <div style={{ color: '#ff4d4f', marginTop: 4, wordBreak: 'break-word' }}>{run.runState.error}</div> : null}
+      {visibleRunState && <div style={{ marginTop: 8 }}>
+        {visibleRunning ? <Progress size="small" percent={percent} status="active" showInfo={percent !== undefined} /> : null}
+        <Tag color={visibleRunState.status === 'success' ? 'success' : visibleRunState.status === 'error' ? 'error' : visibleRunState.status === 'interrupted' ? 'warning' : 'processing'}>{statusLabel[visibleRunState.status] || visibleRunState.status}</Tag>
+        {visibleRunState.error ? <div style={{ color: '#ff4d4f', marginTop: 4, wordBreak: 'break-word' }}>{visibleRunState.error}</div> : null}
       </div>}
     </div>
     <Handle type="source" position={Position.Right} id={resultSourceHandle(workflowOutputKind(workflow?.category))} className={`canvas-handle--${workflowOutputKind(workflow?.category)}`} title={`${workflowOutputKind(workflow?.category) === 'video' ? '视频' : '图片'}输出`} />

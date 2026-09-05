@@ -29,6 +29,8 @@ export interface CanvasNodeDataApi {
   canvasId?: string;
   ensureResultNode: (sourceNodeId: string, kind?: 'image' | 'video') => void;
   setNodeRunState: (nodeId: string, run: RunStateData | null) => void;
+  /** 读取节点的共享运行态，让只读观察者也能看到进度和终态。 */
+  getNodeRunState: (nodeId: string) => RunStateData | null;
   getResultState: (resultNodeId: string) => CanvasResultState;
   getUpstreamAsset: (targetNodeId: string, targetHandle: string, kind: string) => CanvasResultState['assets'][number] | null;
   /** 读取文本输入端口连接的上游节点最后一次完整输出。 */
@@ -41,6 +43,7 @@ export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
   deleteNode: () => {},
   ensureResultNode: () => {},
   setNodeRunState: () => {},
+  getNodeRunState: () => null,
   getResultState: () => ({ run: null, assets: [] }),
   getUpstreamAsset: () => null,
   getUpstreamText: () => ({ connected: false, text: '' }),

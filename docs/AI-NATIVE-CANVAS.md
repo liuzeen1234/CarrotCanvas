@@ -1,6 +1,6 @@
 # AI 原生画布与人机接力
 
-> 状态：Phase 0A 已实现并通过行为级验收  
+> 状态：Phase 0B 已实现并通过行为级验收
 > 最后更新：2026-09-05  
 > GitHub Issue：[Issue #1](https://github.com/liuzeen1234/CarrotCanvas/issues/1)
 
@@ -114,7 +114,7 @@ AI 可以查询服务是否配置、健康状态和可用模型，但不能读�
 - `acquiredAt`、`lastHeartbeatAt`、`expiresAt`。
 - `status: active | handoff_pending | expired | revoked`。
 
-建议默认参数：TTL 45 秒，每 15 秒续约。打开画布不自动抢占；人工进入编辑模式或 Agent 开始写任务时显式获取。
+当前默认参数：TTL 45 秒；前端人工持有者每 15 秒续约，Agent 建议每 10–15 秒续约。人工进入空闲画布会自动竞争获取，但不抢占已有持有者；Agent 开始写任务时必须通过正常交接或空闲 acquire 显式获取。
 
 所有画布写请求携带：
 
@@ -132,6 +132,16 @@ AI 可以查询服务是否配置、健康状态和可用模型，但不能读�
 - `403 OPERATION_NOT_ALLOWED`：权限不足或对象受保护。
 
 租约落数据库而不是只放进程内存。后端重启后旧租约按过期处理；过期只释放写入权，不删除状态或取消 Run。
+
+#### AI 持有者必须遵守的续租与交接合同
+
+1. Agent 取得 lease 后，只要任务、等待中的生成或用户要求的持续占用尚未结束，就必须在 TTL 内持续调用 renew；建议间隔 10–15 秒，并为短暂失败预留至少两次重试窗口。
+2. Agent 必须读取每次 renew 的完整响应，不能把续租实现为忽略返回值的“保活循环”。响应为 `handoff_pending` 时，禁止再开始新的写操作或高成本 Run。
+3. 收到 `handoff_pending` 后，Agent 应完成已经开始且不可安全中断的最小收尾，排空待提交的 canonical 写入，记录必要 Handoff，然后主动调用 release。默认应在一个续租周期内开始响应，不得继续无条件续租阻塞人工。
+4. 用户明确要求“什么都不做、只维持控制权”也不取消交接义务；人工一旦申请编辑权，守护进程仍必须退出保活并释放。
+5. Agent 任务成功、失败、取消、进程退出或无法确认 lease 状态时，都必须尽力主动 release；不能依赖 45 秒 TTL 作为正常交接方式。TTL 仅用于崩溃、断网等故障兜底。
+6. renew 返回 `LEASE_EXPIRED`、`STALE_LEASE` 或当前 epoch/holder 已变化时，Agent 必须立即停止使用旧 token，重新读取 canvas/control；未经新一轮正常交接不得自行恢复写入。
+7. 通用 Agent SDK、Skill 或外部守护脚本必须把“续租 + handoff_pending 检测 + 排空 + release”封装成同一生命周期，禁止提供只续租、不响应交接的生产实现。
 
 ### 4.2 Canonical Canvas State
 
@@ -167,7 +177,7 @@ Handoff 至少保存：
 - Canvas graph 仍以宽松 `unknown[]` 存储和浅层校验为主。
 - 前端仍采用本地 nodes/edges 与防抖整图 PATCH。
 - ComfyUI Run 保存在后端进程 Map，最多保留有限条目，重启丢失。
-- 前端 `nodeRuns` 属于页面内存，刷新丢失。
+- 前端只读观察者可轮询后端现有 ComfyUI 内存 Run 并恢复卡片进度/终态，但后端重启后仍会丢失；Codex2API 尚未接入统一共享 Run。
 - 生成资产可以落盘并记录基础来源，但同节点重跑会清理上一版 generated 资产。
 - Codex2API 生成结果同样采用按节点覆盖清理。
 - 尚无持久化 GenerationRun、候选组、selected/approved 状态及完整输入快照。
@@ -195,7 +205,7 @@ Handoff 至少保存：
 - `GET /api/actions` 提供运行时 Action Registry，包含稳定 action name、输入输出 JSON Schema、权限、lease 要求、副作用、幂等/可逆性、可用性和结构化错误声明，并覆盖现有 Controller 领域入口。0A 的 operations 支持 `replace_graph`、`rename_canvas`、`set_brief`；节点级语义 operations、Operation Log 与 Checkpoint 仍严格留在 0B。
 - 兼容 `PATCH /api/canvas/:id` 已包装为受 lease/revision/idempotency 保护的 operation batch；删除画布同样要求 lease。Canvas 条件更新与 operation receipt 在同一 SQLite 事务中提交，回执失败会回滚 Canvas 和 revision。
 - 带 `canvasId` 的 ComfyUI Run、Codex2API 生图/编辑和节点生成资产清理也校验同一 lease/epoch/expectedRevision，避免绕过 graph API 修改画布共享产物。
-- 人工编辑器默认以只读观察者进入，不自动占用空闲画布；无控制者时明确显示“无控制者 · 只读”并提供“取得编辑权”，有人工或 AI 控制者时持续轮询并准确显示其类型与状态，仅此时提供“请求交接”。人工主动取得 lease 后每 15 秒续租；锁定时完整禁用节点编辑、运行、中断、上传、删除、连线和新增，但仍允许查看、下载、选择和 viewport。人工持有者观察到 `handoff_pending` 后停止新编辑，等待串行保存及追写队列完全排空后才释放。列表页重命名/删除使用短租约。
+- 人工进入画布时若后端确认控制权空闲，会自动竞争取得人工 lease 并进入可编辑状态；若已有人工或 AI 控制者，或竞争瞬间被其他写入者抢先取得，则保持只读并持续轮询、准确显示控制者类型与状态，仅此时提供“请求交接”。人工取得 lease 后每 15 秒续租；锁定时完整禁用节点编辑、运行、中断、上传、删除、连线和新增，但仍允许查看、下载、选择和 viewport。人工持有者观察到 `handoff_pending` 后停止新编辑，等待串行保存及追写队列完全排空后才释放。列表页重命名/删除使用短租约。
 - 编辑器在返回按钮与画布标题之间以独立浮块常驻展示“有未保存更改 / 保存中 / 已保存时间 / 保存失败”状态，并提供立即保存按钮与 `Ctrl/Cmd+S`；保存失败时保留待提交内容并允许手动重试，存在待保存或在途写入时关闭页面会触发浏览器离开提醒。只读会话明确显示“只读”，不以“已保存”误导当前控制状态。
 - 控制权状态由底部大提示条改为画布标题后的紧凑浮块，默认不展示 holder ID，也不重复“当前控制者”文案；通过绿/橙/蓝边框和底色区分可编辑、只读与交接中，点击后再展示完整 ID、revision、状态说明和请求交接入口。
 - PC 端画布详情页独占 ProLayout 右侧内容区，移除默认内容 padding、画布边框圆角和页面级纵向滚动，画布工作区完整铺满可用宽高；其他路由保持原布局间距。
@@ -206,14 +216,29 @@ Handoff 至少保存：
 - 真实业务画布复验：在“AI接管协作测试”上，人工 epoch 12 经 `request-handoff` 主动释放，AI `codex-phase0a-acceptance` 取得 epoch 13 并成功执行 revision 77→78 的受控 operation，旧人工 epoch 12 写入返回 `409 STALE_LEASE`，随后人工取得新 lease 并恢复编辑。进一步验证默认只读观察后，空闲状态准确显示“无控制者/取得编辑权”，AI `codex-display-check` 持有 epoch 15 时页面在轮询周期内更新为 AI/active/只读及完整 ID。最终现场交接验证中，人工 epoch 16 → AI epoch 17 → 人工 epoch 18，AI 失联时 TTL 到期恢复路径生效。
 - 已知阶段边界：0A 仍使用过渡期 `replace_graph` 和浅层 graph 校验；完整节点语义 operations、领域图校验、Operation Log、Checkpoint 与 inverse undo 属于 0B。Run 持久化、候选历史和运行中接力属于 1A/1B。
 
-### Phase 0B：完整画布机器控制——未开始
+### Phase 0B：完整画布机器控制——已完成（2026-09-05）
 
-- [ ] create/update/move/delete node。
-- [ ] connect/disconnect 与后端完整图校验。
-- [ ] 人工端 `replace_graph` 过渡及语义命令迁移。
-- [ ] Operation Log、Checkpoint、inverse-operation undo。
-- [ ] 节点删除与资产生命周期事务化。
-- [ ] 无浏览器完成节点编排 E2E。
+- [x] create/update/move/delete node 后端语义操作。
+- [x] connect/disconnect 与后端完整领域图校验。
+- [x] 人工端常规保存迁移为语义 diff；不兼容的 React Flow 扩展字段变更仍受控回退 `replace_graph`。
+- [x] Operation Log、Checkpoint、带 revision 前置条件的 inverse-operation undo。
+- [x] 节点删除改为 graph/log/receipt 先原子提交，生成资产在提交成功后垃圾回收；回收失败不破坏 canonical graph 引用。
+- [x] 无浏览器完成节点编排 HTTP E2E 初版。
+
+实现说明与验收证据：
+
+- `canvas.operations` 已支持 `create_node`、`update_node`、`move_nodes`、`delete_node`、`connect`、`disconnect`，与兼容 `replace_graph` 共用 lease、revision、幂等、领域校验和 operation log 事务。
+- 图校验覆盖受支持节点类型及必要字段、节点/连线重复 ID、缺失节点、句柄格式和节点归属、媒体类型、单输入最大一条入线与有向环路；工作流存在时还会读取真实 `inputConfig` 精确验证动态字段，工作流已删除时允许历史节点与产物继续展示。
+- 新增操作日志读取、安全撤销、Checkpoint 列表/创建/恢复接口并登记进 Action Registry。安全撤销只允许目标批次仍是当前 revision 时执行，避免覆盖撤销之后的人工修改；删除带产出资产节点的批次不可日常撤销，必须使用删除前 Checkpoint。Checkpoint 恢复属于覆盖式高影响操作。
+- 人工编辑器的自动保存会对已确认 graph 计算语义 diff；新增/更新/移动/删除节点和连接/断开均提交语义操作。页面“历史”抽屉展示 actor、intent、revision 和操作类型，可创建恢复点、安全撤销，以及经明确确认后覆盖恢复。
+- 只读观察者每 2 秒拉取 canonical canvas；发现更高 revision 时自动更新节点、连线、名称与产出，不再要求人工刷新页面。观察者同时读取现有 ComfyUI 内存 Run，工作流卡片和结果卡片均可显示排队、运行进度、成功、失败或中断状态。
+- 新增可复用 `AgentLeaseGuard` 与默认 HTTP transport：统一封装 acquire、10 秒 heartbeat、renew 响应解析、`handoff_pending` 后的写入闸门/排空/release，以及 lease 丢失后禁止旧 token 自动重取。外部 Node Agent 可直接复用，不再自行拼装无条件保活循环。
+- 节点删除、operation log、receipt 与持久化资产 GC job 在同一事务中落库；提交成功后执行文件清理，失败记录次数和错误并在后端重启或后续操作时重试。Checkpoint 对其中所有 `assetId` 形成强引用：节点删除和 Codex2API/ComfyUI 同节点覆盖重跑均不得清理这些资产，避免恢复出断裂引用。
+- 自动化证据：7 个 Jest suite / 60 个用例通过；覆盖完整领域校验、批次原子性、回执回滚、撤销前置条件、动态 handle、GC 失败与重试、“恢复点引用旧产物 + 同节点重跑”资产保护，以及 AI heartbeat 保活、人工交接主动释放和旧 epoch 失效。后端 TypeScript 编译与前端生产构建通过。
+- 3100 真实 HTTP 无浏览器验收完成空画布 → agent lease → 创建并配置 2 节点 → typed handle 连线 → 移动布局 → 读取审计日志 → 创建 Checkpoint → inverse undo（revision 0→1→2，最终 0 节点）；Action Registry 返回 50 项 action 与 9 类画布 operation，健康检查正常。
+- 人工页面验收：从只读空闲状态取得人工 lease，历史抽屉正确显示 AI 操作批次，成功创建 revision 1 恢复点；撤销展示“仅最新修改可安全撤销”确认，恢复展示覆盖式确认。验收临时画布均已受控清理。
+- AI 守护交接页面验收：在“人机协作体验2”上，正式 `AgentLeaseGuard` 以 epoch 8 持有并每 10 秒 heartbeat；人工点击“申请编辑权限”后，守护器在下一周期识别 `handoff_pending`、主动 release 并退出进程，页面自动取得人工 epoch 9。人工确认短暂等待后恢复编辑，API 核对 holder 为 human 且守护进程已退出。
+- 已知阶段边界：Checkpoint 当前保护其引用资产且没有删除入口，因此受保护资产不会进入 GC；Checkpoint 清理与高影响历史保留策略后续单独设计。只读运行态展示目前仅覆盖进程内 ComfyUI Run，后端重启会丢失，Codex2API 也没有共享进度；统一持久化 GenerationRun、候选历史和批准保护仍属于 Phase 1A。
 
 ### Phase 1A：持久化 Run 与生成历史——未开始
 
@@ -421,7 +446,7 @@ Phase 2 必须在 Phase 1A 验收通过后开始。
 
 `SKILL.md` 只维护稳定的操作策略、协作约束、错误恢复和完成检查；具体 action、参数和 schema 必须动态读取 Action Registry/OpenAPI，不能把 Skill 变成容易过期的接口副本。
 
-Skill 应指导 AI：能力发现、请求交接、lease 生命周期、安全 operations、revision 冲突恢复、Run 接管、候选与批准保护、高影响操作确认、Handoff 写入和主动释放控制权。
+Skill 应指导 AI：能力发现、请求交接、lease 生命周期、安全 operations、revision 冲突恢复、Run 接管、候选与批准保护、高影响操作确认、Handoff 写入和主动释放控制权。lease 生命周期必须明确要求解析每次 renew 响应，并在 `handoff_pending` 时停止新工作、排空写入和 release，不能只做无条件心跳。
 
 Skill 应随各阶段接口逐步更新，不能等全部代码完成后才首次编写；最终由一个没有项目历史上下文的新 AI 做黑盒验收。
 
@@ -441,6 +466,7 @@ Skill 应随各阶段接口逐步更新，不能等全部代码完成后才首�
 10. 后端重启后仍可查询 Run 历史、输入、产物、失败原因和选择状态。
 11. 不打开浏览器，仅通过 Agent API 可完成创建画布到视频导出的完整流程。
 12. 一个全新 AI 仅依赖 Skill、Action Registry 和 schema，可与人工完成一次双向接力。
+13. AI 持有期间人工请求交接后，AI 在下一个续租周期内识别 `handoff_pending`，停止新写入并主动释放；持续占用守护模式同样通过该验收。
 
 完整验收清单以 Issue #1 为准；阶段实现不得用“接口已存在”替代行为级 E2E。
 
@@ -461,6 +487,15 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-05：完成 AI lease 守护器人工页面验收：AI epoch 8 持有期间人工申请编辑，守护器在下一 heartbeat 主动释放并退出，人工自动取得 epoch 9；确认“持续占用”模式不再阻塞正常交接。
+- 2026-09-05：实现通用 `AgentLeaseGuard` 和 HTTP transport，AI heartbeat 不再只保活：renew 返回 `handoff_pending` 时先关闭新写入闸门，执行调用方最小排空回调，再主动 release；任务结束主动释放，旧 epoch/过期则进入 lost 且不自动重取。新增单元测试及真实 CanvasService 的 agent→human 新 epoch 集成测试。
+- 2026-09-05：根据持续占用实测补充 AI 持权合同：Agent 必须持续续租并解析 renew 响应，`handoff_pending` 时停止新工作、排空最小收尾并主动 release；“只维持控制权”的守护模式也不得阻塞人工交接。新增一个续租周期内响应人工请求的验收门槛，并明确 TTL 只用于故障兜底。
+- 2026-09-05：调整画布进入体验：首次进入时若控制状态为 available/expired/revoked，页面自动竞争取得人工 lease；取得后重新读取 canonical graph 避免初始读取竞态，竞争失败则刷新控制状态并安全回到只读。已有控制者时仍不抢占，继续使用请求交接流程。
+- 2026-09-05：修复恢复点产物破图：统一资产覆盖清理入口会先收集该画布所有 Checkpoint graph 中的 `assetId`，被任一恢复点引用的旧产物在 Codex2API/ComfyUI 同节点重跑或节点清理时均保留；新增“旧产物受恢复点保护、新产物保留、无引用旧产物清理”的文件级回归测试。已在修复前物理删除的文件无法从 assetId 自动恢复。
+- 2026-09-05：改进 0B 人机协作可见性：只读观察者会自动跟随更高 canvas revision，无需刷新即可看到 AI 的节点、连线和产出更新；同时轮询现有 ComfyUI 内存 Run，让工作流卡片与结果卡片共享显示生成进度和终态。明确该过渡能力不替代 Phase 1A 的持久化 Run，后端重启恢复和 Codex2API 统一进度仍未实现。
+- 2026-09-05：修复工作流动态 handle 对 ComfyUI 子图节点 ID（如 `105:104`）的解析：不再按固定冒号段数拆分，改为根据 `inputConfig` 生成规范 handle 后精确匹配；同时修正 Codex 图像理解节点的输出类型为 text，补充“图像理解 → 图生视频提示词”回归测试。
+- 2026-09-05：修复 Phase 0B 目标端口校验回归：后端此前把所有 `*-target` 误限定为 result 节点，导致前端合法的 Codex `text-source → text-target` 连线持续保存失败。现允许所有 Codex 能力节点接收提示词 `text-target`，并仅允许 edit/analyze 接收 `image-target`；新增对应集成回归测试。
+- 2026-09-05：完成 Phase 0B：节点/连线语义 operations、完整领域图校验、持久化 Operation Log/Checkpoint 与安全 inverse undo；人工自动保存迁移为语义 diff并增加历史/恢复 UI；节点资产通过事务化持久 GC job 清理并保护 Checkpoint 引用。53 个测试、前后端构建、真实 HTTP 无浏览器编排和人工页面验收通过。
 - 2026-09-05：人工打开画布不再自动获取空闲 lease，默认以只读观察者进入；控制浮块持续轮询并准确区分 AI、人工和无控制者，空闲时显式提供“取得编辑权”，有控制者时才提供“请求交接”。
 - 2026-09-05：修复结果卡片的视频/图片下载被 Chrome 当作顶层 localhost 导航并报 `ERR_BLOCKED_BY_CLIENT`；下载按钮现在显式使用 HTML download 语义、保留原文件名并阻止画布点击冒泡。
 - 2026-09-05：修复画布生成图片经开发代理下载时浏览器可能报网络错误的问题；资产附件响应现在显式返回 `Content-Length`、`Accept-Ranges` 和 `Cache-Control: private, no-transform`，并补充完整字节下载回归测试。

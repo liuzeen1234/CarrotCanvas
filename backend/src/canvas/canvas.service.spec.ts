@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CanvasService } from './canvas.service';
-import { CanvasDoc, emptyCanvasGraph } from './canvas.entity';
+import { CanvasAssetGcJob, CanvasDoc, CanvasGraph, CanvasOperationLog, emptyCanvasGraph } from './canvas.entity';
+import { Workflow } from '../workflows/workflow.entity';
 
 describe('CanvasService', () => {
   let service: CanvasService;
@@ -40,6 +41,7 @@ describe('CanvasService', () => {
       ensureCanvasPartition: jest.fn(async () => undefined),
       deleteCanvas: jest.fn(async () => undefined),
       getCanvasAssetSizes: jest.fn(async () => ({})),
+      deleteGeneratedByNode: jest.fn(async () => undefined),
     };
     leases = { findOne: jest.fn(async () => ({ canvasId: 'c1', epoch: 1, holderType: 'human', holderId: 'h1', tokenHash: 'ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb', status: 'active', expiresAt: new Date(Date.now() + 60000), serverInstanceId: '' })), create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) };
     receipts = { findOne: jest.fn(async () => null), create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) };
@@ -47,10 +49,12 @@ describe('CanvasService', () => {
       transaction: jest.fn(async (work: any) => work({
         getRepository: (entity: any) => entity === CanvasDoc
           ? { findOne: repo.findOne, findOneOrFail: jest.fn(async () => repo.currentDoc), update: repo.update }
-          : receipts,
+          : entity === CanvasOperationLog ? { create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) }
+            : entity === CanvasAssetGcJob ? { create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) }
+            : entity === Workflow ? { findByIds: jest.fn(async () => []) } : receipts,
       })),
     };
-    service = new CanvasService(repo as any, leases as any, receipts as any, assets as any);
+    service = new CanvasService(repo as any, leases as any, receipts as any, { find: jest.fn(), findOne: jest.fn(), save: jest.fn() } as any, { find: jest.fn(), findOne: jest.fn(), save: jest.fn(), create: jest.fn() } as any, { find: jest.fn(async () => []), delete: jest.fn(), save: jest.fn(), create: jest.fn() } as any, assets as any);
   });
 
   describe('create', () => {
@@ -70,7 +74,7 @@ describe('CanvasService', () => {
   describe('list', () => {
     it('返回节点数与资产大小（按画布聚合）', async () => {
       repo.find.mockResolvedValue([
-        baseDoc({ id: 'c1', graph: { ...emptyCanvasGraph(), nodes: [{}, {}] } }),
+        baseDoc({ id: 'c1', graph: { ...emptyCanvasGraph(), nodes: [{ id: 'n1', type: 'result', position: { x: 0, y: 0 }, data: {} }, { id: 'n2', type: 'result', position: { x: 1, y: 1 }, data: {} }] } }),
         baseDoc({ id: 'c2' }),
       ]);
       assets.getCanvasAssetSizes.mockResolvedValue({ c1: 100, c2: 50 });
@@ -102,15 +106,15 @@ describe('CanvasService', () => {
       const d = baseDoc();
       repo.currentDoc = d;
       repo.findOne.mockResolvedValue(d);
-      const graph = {
+      const graph: CanvasGraph = {
         version: 1,
-        nodes: [{ id: 'n1' }],
+        nodes: [{ id: 'n1', type: 'result', position: { x: 0, y: 0 }, data: { kind: 'image' } }],
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
       };
       await service.update('c1', { name: ' 新名字 ', graph, leaseToken: 'a', leaseEpoch: 1, expectedRevision: 0, idempotencyKey: 'k1' });
       expect(d.name).toBe('新名字');
-      expect(d.graph).toBe(graph);
+      expect(d.graph).toEqual(graph);
       expect(repo.update).toHaveBeenCalledWith({ id: 'c1', revision: 0 }, expect.objectContaining({ name: '新名字', graph }));
     });
 

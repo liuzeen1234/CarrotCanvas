@@ -21,8 +21,8 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, Input, Popover, Spin, Typography, message } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, EnvironmentOutlined, SaveOutlined } from '@ant-design/icons';
+import { Button, Drawer, Input, List, Popconfirm, Popover, Space, Spin, Tag, Typography, message } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, EnvironmentOutlined, HistoryOutlined, SaveOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
@@ -50,6 +50,9 @@ interface CanvasDoc {
 
 interface CanvasLease { leaseToken: string; epoch: number; status: 'active' | 'handoff_pending'; holderType: 'human' | 'agent'; holderId: string; }
 interface CanvasControlHolder { holderType: 'human' | 'agent'; holderId: string; status: string; }
+interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: string | null; }
+interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
+interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
 
 function humanHolderId() {
   const key = 'carrot-canvas:human-holder-id';
@@ -69,6 +72,39 @@ function createPersistedGraph(nodes: Node[], edges: Edge[], _viewport: Viewport 
     // viewport 是每个浏览器的展示偏好，不属于 canonical canvas state。
     viewport: null,
   };
+}
+
+type GraphOperation = Record<string, unknown> & { type: string };
+function graphOperations(previous: ReturnType<typeof createPersistedGraph>, next: ReturnType<typeof createPersistedGraph>): GraphOperation[] {
+  const beforeNodes = new Map(previous.nodes.map((node) => [node.id, node]));
+  const afterNodes = new Map(next.nodes.map((node) => [node.id, node]));
+  const beforeEdges = new Map(previous.edges.map((edge) => [edge.id, edge]));
+  const afterEdges = new Map(next.edges.map((edge) => [edge.id, edge]));
+  // React Flow 扩展字段发生变化时用受同一校验/日志保护的兼容操作兜底。
+  for (const [id, before] of beforeNodes) {
+    const after = afterNodes.get(id); if (!after) continue;
+    const { data: _bd, position: _bp, ...beforeShape } = before;
+    const { data: _ad, position: _ap, ...afterShape } = after;
+    if (JSON.stringify(beforeShape) !== JSON.stringify(afterShape) || Object.keys((before.data ?? {}) as object).some((key) => !(key in ((after.data ?? {}) as object)))) return [{ type: 'replace_graph', graph: next }];
+  }
+  for (const [id, before] of beforeEdges) {
+    const after = afterEdges.get(id);
+    if (after && JSON.stringify(before) !== JSON.stringify(after)) return [{ type: 'replace_graph', graph: next }];
+  }
+  const deleted = new Set([...beforeNodes.keys()].filter((id) => !afterNodes.has(id)));
+  const operations: GraphOperation[] = [];
+  for (const [id, edge] of beforeEdges) if (!afterEdges.has(id) && !deleted.has(edge.source) && !deleted.has(edge.target)) operations.push({ type: 'disconnect', edgeId: id });
+  for (const id of deleted) operations.push({ type: 'delete_node', nodeId: id });
+  for (const [id, node] of afterNodes) if (!beforeNodes.has(id)) operations.push({ type: 'create_node', node });
+  const positions: Array<{ nodeId: string; position: { x: number; y: number } }> = [];
+  for (const [id, after] of afterNodes) {
+    const before = beforeNodes.get(id); if (!before) continue;
+    if (JSON.stringify(before.position) !== JSON.stringify(after.position)) positions.push({ nodeId: id, position: after.position });
+    if (JSON.stringify(before.data) !== JSON.stringify(after.data)) operations.push({ type: 'update_node', nodeId: id, dataPatch: after.data });
+  }
+  if (positions.length) operations.push({ type: 'move_nodes', positions });
+  for (const [id, edge] of afterEdges) if (!beforeEdges.has(id)) operations.push({ type: 'connect', edge });
+  return operations;
 }
 
 export default function CanvasEditorPage() {
@@ -109,6 +145,10 @@ function CanvasEditorInner() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [operationLogs, setOperationLogs] = useState<OperationLogItem[]>([]);
+  const [checkpoints, setCheckpoints] = useState<CheckpointItem[]>([]);
   /** 运行态只驻留内存，不进入 graph；结果节点通过 Context 读取上游状态。 */
   const [nodeRuns, setNodeRuns] = useState<Record<string, RunStateData | null>>({});
   const nodesRef = useRef(nodes);
@@ -121,6 +161,7 @@ function CanvasEditorInner() {
   const saveInFlightRef = useRef(false);
   const pendingSaveRef = useRef<{ graph: ReturnType<typeof createPersistedGraph>; snapshot: string } | null>(null);
   const lastSavedSnapshotRef = useRef('');
+  const lastSavedGraphRef = useRef<ReturnType<typeof createPersistedGraph>>({ version: 1, nodes: [], edges: [], viewport: null });
 
   /** 右键分级菜单状态（右键屏幕坐标；null = 关闭） */
   const [menu, setMenu] = useState<CanvasContextMenuState | null>(null);
@@ -171,6 +212,7 @@ function CanvasEditorInner() {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     // 切换画布时重置状态，避免残留上一张画的节点
     setDoc(null);
     setReady(false);
@@ -184,18 +226,41 @@ function CanvasEditorInner() {
       request<CanvasDoc>(`/api/canvas/${id}`),
       request<any>(`/api/canvas/${id}/control/status`),
     ])
-      .then(([data, status]) => {
-        const activeHolder = ['active', 'handoff_pending'].includes(status?.status) && status?.lease
+      .then(async ([initialData, initialStatus]) => {
+        let data = initialData;
+        let status = initialStatus;
+        let acquired: CanvasLease | null = null;
+        const available = ['available', 'expired', 'revoked'].includes(status?.status);
+        if (available) {
+          try {
+            acquired = await request<CanvasLease>(`/api/canvas/${id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId: humanHolderId() } });
+            // status 与首次 graph 读取之间可能发生过写入；取得 lease 后重新读取 canonical state。
+            data = await request<CanvasDoc>(`/api/canvas/${id}`);
+          } catch {
+            // 竞争失败表示控制权刚被其他写入者取得，刷新状态并安全退回只读。
+            [data, status] = await Promise.all([
+              request<CanvasDoc>(`/api/canvas/${id}`),
+              request<any>(`/api/canvas/${id}/control/status`),
+            ]);
+          }
+        }
+        if (cancelled) {
+          if (acquired) void request(`/api/canvas/${id}/control/release`, { method: 'POST', data: { leaseToken: acquired.leaseToken, leaseEpoch: acquired.epoch } });
+          return;
+        }
+        const activeHolder = !acquired && ['active', 'handoff_pending'].includes(status?.status) && status?.lease
           ? { holderType: status.lease.holderType, holderId: status.lease.holderId, status: status.status }
           : null;
-        setDoc(data); revisionRef.current = data.revision ?? 0; setLease(null); setObservedHolder(activeHolder); setHandoffRequested(false);
-        setControlMessage(activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
+        setDoc(data); revisionRef.current = data.revision ?? 0; setLease(acquired); setObservedHolder(activeHolder); setHandoffRequested(false);
+        setControlMessage(acquired ? '' : activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
         setSaveStatus('saved'); setLastSavedAt(new Date(data.updatedAt)); setSaveError('');
       })
       .catch((e: any) => {
+        if (cancelled) return;
         setLoadError(e?.response?.data?.message || '加载画布失败'); setDoc(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [id]);
 
   // doc 就绪 → 用持久化 graph 初始化受控节点图
@@ -210,7 +275,8 @@ function CanvasEditorInner() {
     setEdges(initialEdges);
     setViewport(initialViewport);
     setCanvasName(doc.name);
-    lastSavedSnapshotRef.current = JSON.stringify(createPersistedGraph(initialNodes, initialEdges, initialViewport));
+    lastSavedGraphRef.current = createPersistedGraph(initialNodes, initialEdges, initialViewport);
+    lastSavedSnapshotRef.current = JSON.stringify(lastSavedGraphRef.current);
     setReady(true);
   }, [doc]);
 
@@ -269,8 +335,12 @@ function CanvasEditorInner() {
     setSaveError('');
     let succeeded = false;
     try {
-      const saved = await request<CanvasDoc>(`/api/canvas/${id}`, { method: 'PATCH', data: { graph: pending.graph, leaseToken: currentLease.leaseToken, leaseEpoch: currentLease.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: currentLease.holderId } });
-      revisionRef.current = saved.revision;
+      const operations = graphOperations(lastSavedGraphRef.current, pending.graph);
+      if (!operations.length) { lastSavedSnapshotRef.current = pending.snapshot; setSaveStatus('saved'); succeeded = true; return; }
+      const result = await request<{ canvas: CanvasDoc; resultRevision: number }>(`/api/canvas/${id}/operations`, { method: 'POST', data: { operations, intent: '人工编辑画布', leaseToken: currentLease.leaseToken, leaseEpoch: currentLease.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: currentLease.holderId } });
+      const saved = result.canvas;
+      revisionRef.current = result.resultRevision;
+      lastSavedGraphRef.current = pending.graph;
       lastSavedSnapshotRef.current = pending.snapshot;
       setLastSavedAt(new Date(saved.updatedAt));
       setSaveStatus(pendingSaveRef.current ? 'dirty' : 'saved');
@@ -300,6 +370,51 @@ function CanvasEditorInner() {
     }
     throw new Error('等待画布保存完成超时');
   }, [flushSave]);
+
+  const loadHistory = useCallback(async () => {
+    if (!id) return;
+    setHistoryLoading(true);
+    try {
+      const [logs, points] = await Promise.all([
+        request<OperationLogItem[]>(`/api/canvas/${id}/operation-log`),
+        request<CheckpointItem[]>(`/api/canvas/${id}/checkpoints`),
+      ]);
+      setOperationLogs(logs); setCheckpoints(points);
+    } catch (error: any) { message.error(error?.response?.data?.message || '读取操作历史失败'); }
+    finally { setHistoryLoading(false); }
+  }, [id]);
+
+  const adoptCanvas = useCallback((canvas: CanvasDoc) => {
+    revisionRef.current = canvas.revision; setDoc(canvas); setCanvasName(canvas.name);
+    setSaveStatus('saved'); setLastSavedAt(new Date(canvas.updatedAt)); setSaveError('');
+  }, []);
+
+  const createCheckpoint = useCallback(async () => {
+    const current = leaseRef.current; if (!id || !current) return;
+    try {
+      await drainSaves();
+      await request(`/api/canvas/${id}/checkpoints`, { method: 'POST', data: { name: `恢复点 ${new Date().toLocaleString('zh-CN', { hour12: false })}`, leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, actorType: 'human', actorId: current.holderId } });
+      message.success('恢复点已创建'); await loadHistory();
+    } catch (error: any) { message.error(error?.response?.data?.message || error?.message || '创建恢复点失败'); }
+  }, [drainSaves, id, loadHistory]);
+
+  const undoLog = useCallback(async (logId: string) => {
+    const current = leaseRef.current; if (!id || !current) return;
+    try {
+      await drainSaves();
+      const result = await request<{ canvas: CanvasDoc }>(`/api/canvas/${id}/operation-log/${logId}/undo`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: current.holderId } });
+      adoptCanvas(result.canvas); message.success('操作批次已撤销'); await loadHistory();
+    } catch (error: any) { message.error(error?.response?.data?.message || error?.message || '撤销失败'); }
+  }, [adoptCanvas, drainSaves, id, loadHistory]);
+
+  const restoreCheckpoint = useCallback(async (checkpointId: string) => {
+    const current = leaseRef.current; if (!id || !current) return;
+    try {
+      await drainSaves();
+      const result = await request<{ canvas: CanvasDoc }>(`/api/canvas/${id}/checkpoints/${checkpointId}/restore`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: current.holderId } });
+      adoptCanvas(result.canvas); message.success('画布已恢复到所选恢复点'); await loadHistory();
+    } catch (error: any) { message.error(error?.response?.data?.message || error?.message || '恢复失败'); }
+  }, [adoptCanvas, drainSaves, id, loadHistory]);
 
   /** 立即把当前最新节点图放入保存队列；无变化时只确认当前已保存。 */
   const manualSave = useCallback(() => {
@@ -376,6 +491,47 @@ function CanvasEditorInner() {
     const timer = window.setInterval(() => void checkControl(), 2000);
     return () => window.clearInterval(timer);
   }, [handoffRequested, id, lease]);
+
+  /**
+   * 只读观察者自动跟随 canonical graph，并读取现有 ComfyUI 内存运行态。
+   * 运行态轮询是 0B 的协作可见性过渡方案；持久化 Run 仍由 1A/1B 落地。
+   */
+  useEffect(() => {
+    if (!id || !ready || canWrite) return;
+    let cancelled = false;
+    const syncReadOnlyState = async () => {
+      try {
+        const latest = await request<CanvasDoc>(`/api/canvas/${id}`);
+        if (!cancelled && !leaseRef.current && latest.revision > revisionRef.current && !pendingSaveRef.current && !saveInFlightRef.current) {
+          revisionRef.current = latest.revision;
+          setDoc(latest);
+          setSaveStatus('saved');
+          setLastSavedAt(new Date(latest.updatedAt));
+          setSaveError('');
+        }
+      } catch { /* 短暂断线时保留当前画布，下次轮询继续同步。 */ }
+
+      try {
+        const payload = await request<{ runs: CanvasRunState[] }>('/api/comfyui/runs');
+        if (cancelled || leaseRef.current) return;
+        const latestByNode = new Map<string, CanvasRunState>();
+        for (const run of payload.runs ?? []) {
+          if (run.canvasId === id && run.nodeId && !latestByNode.has(run.nodeId)) latestByNode.set(run.nodeId, run);
+        }
+        setNodeRuns((previous) => {
+          const next = { ...previous };
+          for (const [nodeId, run] of latestByNode) next[nodeId] = run;
+          for (const [nodeId, run] of Object.entries(next)) {
+            if (run && ['pending', 'running'].includes(run.status) && !latestByNode.has(nodeId)) next[nodeId] = null;
+          }
+          return next;
+        });
+      } catch { /* 运行态服务不可用不影响画布 revision 同步。 */ }
+    };
+    void syncReadOnlyState();
+    const timer = window.setInterval(() => void syncReadOnlyState(), 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [canWrite, id, ready]);
 
   /** 节点、连线或视口变化后 800ms 防抖保存。 */
   useEffect(() => {
@@ -541,19 +697,6 @@ function CanvasEditorInner() {
   /** 删除节点 + 其相连边（自定义节点经 Context 调用，二次确认在节点内） */
   const handleDeleteNode = useCallback(async (nodeId: string) => {
     if (!canWrite) return;
-    const node = nodesRef.current.find((n) => n.id === nodeId);
-    if ((node?.type === NODE_TYPE_TXT2IMG || node?.type === NODE_TYPE_CODEX) && id) {
-      try {
-        await request('/api/assets/generated/by-node', {
-          method: 'DELETE',
-          params: { canvasId: id, nodeId },
-          data: { leaseToken: leaseRef.current?.leaseToken, leaseEpoch: leaseRef.current?.epoch, expectedRevision: revisionRef.current },
-        });
-      } catch (error: any) {
-        message.error(error?.response?.data?.message || '生成资产清理失败，节点未删除');
-        throw error;
-      }
-    }
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     setNodeRuns((runs) => {
@@ -562,7 +705,7 @@ function CanvasEditorInner() {
       delete next[nodeId];
       return next;
     });
-  }, [canWrite, id]);
+  }, [canWrite]);
 
   const ensureResultNode = useCallback((sourceNodeId: string, kind: 'image' | 'video' = 'image') => {
     if (!canWrite) return;
@@ -593,6 +736,8 @@ function CanvasEditorInner() {
   const setNodeRunState = useCallback((nodeId: string, run: RunStateData | null) => {
     setNodeRuns((prev) => ({ ...prev, [nodeId]: run }));
   }, [canWrite]);
+
+  const getNodeRunState = useCallback((nodeId: string) => nodeRuns[nodeId] ?? null, [nodeRuns]);
 
   const getResultState = useCallback((resultNodeId: string): CanvasResultState => {
     const resultNode = nodes.find((item) => item.id === resultNodeId);
@@ -862,6 +1007,7 @@ function CanvasEditorInner() {
             deleteNode: handleDeleteNode,
             ensureResultNode,
             setNodeRunState,
+            getNodeRunState,
             getResultState,
             getUpstreamAsset,
             getUpstreamText,
@@ -961,6 +1107,9 @@ function CanvasEditorInner() {
                     {controlLabel}
                   </button>
                 </Popover>
+                <Button icon={<HistoryOutlined />} onClick={() => { setHistoryOpen(true); void loadHistory(); }} aria-label="操作历史与恢复点">
+                  {isNarrow ? null : '历史'}
+                </Button>
               </Panel>
               {selectedEdge ? (
                 <Panel position="top-right" className="canvas-edge-actions">
@@ -1013,6 +1162,40 @@ function CanvasEditorInner() {
           </CanvasNodeDataContext.Provider>
         ) : null}
       </div>
+      <Drawer title="操作历史与恢复点" open={historyOpen} onClose={() => setHistoryOpen(false)} width={isNarrow ? '100%' : 520}>
+        <Spin spinning={historyLoading}>
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <div>
+              <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                <Typography.Title level={5} style={{ margin: 0 }}>恢复点</Typography.Title>
+                <Button type="primary" disabled={!canWrite} onClick={() => void createCheckpoint()}>创建当前恢复点</Button>
+              </Space>
+              <List
+                size="small"
+                locale={{ emptyText: '暂无恢复点' }}
+                dataSource={checkpoints}
+                renderItem={(item) => <List.Item actions={[<Popconfirm key="restore" title="覆盖恢复画布？" description="当前状态会作为一条可审计操作被替换。" okText="确认恢复" cancelText="取消" onConfirm={() => void restoreCheckpoint(item.id)}><Button size="small" danger disabled={!canWrite}>恢复</Button></Popconfirm>]}>
+                  <List.Item.Meta title={`${item.name} · revision ${item.revision}`} description={`${item.createdByType === 'agent' ? 'AI' : '人工'} ${item.createdById} · ${new Date(item.createdAt).toLocaleString('zh-CN', { hour12: false })}`} />
+                </List.Item>}
+              />
+            </div>
+            <div>
+              <Typography.Title level={5}>操作批次</Typography.Title>
+              <List
+                size="small"
+                locale={{ emptyText: '暂无操作记录' }}
+                dataSource={operationLogs}
+                renderItem={(item) => <List.Item actions={[<Popconfirm key="undo" title="撤销这个操作批次？" description="只有它仍是画布最新修改时才能安全撤销。" okText="撤销" cancelText="取消" onConfirm={() => void undoLog(item.id)}><Button size="small" disabled={!canWrite || !!item.undoneByLogId || item.resultRevision !== revisionRef.current}>撤销</Button></Popconfirm>]}>
+                  <List.Item.Meta
+                    title={<Space><span>revision {item.baseRevision} → {item.resultRevision}</span>{item.undoneByLogId ? <Tag>已撤销</Tag> : null}</Space>}
+                    description={<><div>{item.intent || item.operations.map((operation) => operation.type).join('、')}</div><div>{item.actorType === 'agent' ? 'AI' : '人工'} {item.actorId} · {new Date(item.createdAt).toLocaleString('zh-CN', { hour12: false })}</div></>}
+                  />
+                </List.Item>}
+              />
+            </div>
+          </Space>
+        </Spin>
+      </Drawer>
     </div>
   );
 }

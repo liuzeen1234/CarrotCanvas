@@ -16,6 +16,7 @@ import {
   LeaseIdentity,
   LeaseProof,
   OperationBatchDto,
+  CheckpointDto,
 } from './canvas.service';
 import { CanvasDoc } from './canvas.entity';
 
@@ -64,6 +65,21 @@ export class CanvasController {
 
   @Post(':id/operations')
   operations(@Param('id') id: string, @Body() dto: OperationBatchDto) { return this.canvas.applyOperations(id, dto); }
+
+  @Get(':id/operation-log')
+  operationLog(@Param('id') id: string) { return this.canvas.operationLog(id); }
+
+  @Post(':id/operation-log/:logId/undo')
+  undo(@Param('id') id: string, @Param('logId') logId: string, @Body() dto: LeaseProof) { return this.canvas.undoOperation(id, logId, dto); }
+
+  @Get(':id/checkpoints')
+  checkpoints(@Param('id') id: string) { return this.canvas.listCheckpoints(id); }
+
+  @Post(':id/checkpoints')
+  createCheckpoint(@Param('id') id: string, @Body() dto: CheckpointDto) { return this.canvas.createCheckpoint(id, dto); }
+
+  @Post(':id/checkpoints/:checkpointId/restore')
+  restoreCheckpoint(@Param('id') id: string, @Param('checkpointId') checkpointId: string, @Body() dto: LeaseProof) { return this.canvas.restoreCheckpoint(id, checkpointId, dto); }
 
   /** 改名 / 保存 graph */
   @Patch(':id')
