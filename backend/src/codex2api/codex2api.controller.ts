@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Post, Put, Query, Res, UploadedFiles, UseInterceptors,
+  BadGatewayException, Body, Controller, Get, Post, Put, Query, Res, UploadedFiles, UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Codex2ApiService, UploadFile } from './codex2api.service';
@@ -146,9 +146,10 @@ export class Codex2ApiController {
   async analyze(@UploadedFiles() files: UploadFile[], @Body() body: Record<string, unknown>) {
     const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, idempotencyKey, actorType, actorId, shotId, parentRunId, carrotOutputMode, ...fields } = body || {};
     const structuredPromptMode = carrotOutputMode === 'image-prompts' || carrotOutputMode === 'video-prompts';
-    if (structuredPromptMode) fields.prompt = `${String(fields.prompt || (carrotOutputMode === 'video-prompts' ? '请根据图片生成图生视频提示词' : '请根据图片生成图像提示词'))}\n\n${carrotOutputMode === 'video-prompts' ? IMAGE_TO_VIDEO_PROMPT_INSTRUCTION : IMAGE_PROMPT_SYSTEM}`;
+    const promptIntent = carrotOutputMode === 'image-prompts' ? 'reverse-image-prompt' : undefined;
+    if (structuredPromptMode) fields.prompt = `${String(fields.prompt || (carrotOutputMode === 'video-prompts' ? '请根据图片生成图生视频提示词' : '请反推可尽可能复现输入图片的图像生成提示词'))}\n\n${carrotOutputMode === 'video-prompts' ? IMAGE_TO_VIDEO_PROMPT_INSTRUCTION : REVERSE_IMAGE_PROMPT_INSTRUCTION}`;
     if (canvasId) await this.canvas.assertWriteAccess(String(canvasId), { leaseToken: String(leaseToken || ''), leaseEpoch: Number(leaseEpoch), expectedRevision: Number(expectedRevision) });
-    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: String(canvasId || '') || null, nodeId: String(nodeId || '') || null, shotId: String(shotId || '') || null, parentRunId: String(parentRunId || '') || null, capabilityId: 'image-analysis', capabilityVersion: String(fields.model || 'default'), inputSnapshot: { ...fields, carrotOutputMode: carrotOutputMode || 'text' }, actorType: actorType === 'agent' ? 'agent' : 'human', actorId: String(actorId || 'web'), idempotencyKey: String(idempotencyKey || '') || null });
+    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: String(canvasId || '') || null, nodeId: String(nodeId || '') || null, shotId: String(shotId || '') || null, parentRunId: String(parentRunId || '') || null, capabilityId: 'image-analysis', capabilityVersion: String(fields.model || 'default'), inputSnapshot: { ...fields, carrotOutputMode: carrotOutputMode || 'text', ...(promptIntent ? { carrotPromptIntent: promptIntent } : {}) }, actorType: actorType === 'agent' ? 'agent' : 'human', actorId: String(actorId || 'web'), idempotencyKey: String(idempotencyKey || '') || null });
     if (begun.replay) return { runId: begun.run.id, replay: true, run: begun.run };
     try {
       await this.runs.patch(begun.run.id, { status: 'running', startedAt: Date.now() });
@@ -163,7 +164,12 @@ export class Codex2ApiController {
       await this.runs.finish(begun.run.id, 'succeeded', [], null, outputText, outputParts);
       return { ...payload, runId: begun.run.id, outputParts };
     }
-    catch (error) { await this.runs.finish(begun.run.id, 'failed', [], { code: (error as any)?.code, message: (error as Error).message }); throw error; }
+    catch (error) {
+      const detail = { code: (error as any)?.code, message: (error as Error).message };
+      await this.runs.finish(begun.run.id, 'failed', [], detail);
+      if (detail.code === 'STRUCTURED_PROMPT_INVALID') throw new BadGatewayException(detail);
+      throw error;
+    }
   }
 }
 
@@ -184,6 +190,7 @@ function extractStreamText(raw: string): string | null {
 }
 
 const IMAGE_PROMPT_SYSTEM = '你是图像生成提示词编辑器。根据用户需求只返回一个 JSON 对象，不要 Markdown，不要解释。格式必须是 {"positive":"希望画面出现的主体、构图、光线、风格等完整正向提示词","negative":"需要排除的低质量、畸形、文字、水印等完整负向提示词"}。两个字段都必须是字符串。';
+const REVERSE_IMAGE_PROMPT_INSTRUCTION = '你是图片提示词反推器。理解输入图片，生成可供文生图模型尽可能复现其可见视觉特征的提示词。正向提示词应覆盖主体及属性、动作姿态、环境与前中后景、构图、视角、景别与镜头感、光线、色彩、材质、艺术或摄影风格和画面质量。只描述图片中可观察或可合理推断的信息；不得声称恢复原始 prompt，不得编造作者、生成模型、seed、LoRA、采样器或其他不可见参数。只返回一个 JSON 对象，不要 Markdown，不要解释。格式必须是 {"positive":"用于近似复现输入图片的完整正向提示词","negative":"需要排除的内容、常见瑕疵以及与原图不符的特征"}。两个字段都必须是非空字符串。';
 const VIDEO_PROMPT_SYSTEM = '你是文生视频提示词编辑器。根据用户需求只返回一个 JSON 对象，不要 Markdown，不要解释。格式必须是 {"positive":"包含主体与场景、动作过程、镜头运动、速度节奏、环境动态、光线风格和时间连续性的完整视频正向提示词","negative":"需要排除的闪烁、跳帧、主体漂移、身份变化、动作突变、肢体形变、镜头抖动、文字水印和低质量等完整视频负向提示词"}。两个字段都必须是字符串。';
 const IMAGE_TO_VIDEO_PROMPT_INSTRUCTION = '你是图生视频提示词编辑器。理解输入图片后，保持图片中已确定的主体身份、服装、场景、构图和视觉风格，重点描述接下来发生的主体动作、镜头运动、速度节奏和环境动态，不随意增加新主体。只返回一个 JSON 对象，不要 Markdown，不要解释。格式必须是 {"positive":"保持原图一致性的完整图生视频正向提示词","negative":"需要排除的闪烁、跳帧、主体漂移、身份或服装变化、动作突变、肢体形变、镜头抖动、文字水印和低质量等完整负向提示词"}。两个字段都必须是字符串。';
 

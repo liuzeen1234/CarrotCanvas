@@ -522,6 +522,7 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-06：实现 Issue #5 图片提示词反推。图像理解卡片复用 `image-prompts` 兼容值和现有合并/正向/负向端口，但使用独立的视觉复现指令与 `reverse-image-prompt` Run 意图标记；历史切换与旧 `image-prompts` Run 保持兼容，不新增 canvas revision 或 Run 模型迁移。新增 2 个后端模式/异常测试，完整后端 10 suite / 75 用例、后端 TypeScript 编译和前端生产构建均通过；3100/8000 重启健康，真实“画风学习”画布确认反推选项、三路输出标识、限制文案和无图时禁用运行正确呈现；留待用户进行真实 provider 生成验收。
 - 2026-09-06：按产品范围决定，AI Native 当前交付边界固定为 Phase 1B；Phase 2、Phase 3 及最终 Skill/成片闭环暂不实施，仅保留设计与验收合同作为未来参考。Phase 0A–1B 均已完成，Issue #1 可按当前范围关闭并发布 `v1.0.0`。
 - 2026-09-06：完成 Phase 1B 真实 provider/UI 验收。验收发现并修复人工页面释放时漏写 Run Handoff、取得新租约后漏调 adopt、可编辑状态停止轮询共享 Run，以及 ComfyUI 列表进度未同步到持久 Run 四个串联缺口；30-step ComfyUI 双向接力确认同一 Run/ProviderRunId、连续进度、最终产物和历史交接标签均正确，Phase 1B 标记完成。
 - 2026-09-06：实现 Phase 1B 运行中双向接力：持久化 Run Handoff、受 lease 保护的 handoff/adopt、接手幂等与身份校验、历史 UI 交接状态、机器可读取消边界，以及运行中和全部终态的 SQLite 双向 E2E。73 个后端用例、前后端构建、3100 重启/健康检查和 Action Registry 验证通过；等待真实长 Run 的 provider/UI 双向手动验收。

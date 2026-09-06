@@ -9,12 +9,14 @@ export interface NodeHistoryRun {
   outputAssetIds: string[];
   outputText: string | null;
   outputParts?: { positive: string; negative: string } | null;
+  inputSnapshot?: { carrotOutputMode?: string; carrotPromptIntent?: string } | null;
   createdAt: string;
   candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null;
 }
 
-export default function NodeOutputHistory({ canvasId, nodeId, kind, readOnly, refreshKey, control, onSelectAsset, onSelectText }: {
+export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeContext, readOnly, refreshKey, control, onSelectAsset, onSelectText }: {
   canvasId?: string; nodeId: string; kind: 'image' | 'video' | 'text'; readOnly: boolean; refreshKey?: unknown;
+  promptModeContext?: 'text' | 'image' | 'edit' | 'analyze';
   control?: { leaseToken: string; leaseEpoch: number; expectedRevision: number };
   onSelectAsset?: (asset: { assetId: string; url: string; kind: string }) => void;
   onSelectText?: (text: string, parts?: { positive: string; negative: string } | null) => void;
@@ -42,7 +44,7 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, readOnly, re
   return <div className="canvas-node-history">
     <Typography.Text type="secondary" style={{ fontSize: 12 }}>生成历史 · {runs.reduce((sum, run) => sum + Math.max(1, run.outputAssetIds.length), 0)}</Typography.Text>
     <div className="canvas-node-history__rail">
-      {runs.flatMap((run) => kind === 'text' ? [<button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run) ? <span className={`canvas-node-history__mode ${promptModeLabel(run) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span>{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button>] : run.outputAssetIds.map((assetId) => {
+      {runs.flatMap((run) => kind === 'text' ? [<button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span>{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button>] : run.outputAssetIds.map((assetId) => {
         const current = run.candidateGroup?.selectedAssetId === assetId;
         return <div key={assetId} className={`canvas-node-history__media${current ? ' is-current' : ''}`}>
           {kind === 'video' ? <video src={`/api/assets/${assetId}`} muted preload="metadata" /> : <Image src={`/api/assets/${assetId}`} width={88} height={66} style={{ objectFit: 'cover' }} preview={{ mask: '预览' }} />}
@@ -54,4 +56,9 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, readOnly, re
 }
 
 function textSummary(text: string) { const compact = text.replace(/\s+/g, ' ').trim(); return compact.length > 90 ? `${compact.slice(0, 90)}…` : compact; }
-function promptModeLabel(run: NodeHistoryRun) { const mode = (run as any)?.inputSnapshot?.carrotOutputMode; return mode === 'video-prompts' ? '视频提示词' : mode === 'image-prompts' ? '图像提示词' : ''; }
+function promptModeLabel(run: NodeHistoryRun, context?: 'text' | 'image' | 'edit' | 'analyze') {
+  const mode = run.inputSnapshot?.carrotOutputMode;
+  if (mode === 'video-prompts') return '视频提示词';
+  if (run.inputSnapshot?.carrotPromptIntent === 'reverse-image-prompt' || (mode === 'image-prompts' && context === 'analyze')) return '提示词反推';
+  return mode === 'image-prompts' ? '图像提示词' : '';
+}
