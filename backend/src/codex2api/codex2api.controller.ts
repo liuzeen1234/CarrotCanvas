@@ -52,14 +52,16 @@ export class Codex2ApiController {
 
   @Post('chat/completions')
   async chat(@Body() body: any, @Res() res: any) {
-    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, idempotencyKey, actorType, actorId, shotId, parentRunId, carrotOutputMode, ...upstreamBody } = body || {};
+    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, idempotencyKey, actorType, actorId, shotId, parentRunId, carrotOutputMode, carrotInputText, carrotInstruction, ...upstreamBody } = body || {};
+    const textTransform = typeof carrotInputText === 'string';
+    if (textTransform) upstreamBody.messages = [{ role: 'user', content: composeTextTransformPrompt(carrotInputText, String(carrotInstruction || '')) }];
     const structuredPromptMode = carrotOutputMode === 'image-prompts' || carrotOutputMode === 'video-prompts';
     if (structuredPromptMode) {
       upstreamBody.stream = false;
       upstreamBody.messages = [{ role: 'system', content: carrotOutputMode === 'video-prompts' ? VIDEO_PROMPT_SYSTEM : IMAGE_PROMPT_SYSTEM }, ...(Array.isArray(upstreamBody.messages) ? upstreamBody.messages : [])];
     }
     if (canvasId) await this.canvas.assertWriteAccess(canvasId, { leaseToken, leaseEpoch, expectedRevision });
-    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: canvasId || null, nodeId: nodeId || null, shotId: shotId || null, parentRunId: parentRunId || null, capabilityId: 'text-generation', capabilityVersion: String(upstreamBody.model || 'default'), inputSnapshot: { ...upstreamBody, carrotOutputMode: carrotOutputMode || 'text' }, actorType: actorType || 'human', actorId: actorId || 'web', idempotencyKey: idempotencyKey || null });
+    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: canvasId || null, nodeId: nodeId || null, shotId: shotId || null, parentRunId: parentRunId || null, capabilityId: 'text-generation', capabilityVersion: String(upstreamBody.model || 'default'), inputSnapshot: { ...upstreamBody, carrotOutputMode: carrotOutputMode || 'text', ...(textTransform ? { carrotInputText, carrotInstruction: String(carrotInstruction || '') } : {}) }, actorType: actorType || 'human', actorId: actorId || 'web', idempotencyKey: idempotencyKey || null });
     if (begun.replay) return res.status(200).json({ runId: begun.run.id, replay: true, run: begun.run });
     await this.runs.patch(begun.run.id, { status: 'running', startedAt: Date.now() });
     let upstream: Response;
@@ -193,6 +195,10 @@ const IMAGE_PROMPT_SYSTEM = '你是图像生成提示词编辑器。根据用户
 const REVERSE_IMAGE_PROMPT_INSTRUCTION = '你是图片提示词反推器。理解输入图片，生成可供文生图模型尽可能复现其可见视觉特征的提示词。正向提示词应覆盖主体及属性、动作姿态、环境与前中后景、构图、视角、景别与镜头感、光线、色彩、材质、艺术或摄影风格和画面质量。只描述图片中可观察或可合理推断的信息；不得声称恢复原始 prompt，不得编造作者、生成模型、seed、LoRA、采样器或其他不可见参数。只返回一个 JSON 对象，不要 Markdown，不要解释。格式必须是 {"positive":"用于近似复现输入图片的完整正向提示词","negative":"需要排除的内容、常见瑕疵以及与原图不符的特征"}。两个字段都必须是非空字符串。';
 const VIDEO_PROMPT_SYSTEM = '你是文生视频提示词编辑器。根据用户需求只返回一个 JSON 对象，不要 Markdown，不要解释。格式必须是 {"positive":"包含主体与场景、动作过程、镜头运动、速度节奏、环境动态、光线风格和时间连续性的完整视频正向提示词","negative":"需要排除的闪烁、跳帧、主体漂移、身份变化、动作突变、肢体形变、镜头抖动、文字水印和低质量等完整视频负向提示词"}。两个字段都必须是字符串。';
 const IMAGE_TO_VIDEO_PROMPT_INSTRUCTION = '你是图生视频提示词编辑器。理解输入图片后，保持图片中已确定的主体身份、服装、场景、构图和视觉风格，重点描述接下来发生的主体动作、镜头运动、速度节奏和环境动态，不随意增加新主体。只返回一个 JSON 对象，不要 Markdown，不要解释。格式必须是 {"positive":"保持原图一致性的完整图生视频正向提示词","negative":"需要排除的闪烁、跳帧、主体漂移、身份或服装变化、动作突变、肢体形变、镜头抖动、文字水印和低质量等完整负向提示词"}。两个字段都必须是字符串。';
+
+export function composeTextTransformPrompt(inputText: string, instruction: string) {
+  return `请按照以下要求处理输入文本。\n\n加工要求：\n${instruction}\n\n输入文本：\n${inputText}`;
+}
 
 function parsePromptParts(text: string | null): { positive: string; negative: string } | null {
   if (!text) return null;

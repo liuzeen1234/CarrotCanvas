@@ -107,6 +107,19 @@
 }
 .canvas-codex-text { max-height: 220px; overflow: auto; white-space: pre-wrap; line-height: 1.6; padding: 8px; border-radius: 6px; background: #f6ffed; border: 1px solid #d9f7be; }
 
+.canvas-codex-input-text__content {
+  max-height: 120px;
+  margin-top: 4px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  padding: 7px;
+  border-radius: 6px;
+  background: #fafafa;
+  border: 1px solid rgba(5, 5, 5, 0.1);
+  color: rgba(0, 0, 0, 0.65);
+}
+
 .comfy-field-invalid .ant-input,
 .comfy-field-invalid .ant-input-number,
 .comfy-field-invalid .ant-select-selector {

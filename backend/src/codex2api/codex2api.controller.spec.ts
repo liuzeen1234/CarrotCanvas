@@ -1,5 +1,48 @@
 import { BadGatewayException } from '@nestjs/common';
-import { Codex2ApiController } from './codex2api.controller';
+import { Codex2ApiController, composeTextTransformPrompt } from './codex2api.controller';
+
+describe('Codex2ApiController text transform mode', () => {
+  it('composes the instruction and upstream text with explicit boundaries', () => {
+    expect(composeTextTransformPrompt('原始文字', '压缩到 100 字')).toBe(
+      '请按照以下要求处理输入文本。\n\n加工要求：\n压缩到 100 字\n\n输入文本：\n原始文字',
+    );
+  });
+
+  it('forwards only the composed prompt and preserves both source fields in the run snapshot', async () => {
+    const providerPayload = { choices: [{ message: { content: '加工结果' } }] };
+    const service = {
+      request: jest.fn().mockResolvedValue(new Response(JSON.stringify(providerPayload), { status: 200 })),
+      readJsonResponse: jest.fn().mockResolvedValue(providerPayload),
+    };
+    const runs = {
+      begin: jest.fn().mockResolvedValue({ run: { id: 'run-text' }, replay: false }),
+      patch: jest.fn().mockResolvedValue(undefined),
+      finish: jest.fn().mockResolvedValue(undefined),
+    };
+    const controller = new Codex2ApiController(service as any, { assertWriteAccess: jest.fn() } as any, runs as any);
+    const response = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+
+    await controller.chat({
+      model: 'codex', stream: false,
+      messages: [{ role: 'user', content: '不应直接转发' }],
+      carrotInputText: '上游产物', carrotInstruction: '改写成三点',
+    }, response as any);
+
+    const forwarded = JSON.parse(service.request.mock.calls[0][1].body);
+    expect(forwarded.messages).toEqual([{
+      role: 'user',
+      content: composeTextTransformPrompt('上游产物', '改写成三点'),
+    }]);
+    expect(forwarded.carrotInputText).toBeUndefined();
+    expect(forwarded.carrotInstruction).toBeUndefined();
+    expect(runs.begin.mock.calls[0][0].inputSnapshot).toMatchObject({
+      carrotInputText: '上游产物',
+      carrotInstruction: '改写成三点',
+      messages: forwarded.messages,
+    });
+    expect(runs.finish).toHaveBeenCalledWith('run-text', 'succeeded', [], null, '加工结果', null);
+  });
+});
 
 describe('Codex2ApiController image prompt reverse mode', () => {
   const createController = (payload: any) => {

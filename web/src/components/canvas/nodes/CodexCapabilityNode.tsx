@@ -29,6 +29,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
   const reversePromptMode = data.capability === 'analyze' && data.outputMode === 'image-prompts';
   const upstream = needsImage ? getUpstreamAsset(props.id, resultTargetHandle('image'), 'image') : null;
   const upstreamPrompt = getUpstreamText(props.id, capabilityPromptHandle());
+  const textTransformMode = data.capability === 'text' && upstreamPrompt.connected;
   const effectivePrompt = upstreamPrompt.connected ? upstreamPrompt.text : data.prompt;
   const images = data.lastAssets || [];
   const displayedText = liveText || data.lastText || '';
@@ -53,7 +54,12 @@ export default function CodexCapabilityNode(props: NodeProps) {
     const timer = window.setTimeout(() => controller.abort(), 600_000);
     try {
       if (data.capability === 'text') {
-        const body = { model: data.model || 'codex', messages: [{ role: 'user', content: effectivePrompt }], carrotOutputMode: promptPairMode ? data.outputMode : 'text', canvasId, nodeId: props.id, idempotencyKey: crypto.randomUUID(), ...control };
+        const body = {
+          model: data.model || 'codex',
+          messages: [{ role: 'user', content: effectivePrompt }],
+          ...(textTransformMode ? { carrotInputText: upstreamPrompt.text, carrotInstruction: data.prompt } : {}),
+          carrotOutputMode: promptPairMode ? data.outputMode : 'text', canvasId, nodeId: props.id, idempotencyKey: crypto.randomUUID(), ...control,
+        };
         let text = '';
         let parts: { positive: string; negative: string } | undefined;
         if (!promptPairMode && data.stream !== false) await streamChat(body, (delta) => { text += delta; setLiveText(text); }, controller.signal);
@@ -71,7 +77,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
     } catch (e) { setError(errorMessage(e)); } finally { clearTimeout(timer); setBusy(false); setLocalStartedAt(null); abortRef.current = null; }
   };
 
-  const canRun = !!effectivePrompt?.trim() && (!needsImage || !!files.length || !!upstream);
+  const canRun = !!effectivePrompt?.trim() && (!textTransformMode || !!data.prompt.trim()) && (!needsImage || !!files.length || !!upstream);
   return <div className={`canvas-node canvas-node--codex${props.selected ? ' selected' : ''}`}>
     {needsImage ? <Handle type="target" position={Position.Left} id={resultTargetHandle('image')} className="canvas-handle--image" title="图片输入" /> : null}
     <div className="canvas-node__header"><span className="canvas-node__type" style={{ background: '#fa8c16' }}>Codex2API</span><span className="canvas-node__bind">{LABELS[data.capability]}</span>
@@ -84,11 +90,16 @@ export default function CodexCapabilityNode(props: NodeProps) {
     <div className="canvas-node__body nodrag"><Space direction="vertical" size={8} style={{ width: '100%' }}>
       {needsImage ? <Upload disabled={readOnly} accept="image/*" maxCount={1} fileList={files} beforeUpload={() => false} onChange={({ fileList }) => setFiles(fileList.slice(-1))} listType="picture"><Button disabled={readOnly} icon={<UploadOutlined />}>{upstream ? '改用本地图片' : '上传图片'}</Button></Upload> : null}
       {upstream ? <Tag color="success">已连接上游图片</Tag> : null}
+      {textTransformMode ? <div className="canvas-codex-input-text">
+        <Typography.Text type="secondary">输入文本（来自上游）</Typography.Text>
+        <div className="canvas-codex-input-text__content">{upstreamPrompt.text || '上游尚未输出文本'}</div>
+      </div> : null}
       <div style={{ position: 'relative' }}>
         <Handle type="target" position={Position.Left} id={capabilityPromptHandle()} className="canvas-handle--text" style={{ left: -15 }} title="提示词文本输入" />
-        <ImeSafeTextArea autoSize={{ minRows: 3, maxRows: 8 }} value={upstreamPrompt.connected ? upstreamPrompt.text : data.prompt} onChange={(prompt) => update({ prompt })} disabled={readOnly || upstreamPrompt.connected} placeholder={upstreamPrompt.connected ? '等待上游输出文本' : '输入提示词'} />
+        {textTransformMode ? <Typography.Text type="secondary">加工要求</Typography.Text> : null}
+        <ImeSafeTextArea autoSize={{ minRows: 3, maxRows: 8 }} value={data.prompt} onChange={(prompt) => update({ prompt })} disabled={readOnly} placeholder={textTransformMode ? '输入如何修改上游文本，例如：压缩篇幅并改写为分镜脚本' : upstreamPrompt.connected ? '等待上游输出文本' : '输入提示词'} />
       </div>
-      {upstreamPrompt.connected ? <Tag color={upstreamPrompt.text.trim() ? 'success' : 'warning'}>{upstreamPrompt.text.trim() ? '已连接上游提示词' : '上游尚未输出文本'}</Tag> : null}
+      {upstreamPrompt.connected ? <Tag color={upstreamPrompt.text.trim() ? 'success' : 'warning'}>{upstreamPrompt.text.trim() ? (textTransformMode ? '已连接上游输入' : '已连接上游提示词') : '上游尚未输出文本'}</Tag> : null}
       <Select disabled={readOnly} size="small" value={data.model || 'codex'} options={[{ value: 'codex', label: 'codex' }]} onChange={(model) => update({ model })} style={{ width: '100%' }} />
       {supportsPromptMode ? <Select disabled={readOnly} size="small" value={data.outputMode || 'text'} options={[{ value: 'text', label: '普通文本' }, { value: 'image-prompts', label: data.capability === 'analyze' ? '图片提示词反推（正负分开）' : '图像提示词（正负分开）' }, { value: 'video-prompts', label: '视频提示词（正负分开）' }]} onChange={(outputMode) => update({ outputMode, lastTextParts: outputMode === 'text' ? undefined : data.lastTextParts })} style={{ width: '100%' }} /> : null}
       {data.capability === 'text' && !promptPairMode ? <Switch disabled={readOnly} size="small" checked={data.stream !== false} checkedChildren="流式" unCheckedChildren="普通" onChange={(stream) => update({ stream })} /> : null}
