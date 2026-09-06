@@ -53,7 +53,7 @@ interface CanvasControlHolder { holderType: 'human' | 'agent'; holderId: string;
 interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: string | null; }
 interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
 interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
-interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; createdAt: string; }
+interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; createdAt: string; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
 
 const sourceHandleKind = (handle: string) => handle === 'text-positive-source' || handle === 'text-negative-source'
   ? 'text'
@@ -462,7 +462,16 @@ function CanvasEditorInner() {
           leaseRef.current = renewed;
           setControlMessage('收到交接请求：正在保存并释放编辑权…');
           await drainSaves();
-          await request(`/api/canvas/${id}/control/release`, { method: 'POST', data: { leaseToken: renewed.leaseToken, leaseEpoch: renewed.epoch } });
+          const history = await request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=1`);
+          const latestRun = history.items?.[0];
+          if (latestRun) {
+            await request(`/api/runs/${latestRun.id}/handoff`, { method: 'POST', data: {
+              leaseToken: renewed.leaseToken, leaseEpoch: renewed.epoch, expectedRevision: revisionRef.current,
+              actorType: 'human', actorId: humanHolderId(), summary: '人工页面响应控制权请求；继续观察同一 Run，不重复提交或自动取消。',
+            } });
+          } else {
+            await request(`/api/canvas/${id}/control/release`, { method: 'POST', data: { leaseToken: renewed.leaseToken, leaseEpoch: renewed.epoch } });
+          }
           setLease(null);
           setObservedHolder(null);
           setControlMessage('编辑权已交接，当前为只读');
@@ -501,6 +510,12 @@ function CanvasEditorInner() {
         if (!handoffRequested || !available) return;
         const acquired = await request<CanvasLease>(`/api/canvas/${id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId: humanHolderId() } });
         const latest = await request<CanvasDoc>(`/api/canvas/${id}`);
+        const runHistory = await request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=1`);
+        const handedRun = runHistory.items?.find((run) => run.latestHandoff?.outcome === 'released');
+        if (handedRun) await request(`/api/runs/${handedRun.id}/adopt`, { method: 'POST', data: {
+          leaseToken: acquired.leaseToken, leaseEpoch: acquired.epoch, expectedRevision: latest.revision,
+          actorType: 'human', actorId: humanHolderId(),
+        } });
         revisionRef.current = latest.revision; setDoc(latest); setLease(acquired); setObservedHolder(null); setHandoffRequested(false); setControlMessage('');
         setSaveStatus('saved'); setLastSavedAt(new Date(latest.updatedAt)); setSaveError('');
       } catch { /* 竞争失败或尚未释放，继续等待 */ }
@@ -511,11 +526,10 @@ function CanvasEditorInner() {
   }, [handoffRequested, id, lease]);
 
   /**
-   * 只读观察者自动跟随 canonical graph，并读取现有 ComfyUI 内存运行态。
-   * 运行态轮询是 0B 的协作可见性过渡方案；持久化 Run 仍由 1A/1B 落地。
+   * 只读观察者自动跟随 canonical graph；所有控制者持续读取共享 ComfyUI 运行态。
    */
   useEffect(() => {
-    if (!id || !ready || canWrite) return;
+    if (!id || !ready) return;
     let cancelled = false;
     const syncReadOnlyState = async () => {
       try {
@@ -531,7 +545,7 @@ function CanvasEditorInner() {
 
       try {
         const payload = await request<{ runs: CanvasRunState[] }>('/api/comfyui/runs');
-        if (cancelled || leaseRef.current) return;
+        if (cancelled) return;
         const latestByNode = new Map<string, CanvasRunState>();
         for (const run of payload.runs ?? []) {
           if (run.canvasId === id && run.nodeId && !latestByNode.has(run.nodeId)) latestByNode.set(run.nodeId, run);
@@ -1224,7 +1238,7 @@ function CanvasEditorInner() {
           <List dataSource={generationRuns} locale={{ emptyText: '还没有生成记录' }} renderItem={(run) => (
             <List.Item>
               <div style={{ width: '100%' }}>
-                <Space wrap><Tag color={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'error' : run.status === 'needs_attention' ? 'warning' : 'processing'}>{run.status}</Tag><Tag>{run.provider}</Tag><Text type="secondary">尝试 {run.attemptCount}</Text><Text type="secondary">{new Date(run.createdAt).toLocaleString()}</Text></Space>
+                <Space wrap><Tag color={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'error' : run.status === 'needs_attention' ? 'warning' : 'processing'}>{run.status}</Tag><Tag>{run.provider}</Tag>{run.latestHandoff ? <Tag color={run.latestHandoff.outcome === 'adopted' ? 'blue' : run.latestHandoff.outcome === 'released' ? 'gold' : 'error'}>{run.latestHandoff.outcome === 'adopted' ? `${run.latestHandoff.toActorType === 'agent' ? 'AI' : '人工'}已接手` : run.latestHandoff.outcome === 'released' ? '等待接手' : '交接失败'}</Tag> : null}<Text type="secondary">尝试 {run.attemptCount}</Text><Text type="secondary">{new Date(run.createdAt).toLocaleString()}</Text></Space>
                 <div style={{ marginTop: 6 }}><Text>节点：{run.nodeId ?? '工具箱'} · 能力：{run.capabilityId ?? '-'}</Text></div>
                 {run.error?.message ? <div style={{ color: '#ff4d4f', marginTop: 4 }}>{run.error.message}</div> : null}
                 {run.outputText ? <Typography.Paragraph style={{ marginTop: 10, whiteSpace: 'pre-wrap' }} ellipsis={{ rows: 4, expandable: true, symbol: '展开全文' }}>{run.outputText}</Typography.Paragraph> : null}

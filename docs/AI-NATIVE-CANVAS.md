@@ -1,7 +1,7 @@
 # AI 原生画布与人机接力
 
-> 状态：Phase 1A 已实现并通过行为级验收
-> 最后更新：2026-09-05  
+> 状态：Phase 1B 已实现并通过行为级验收
+> 最后更新：2026-09-06
 > GitHub Issue：[Issue #1](https://github.com/liuzeen1234/CarrotCanvas/issues/1)
 
 本文是 AI 原生画布控制、人机接力、生成历史与自主视频生产的仓库内唯一设计入口。Issue 用于讨论和追踪；本文记录已拍板决策、实施边界、阶段状态和后续 AI 会话必须遵守的约束。
@@ -273,12 +273,23 @@ Handoff 至少保存：
 - 最终人工验收：2026-09-05 用户手动验证统一卡片产物、节点内历史与当前态样式、文字/图片版本切换、ComfyUI 正负提示词连线，以及文生文/图像理解的普通文本、图像提示词和视频提示词模式，未发现问题；Phase 1A 正式完成，可进入 Phase 1B。
 - 已知边界：`retry` 当前创建带 parent lineage 的新尝试记录，由调用方按保存的输入重新提交；provider 自动重投与运行中 adopt 属于 1B 接力执行器范围。ComfyUI 第二次运行命中其缓存，provider 输出文件名相同，但平台仍形成独立 Run 和独立捕获资产，候选历史未覆盖。
 
-### Phase 1B：运行中双向接力——未开始
+### Phase 1B：运行中双向接力——已完成（2026-09-06）
 
-- [ ] AI 发起 Run 后交给人工继续。
-- [ ] 人工发起 Run 后交给 AI 继续。
-- [ ] 底层取消能力和限制可被 Agent 发现。
-- [ ] E2E 覆盖成功、失败、取消、重启和租约过期。
+- [x] AI 发起 Run 后交给人工继续。
+- [x] 人工发起 Run 后交给 AI 继续。
+- [x] 底层取消能力和限制可被 Agent 发现。
+- [x] E2E 覆盖运行中、成功、失败、取消、重启待确认和旧租约失效。
+
+实现说明与当前验收证据：
+
+- 新增持久化 `generation_run_handoffs` 审计表。每次交接冻结记录平台 `runId`、`providerRunId`、Run 状态、输出资产、来源 actor/lease epoch、摘要和接手 actor/新 epoch；Canvas 的 `lastHandoffId` 同步指向最近交接。交接不修改 Run 身份、不重新提交 provider，也不自动取消任务。
+- 新增 `POST /api/runs/:id/handoff`：当前租约持有者保存 Run Handoff 后主动释放画布 lease；actor 身份必须与租约持有者一致。新增的 `POST /api/runs/:id/adopt` 要求接手者已取得同画布的新 lease，并在原 Handoff 上记录接手者；同一接手者/epoch 重放幂等，其他接手者重复接管返回结构化冲突。
+- `run.get`、`run.wait` 与历史列表返回持久化交接记录/最近交接和机器可读 `capabilities`。UI 的生成流水会显示“等待接手”“人工已接手”“AI 已接手”或“交接失败”，刷新后仍保留。人工页面响应交接请求时会先排空保存，再为最近 Run 写 Handoff 并释放 lease；请求方取得新租约后自动 adopt。可编辑者与只读观察者都会持续轮询共享 Run，接手后进度不会消失。
+- Run 状态回调继续不依赖画布 lease，因此释放、旧 epoch、lease 过期或新控制者接手不会阻止 provider 终态落库。重启后无法核实的任务沿用 1A 规则进入 `needs_attention`，仍可通过同一 Handoff/adopt 流程接手处理。
+- Action Registry 新增并明确声明 `run.handoff`/`run.adopt` 的 lease 约束和“不取消、不重投、保持双重 Run ID”语义；`run.cancel` 要求先读取 `capabilities.cancel`。当前 ComfyUI 只有全局 interrupt，Codex2API 为同步请求，均不宣称精确取消；统一接口对活跃任务返回 `409 CANCEL_NOT_PRECISE`，ComfyUI 原生 interrupt 在并发任务存在时继续拒绝危险全局取消。
+- 自动化：9 个 Jest suite / 73 个用例通过；新增 SQLite 双向接力集成矩阵覆盖 `running`、`succeeded`、`failed`、`cancelled`、`needs_attention`，验证 AI→人工、人工→AI、旧 epoch 拒绝、身份防伪、重复 adopt 幂等、数据库中仅一个平台 Run，且 `providerRunId` 不变。后端 TypeScript 与前端生产构建通过。
+- 3100 后端按生产方式重启后健康检查正常，数据库自动建立 `generation_run_handoffs`，运行时 Action Registry 可发现 `run.handoff`、`run.adopt`、`run.cancel` 及其能力边界。
+- 真实 provider/UI 双向验收：使用 `Z-Image文生图` 30-step 长任务完成双向接力。人工→AI：页面收到请求后保存、写 Handoff、释放，AI epoch 9 adopt 原 Run `97ff2a93-73bd-4183-80de-55ec25820518`，providerRunId `9811cc66-51f0-4cdc-a392-1dc039502410` 保持不变，页面在只读阶段仍显示 97%/SaveImage，最终成功。AI→人工：Run `18b8e383-bfc3-4650-846a-0a7b8b9a6a62` 在 13% 时请求交接，Handoff 快照准确为 `running`，providerRunId `5982b5e2-6a24-44e4-85d3-9e38af850f6f`；人工 epoch 10 自动 adopt 后页面继续显示 33%→63%→90%→生成完成，生成流水显示“人工已接手”及新增可下载资产 `71cf8a4b-b06f-4013-8bea-1dcc7cc9a9e7`。全程平台 Run 数未增加、没有取消或重复提交。
 
 ### Phase 2：Shot Plan、选片与自主生产——未开始
 
@@ -505,6 +516,8 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-06：完成 Phase 1B 真实 provider/UI 验收。验收发现并修复人工页面释放时漏写 Run Handoff、取得新租约后漏调 adopt、可编辑状态停止轮询共享 Run，以及 ComfyUI 列表进度未同步到持久 Run 四个串联缺口；30-step ComfyUI 双向接力确认同一 Run/ProviderRunId、连续进度、最终产物和历史交接标签均正确，Phase 1B 标记完成。
+- 2026-09-06：实现 Phase 1B 运行中双向接力：持久化 Run Handoff、受 lease 保护的 handoff/adopt、接手幂等与身份校验、历史 UI 交接状态、机器可读取消边界，以及运行中和全部终态的 SQLite 双向 E2E。73 个后端用例、前后端构建、3100 重启/健康检查和 Action Registry 验证通过；等待真实长 Run 的 provider/UI 双向手动验收。
 - 2026-09-05：用户完成 Phase 1A 最终手动验收，确认未发现问题；文档状态保持“已实现并通过行为级验收”，下一阶段为 Phase 1B 运行中双向接力。
 - 2026-09-05：文生文和图像理解新增“视频提示词（正负分开）”，复用合并/正向/负向三路输出和 `outputParts` 历史；文生文针对文生视频描述动作、运镜、节奏及连续性，图像理解针对图生视频约束主体/服装/构图一致性。Run 记录输出模式，节点历史以紫色“视频提示词”标识。真实 Codex2API 文生视频提示词 Run `aa7306b0-07db-46c9-b7d5-f22659962cd8` 结构化生成成功。
 - 2026-09-05：图像理解卡片同步支持普通文本/图像提示词模式；图像提示词模式从图片生成同版本正负提示词，保存 `outputParts` 并提供合并、正向、负向三路输出，沿用文字候选历史与整体切换语义。

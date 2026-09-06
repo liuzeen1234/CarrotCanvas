@@ -2,12 +2,13 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
 import { Asset } from '../assets/asset.entity';
-import { GenerationCandidateGroup, GenerationRun, GenerationRunStatus } from './generation-run.entity';
+import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff, GenerationRunStatus } from './generation-run.entity';
 
 @Injectable()
 export class RunsService implements OnModuleInit {
   constructor(
     @InjectRepository(GenerationRun) private readonly runs: Repository<GenerationRun>,
+    @InjectRepository(GenerationRunHandoff) private readonly handoffs: Repository<GenerationRunHandoff>,
     @InjectRepository(GenerationCandidateGroup) private readonly groups: Repository<GenerationCandidateGroup>,
     @InjectRepository(Asset) private readonly assets: Repository<Asset>,
   ) {}
@@ -49,12 +50,56 @@ export class RunsService implements OnModuleInit {
 
   async getByProviderRunId(providerRunId: string) { return this.runs.findOne({ where: { providerRunId } }); }
 
+  async handoffHistory(id: string) {
+    await this.get(id);
+    return this.handoffs.find({ where: { runId: id }, order: { createdAt: 'ASC' } });
+  }
+
+  async recordRelease(id: string, actor: { actorType: 'human' | 'agent'; actorId: string; leaseEpoch: number; summary?: string }) {
+    const run = await this.get(id);
+    if (!run.canvasId) throw new BadRequestException({ code: 'RUN_HAS_NO_CANVAS', message: '无画布上下文的运行不能交接' });
+    return this.handoffs.save(this.handoffs.create({
+      runId: run.id, canvasId: run.canvasId, providerRunId: run.providerRunId, runStatus: run.status,
+      fromActorType: actor.actorType, fromActorId: actor.actorId, fromLeaseEpoch: actor.leaseEpoch,
+      toActorType: null, toActorId: null, toLeaseEpoch: null, outcome: 'released',
+      summary: actor.summary?.trim() || null, outputAssetIds: run.outputAssetIds,
+    }));
+  }
+
+  async markReleaseFailed(handoffId: string) { await this.handoffs.update(handoffId, { outcome: 'release_failed' }); }
+
+  async adopt(id: string, actor: { actorType: 'human' | 'agent'; actorId: string; leaseEpoch: number }) {
+    const run = await this.get(id);
+    if (!run.canvasId) throw new BadRequestException({ code: 'RUN_HAS_NO_CANVAS', message: '无画布上下文的运行不能接手' });
+    const released = await this.handoffs.createQueryBuilder('handoff').where('handoff.run_id = :id', { id }).andWhere('handoff.outcome != :failed', { failed: 'release_failed' }).orderBy('handoff.created_at', 'DESC').getOne();
+    if (!released) throw new ConflictException({ code: 'RUN_HANDOFF_REQUIRED', message: '运行尚无可接手的 Handoff' });
+    if (released.toActorId) {
+      if (released.toActorType === actor.actorType && released.toActorId === actor.actorId && released.toLeaseEpoch === actor.leaseEpoch) return { run, handoff: released, replay: true };
+      throw new ConflictException({ code: 'RUN_ALREADY_ADOPTED', message: '该 Handoff 已被其他控制者接手' });
+    }
+    released.toActorType = actor.actorType; released.toActorId = actor.actorId; released.toLeaseEpoch = actor.leaseEpoch; released.outcome = 'adopted';
+    return { run, handoff: await this.handoffs.save(released), replay: false };
+  }
+
+  capabilities(run: GenerationRun) {
+    return {
+      observe: true, adopt: !!run.canvasId, wait: true,
+      cancel: run.provider === 'comfyui' ? { precise: false, mode: 'global-if-sole-active', reasonCode: 'CANCEL_NOT_PRECISE' } : { precise: false, mode: 'unsupported', reasonCode: 'CANCEL_NOT_PRECISE' },
+      statusUpdatesRequireLease: false,
+    };
+  }
+
   async list(query: Record<string, string | undefined>) {
     const where: FindOptionsWhere<GenerationRun> = {};
     for (const key of ['canvasId', 'nodeId', 'shotId', 'status', 'provider'] as const) if (query[key]) (where as any)[key] = query[key];
     const page = Math.max(1, Number(query.page) || 1); const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
     const [runs, total] = await this.runs.findAndCount({ where, order: { createdAt: 'DESC' }, skip: (page - 1) * pageSize, take: pageSize });
-    const items = await Promise.all(runs.map(async (run) => ({ ...run, candidateGroup: run.canvasId ? await this.group(run.canvasId, run.nodeId, run.shotId) : null })));
+    const items = await Promise.all(runs.map(async (run) => ({
+      ...run,
+      candidateGroup: run.canvasId ? await this.group(run.canvasId, run.nodeId, run.shotId) : null,
+      capabilities: this.capabilities(run),
+      latestHandoff: (await this.handoffs.findOne({ where: { runId: run.id }, order: { createdAt: 'DESC' } })) ?? null,
+    })));
     return { items, total, page, pageSize };
   }
 

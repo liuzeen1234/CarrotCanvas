@@ -241,7 +241,14 @@ export class ComfyUIController {
   @Get('runs')
   async listRuns() {
     const runs = this.runner.listRuns();
-    return { runs: await Promise.all(runs.map(async (run) => ({ ...run, runId: (await this.persistentRuns.getByProviderRunId(run.promptId))?.id }))) };
+    return { runs: await Promise.all(runs.map(async (run) => {
+      let persistent = await this.persistentRuns.getByProviderRunId(run.promptId);
+      if (persistent) {
+        if (run.status === 'running' && persistent.status !== 'running') persistent = await this.persistentRuns.patch(persistent.id, { status: 'running', startedAt: run.startedAt ?? Date.now() });
+        if (run.status === 'pending' && persistent.status !== 'queued') persistent = await this.persistentRuns.patch(persistent.id, { status: 'queued' });
+      }
+      return { ...run, runId: persistent?.id };
+    })) };
   }
 
   /** 中断运行 */

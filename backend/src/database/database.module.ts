@@ -5,7 +5,7 @@ import { Workflow } from '../workflows/workflow.entity';
 import { Setting } from '../settings/setting.entity';
 import { CanvasAssetGcJob, CanvasCheckpoint, CanvasControlLease, CanvasDoc, CanvasOperationLog, CanvasOperationReceipt } from '../canvas/canvas.entity';
 import { Asset } from '../assets/asset.entity';
-import { GenerationCandidateGroup, GenerationRun } from '../runs/generation-run.entity';
+import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff } from '../runs/generation-run.entity';
 
 @Global()
 @Module({
@@ -13,7 +13,7 @@ import { GenerationCandidateGroup, GenerationRun } from '../runs/generation-run.
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: join(__dirname, '..', '..', 'data', 'carrot-canvas.sqlite'),
-      entities: [Workflow, Setting, CanvasDoc, CanvasControlLease, CanvasOperationReceipt, CanvasOperationLog, CanvasCheckpoint, CanvasAssetGcJob, Asset, GenerationRun, GenerationCandidateGroup],
+      entities: [Workflow, Setting, CanvasDoc, CanvasControlLease, CanvasOperationReceipt, CanvasOperationLog, CanvasCheckpoint, CanvasAssetGcJob, Asset, GenerationRun, GenerationRunHandoff, GenerationCandidateGroup],
       synchronize: true,
     }),
   ],

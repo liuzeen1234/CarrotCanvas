@@ -32,6 +32,29 @@ export class GenerationRun {
   @UpdateDateColumn({ name: 'updated_at' }) updatedAt: Date;
 }
 
+export type RunHandoffOutcome = 'released' | 'adopted' | 'release_failed';
+
+/** Immutable audit trail for control changes around an existing provider task. */
+@Entity('generation_run_handoffs')
+@Index(['runId', 'createdAt'])
+export class GenerationRunHandoff {
+  @PrimaryGeneratedColumn('uuid') id: string;
+  @Index() @Column({ type: 'text', name: 'run_id' }) runId: string;
+  @Index() @Column({ type: 'text', name: 'canvas_id' }) canvasId: string;
+  @Column({ type: 'text', name: 'provider_run_id', nullable: true }) providerRunId: string | null;
+  @Column({ type: 'text', name: 'run_status' }) runStatus: GenerationRunStatus;
+  @Column({ type: 'text', name: 'from_actor_type' }) fromActorType: 'human' | 'agent';
+  @Column({ type: 'text', name: 'from_actor_id' }) fromActorId: string;
+  @Column({ type: 'integer', name: 'from_lease_epoch' }) fromLeaseEpoch: number;
+  @Column({ type: 'text', name: 'to_actor_type', nullable: true }) toActorType: 'human' | 'agent' | null;
+  @Column({ type: 'text', name: 'to_actor_id', nullable: true }) toActorId: string | null;
+  @Column({ type: 'integer', name: 'to_lease_epoch', nullable: true }) toLeaseEpoch: number | null;
+  @Column({ type: 'text', default: 'released' }) outcome: RunHandoffOutcome;
+  @Column({ type: 'text', nullable: true }) summary: string | null;
+  @Column({ type: 'simple-json', name: 'output_asset_ids' }) outputAssetIds: string[];
+  @CreateDateColumn({ name: 'created_at' }) createdAt: Date;
+}
+
 @Entity('generation_candidate_groups')
 @Index(['canvasId', 'nodeId', 'shotId'], { unique: true })
 export class GenerationCandidateGroup {
