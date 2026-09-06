@@ -1,6 +1,6 @@
 # CarrotCanvas 项目现状总结
 
-> 最后更新：2026-09-05
+> 最后更新：2026-09-06
 
 > 2026-09-03 增量：画布已支持图生图工作流与 `image → image` 跨工作流连线。工作流导入/编辑可将图片字段标记为可连接输入；结果卡图片输出可连接到下游图片字段，运行前自动将平台资产回灌 ComfyUI 并覆盖参数。视频、音频端点类型已预留但尚未开放。
 > 2026-09-04 增量：接入 Codex2API 通用能力提供方，新增“AI 能力”一级工具箱（文生文/文生图/图生图/图像理解）及对应画布卡片；支持 SSE、multipart、URL/Base64 图片、可选 Bearer Key、统一错误处理和画布资产捕获。详见 `CODEX2API-INTEGRATION.md`。
@@ -13,7 +13,7 @@
 > 2026-09-05 交互完善：Codex2API/ComfyUI 卡片统一内嵌当前产物和成功版本横向历史，文字输出完整持久化并显示摘要；人工切换旧版本会持续生效，下一次成功生成自动切至最新。失败只进入可记录错误的画布生成流水；流水支持文字折叠展开，图片/视频预览下载。Codex 无详细事件时显示动画 70%，ComfyUI 保留真实进度与当前节点。
 > 2026-09-05 提示词路由：Codex2API 文生文增加普通文本/图像提示词模式；图像提示词以同一 Run 结构化保存正向、负向两部分，并同时提供合并、正向、负向输出端口，可分别适配 Codex 单输入与 ComfyUI 双文本输入。
 > 2026-09-05 视频提示词：文生文与图像理解增加视频提示词模式，分别面向文生视频和保持原图一致性的图生视频；沿用结构化正负提示词、三路输出、历史切换及模式标识。
-> 2026-09-05 验收结论：用户已完成 Phase 1A 最终手动验证，统一卡片输出、生成历史、版本选择、正负提示词连线及图像/视频提示词模式均未发现问题；Phase 1A 正式完成，后续进入 Phase 1B。
+> 2026-09-06 发布结论：AI Native Canvas Phase 1B 已完成真实 provider/UI 双向接力验收；当前需求范围止于 Phase 1B，Phase 2 及后续阶段暂不实施，Issue #1 可按当前范围关闭并发布 `v1.0.0`。
 > 本文件是对项目当前状态的完整快照，开发过程中行变更时应同步更新。
 
 ## 1. 项目定位
@@ -116,6 +116,7 @@ CarrotCanvas/                    # D:\dev\CarrotCanvas（git 仓库，MIT，作�
 - ✅ 画布共享运行组件（Canvas C4）：抽取共享运行逻辑到 `web/src/components/comfyui/`（`types.ts` + `useComfyRun` 钩子 + `ComfySchemaForm` + `ComfyRunModal`），设置页运行面板改走共享件（schema 按 workflowId 缓存），行为不回归
 - ✅ Canvas 阶段二一期 C1–C7 已完成并实机验收：多画布/资产库、产物捕获、列表与编辑器、共享运行组件、文生图/结果节点、节点内运行、graph/视口防抖保存与离线历史结果恢复均已闭环。方案与验收记录见 [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md)。
 - ✅ AI Native Canvas Phase 0B 已完成并通过真实双向交接验收：Action Registry、Agent View、revision + lease/epoch、语义化节点/连线 operations、完整图校验、Operation Log、Checkpoint、inverse undo、幂等与资产安全均已落地；人工进入空闲画布自动取得编辑权，已有控制者时只读观察并自动同步 revision/Comfy 运行态；`AgentLeaseGuard` 持续续租且在 `handoff_pending` 后排空并主动释放。完整证据见 [AI-NATIVE-CANVAS.md](./AI-NATIVE-CANVAS.md)。
+- ✅ AI Native Canvas Phase 1A/1B 已完成并通过真实 provider/UI 验收：持久化 Run、候选与批准保护、运行中双向 Handoff/adopt、跨控制权持续进度及无重复提交均已落地。当前发布边界止于 Phase 1B；Phase 2 及后续暂不实施。
 - ⚠️ 后端当前以**系统 Node v24 运行编译产物** `dist/main.js`（tsx 存在装饰器元数据问题致 NestJS DI 失效，见 AGENTS.md）
 - ⚠️ 两个服务目前由后台进程方式拉起，非固化脚本
 
@@ -172,6 +173,8 @@ pnpm start     # 生产运行后端（需先 build）
 - [x] 生成任务历史持久化（generation_runs + 候选组 + lineage）
 - [x] AI Native Canvas Phase 0B：节点/连线语义 operations、完整图校验、Operation Log、Checkpoint、inverse undo 与 Agent lease 守护
 - [x] AI Native Canvas Phase 1A：持久化 Run、候选历史、选片/批准保护、lineage、重启恢复及双 provider 实机 E2E
+- [x] AI Native Canvas Phase 1B：运行中人工↔AI 双向接力、持久化 Handoff/adopt、取消能力边界及真实 provider/UI E2E
+- AI Native Canvas Phase 2 及后续：暂不实施，不属于当前发布范围或待办项
 - [x] ComfyUI 配置界面（服务地址）
 - [ ] 前端产物由 NestJS 静态托管（单端口）
 - [ ] 单文件 exe 打包（bun build --compile / pkg）
