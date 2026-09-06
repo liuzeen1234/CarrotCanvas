@@ -8,15 +8,17 @@ import { capabilityPromptHandle, CodexCapabilityNodeData, promptPartSourceHandle
 import { CodexImageResponse, errorMessage, imageSource, postForm, postJson, streamChat } from '@/components/codex2api/client';
 import { ImeSafeTextArea } from '../ImeSafeInput';
 import NodeOutputHistory from '../NodeOutputHistory';
+import { RunElapsed } from '../RunTiming';
 
 const LABELS = { text: '文生文', image: '文生图', edit: '图生图', analyze: '图像理解' } as const;
 
 export default function CodexCapabilityNode(props: NodeProps) {
   const data = props.data as CodexCapabilityNodeData;
-  const { canvasId, control, readOnly, updateNodeData, deleteNode, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
+  const { canvasId, control, readOnly, updateNodeData, deleteNode, getNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [liveText, setLiveText] = useState('');
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [localStartedAt, setLocalStartedAt] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const needsImage = data.capability === 'edit' || data.capability === 'analyze';
   const outputKind = data.capability === 'text' || data.capability === 'analyze' ? 'text' : 'image';
@@ -28,6 +30,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
   const effectivePrompt = upstreamPrompt.connected ? upstreamPrompt.text : data.prompt;
   const images = data.lastAssets || [];
   const displayedText = liveText || data.lastText || '';
+  const sharedRun = getNodeRunState(props.id);
 
   const update = (patch: Partial<CodexCapabilityNodeData>) => updateNodeData(props.id, patch);
   const imageFile = async () => {
@@ -41,6 +44,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
   };
   const run = async () => {
     if (readOnly) return;
+    setLocalStartedAt(Date.now());
     setBusy(true); setError(''); setLiveText('');
     const controller = new AbortController(); abortRef.current = controller;
     // 图片生成完成后，后端还需要把结果捕获进画布资产库；给该步骤留出余量。
@@ -62,13 +66,14 @@ export default function CodexCapabilityNode(props: NodeProps) {
         else { const result = await postForm<any>('/api/codex2api/images/analyze', form, controller.signal); update({ lastText: result.text || result.data?.[0]?.text || result.choices?.[0]?.message?.content || '', lastTextParts: result.outputParts || undefined }); }
       }
       setHistoryVersion((value) => value + 1);
-    } catch (e) { setError(errorMessage(e)); } finally { clearTimeout(timer); setBusy(false); abortRef.current = null; }
+    } catch (e) { setError(errorMessage(e)); } finally { clearTimeout(timer); setBusy(false); setLocalStartedAt(null); abortRef.current = null; }
   };
 
   const canRun = !!effectivePrompt?.trim() && (!needsImage || !!files.length || !!upstream);
   return <div className={`canvas-node canvas-node--codex${props.selected ? ' selected' : ''}`}>
     {needsImage ? <Handle type="target" position={Position.Left} id={resultTargetHandle('image')} className="canvas-handle--image" title="图片输入" /> : null}
     <div className="canvas-node__header"><span className="canvas-node__type" style={{ background: '#fa8c16' }}>Codex2API</span><span className="canvas-node__bind">{LABELS[data.capability]}</span>
+      <RunElapsed status={sharedRun?.status ?? (busy ? 'running' : undefined)} queuedAt={sharedRun?.queuedAt ?? localStartedAt} startedAt={sharedRun?.startedAt ?? localStartedAt} />
       <Popconfirm title="确认运行该节点？" description="运行可能消耗 API 额度并需要一定时间。" okText="确认运行" cancelText="取消" onConfirm={() => void run()}>
         <Button size="small" type="text" icon={<PlayCircleOutlined />} loading={busy} disabled={readOnly || !canRun} className="nodrag canvas-node__run-action" aria-label="运行节点" />
       </Popconfirm>

@@ -47,11 +47,24 @@ describe('RunsService persistence', () => {
     expect((await service.group('c1', 'text-node'))?.selectedRunId).toBe(first.run.id);
   });
 
+  it('persists queued, started and finished timestamps for duration display', async () => {
+    const begun = await service.begin({ provider: 'codex2api', canvasId: 'c1', nodeId: 'n1', inputSnapshot: {} });
+    const startedAt = begun.run.queuedAt;
+    await service.patch(begun.run.id, { status: 'running', startedAt });
+    const finished = await service.finish(begun.run.id, 'succeeded', [], null, 'done');
+    expect(finished.queuedAt).toBe(begun.run.queuedAt);
+    expect(finished.startedAt).toBe(startedAt);
+    expect(finished.finishedAt).toEqual(expect.any(Number));
+    expect(finished.finishedAt!).toBeGreaterThanOrEqual(startedAt);
+    const listed = await service.list({ canvasId: 'c1' });
+    expect(listed.items[0]).toMatchObject({ id: begun.run.id, queuedAt: begun.run.queuedAt, startedAt, finishedAt: finished.finishedAt });
+  });
+
   it('marks unfinished runs needs_attention during restart reconciliation', async () => {
     const begun = await service.begin({ provider: 'comfyui', inputSnapshot: {} });
     await service.patch(begun.run.id, { status: 'running' });
     await service.onModuleInit();
-    expect((await service.get(begun.run.id)).status).toBe('needs_attention');
+    expect(await service.get(begun.run.id)).toMatchObject({ status: 'needs_attention', finishedAt: expect.any(Number) });
   });
 
   it('hands the same platform/provider run to a new lease without resubmission', async () => {

@@ -10,6 +10,7 @@ import {
   addEdge,
   ReactFlowProvider,
   useReactFlow,
+  SelectionMode,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -21,13 +22,14 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, Drawer, Image, Input, List, Popconfirm, Popover, Space, Spin, Tag, Typography, message } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EnvironmentOutlined, HistoryOutlined, PictureOutlined, SaveOutlined } from '@ant-design/icons';
+import { Button, Drawer, Image, Input, List, Popconfirm, Popover, Segmented, Space, Spin, Tag, Tooltip, Typography, message } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, DragOutlined, EnvironmentOutlined, HistoryOutlined, PictureOutlined, SaveOutlined, SelectOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
 import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
+import { RunDuration } from '@/components/canvas/RunTiming';
 import { ComfyUIAPI, type RunStateData } from '@/components/comfyui/types';
 import './editor.css';
 
@@ -53,7 +55,7 @@ interface CanvasControlHolder { holderType: 'human' | 'agent'; holderId: string;
 interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: string | null; }
 interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
 interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
-interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; createdAt: string; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
+interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
 
 const sourceHandleKind = (handle: string) => handle === 'text-positive-source' || handle === 'text-negative-source'
   ? 'text'
@@ -64,6 +66,11 @@ function humanHolderId() {
   let value = window.sessionStorage.getItem(key);
   if (!value) { value = `human-${crypto.randomUUID()}`; window.sessionStorage.setItem(key, value); }
   return value;
+}
+
+function isTextEditingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || Boolean(target.closest('input, textarea, select, [contenteditable], [role="textbox"]'));
 }
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -147,6 +154,9 @@ function CanvasEditorInner() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [viewport, setViewport] = useState<Viewport | null>(null);
+  const [interactionMode, setInteractionMode] = useState<'hand' | 'pointer'>('hand');
+  const [spacePanActive, setSpacePanActive] = useState(false);
+  const effectiveInteractionMode = interactionMode === 'pointer' && spacePanActive ? 'hand' : interactionMode;
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState('');
@@ -187,6 +197,27 @@ function CanvasEditorInner() {
   /** 桌面端测量内容区剩余高度；移动端直接覆盖系统框架并占满视口。 */
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [rootHeight, setRootHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat || interactionMode !== 'pointer' || isTextEditingTarget(event.target)) return;
+      event.preventDefault();
+      setSpacePanActive(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return;
+      setSpacePanActive(false);
+    };
+    const stopTemporaryPan = () => setSpacePanActive(false);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', stopTemporaryPan);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', stopTemporaryPan);
+    };
+  }, [interactionMode]);
 
   useEffect(() => {
     const recompute = () => {
@@ -544,11 +575,26 @@ function CanvasEditorInner() {
       } catch { /* 短暂断线时保留当前画布，下次轮询继续同步。 */ }
 
       try {
-        const payload = await request<{ runs: CanvasRunState[] }>('/api/comfyui/runs');
+        const [payload, persistent] = await Promise.all([
+          request<{ runs: CanvasRunState[] }>('/api/comfyui/runs'),
+          request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=100`),
+        ]);
         if (cancelled) return;
         const latestByNode = new Map<string, CanvasRunState>();
         for (const run of payload.runs ?? []) {
           if (run.canvasId === id && run.nodeId && !latestByNode.has(run.nodeId)) latestByNode.set(run.nodeId, run);
+        }
+        for (const run of persistent.items ?? []) {
+          if (run.provider !== 'codex2api' || !run.nodeId || !['queued', 'running'].includes(run.status) || latestByNode.has(run.nodeId)) continue;
+          latestByNode.set(run.nodeId, {
+            promptId: run.id,
+            title: run.capabilityId || 'Codex2API',
+            status: run.status === 'queued' ? 'pending' : 'running',
+            queuedAt: run.queuedAt,
+            startedAt: run.startedAt,
+            finishedAt: run.finishedAt,
+            nodes: {}, nodeTitles: {}, outputs: [], nodeErrors: {},
+          });
         }
         setNodeRuns((previous) => {
           const next = { ...previous };
@@ -1052,6 +1098,14 @@ function CanvasEditorInner() {
               nodesDraggable={canWrite}
               nodesConnectable={canWrite}
               elementsSelectable
+              panOnDrag={effectiveInteractionMode === 'hand'}
+              selectionOnDrag={effectiveInteractionMode === 'pointer'}
+              selectionMode={SelectionMode.Partial}
+              onPaneClick={() => {
+                if (effectiveInteractionMode !== 'pointer') return;
+                setNodes((items) => items.map((node) => node.selected ? { ...node, selected: false } : node));
+                setEdges((items) => items.map((edge) => edge.selected ? { ...edge, selected: false } : edge));
+              }}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onEdgeDoubleClick={(_event, edge) => deleteEdge(edge.id)}
@@ -1068,6 +1122,17 @@ function CanvasEditorInner() {
               proOptions={{ hideAttribution: true }}
             >
               <Background />
+              <Panel position="bottom-center" className="canvas-interaction-mode nodrag">
+                <Segmented
+                  value={interactionMode}
+                  onChange={(value) => { setSpacePanActive(false); setInteractionMode(value as 'hand' | 'pointer'); }}
+                  options={[
+                    { value: 'hand', label: <Tooltip title="手掌模式：拖动空白处平移画布"><span aria-label="手掌模式"><DragOutlined />{isNarrow ? null : ' 手掌'}</span></Tooltip> },
+                    { value: 'pointer', label: <Tooltip title="指针模式：拖动空白处框选卡片，按住空格临时平移"><span aria-label="鼠标指针模式"><SelectOutlined />{isNarrow ? null : ' 指针'}</span></Tooltip> },
+                  ]}
+                  aria-label="画布交互模式"
+                />
+              </Panel>
               <Panel position="top-left" className="canvas-floating-header">
                 <Link to="/canvas">
                   <Button icon={<ArrowLeftOutlined />} aria-label="返回画布列表">{isNarrow ? null : '返回列表'}</Button>
@@ -1238,7 +1303,7 @@ function CanvasEditorInner() {
           <List dataSource={generationRuns} locale={{ emptyText: '还没有生成记录' }} renderItem={(run) => (
             <List.Item>
               <div style={{ width: '100%' }}>
-                <Space wrap><Tag color={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'error' : run.status === 'needs_attention' ? 'warning' : 'processing'}>{run.status}</Tag><Tag>{run.provider}</Tag>{run.latestHandoff ? <Tag color={run.latestHandoff.outcome === 'adopted' ? 'blue' : run.latestHandoff.outcome === 'released' ? 'gold' : 'error'}>{run.latestHandoff.outcome === 'adopted' ? `${run.latestHandoff.toActorType === 'agent' ? 'AI' : '人工'}已接手` : run.latestHandoff.outcome === 'released' ? '等待接手' : '交接失败'}</Tag> : null}<Text type="secondary">尝试 {run.attemptCount}</Text><Text type="secondary">{new Date(run.createdAt).toLocaleString()}</Text></Space>
+                <Space wrap><Tag color={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'error' : run.status === 'needs_attention' ? 'warning' : 'processing'}>{run.status}</Tag><Tag>{run.provider}</Tag>{run.latestHandoff ? <Tag color={run.latestHandoff.outcome === 'adopted' ? 'blue' : run.latestHandoff.outcome === 'released' ? 'gold' : 'error'}>{run.latestHandoff.outcome === 'adopted' ? `${run.latestHandoff.toActorType === 'agent' ? 'AI' : '人工'}已接手` : run.latestHandoff.outcome === 'released' ? '等待接手' : '交接失败'}</Tag> : null}<RunDuration timestamps={run} /><Text type="secondary">尝试 {run.attemptCount}</Text><Text type="secondary">{new Date(run.createdAt).toLocaleString()}</Text></Space>
                 <div style={{ marginTop: 6 }}><Text>节点：{run.nodeId ?? '工具箱'} · 能力：{run.capabilityId ?? '-'}</Text></div>
                 {run.error?.message ? <div style={{ color: '#ff4d4f', marginTop: 4 }}>{run.error.message}</div> : null}
                 {run.outputText ? <Typography.Paragraph style={{ marginTop: 10, whiteSpace: 'pre-wrap' }} ellipsis={{ rows: 4, expandable: true, symbol: '展开全文' }}>{run.outputText}</Typography.Paragraph> : null}

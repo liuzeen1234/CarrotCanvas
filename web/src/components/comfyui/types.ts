@@ -63,6 +63,8 @@ export interface RunStateData {
   title: string;
   status: string;
   queuedAt: number;
+  startedAt?: number | null;
+  finishedAt?: number | null;
   currentNode?: string | null;
   currentNodeTitle?: string;
   progress?: { value: number; max: number };

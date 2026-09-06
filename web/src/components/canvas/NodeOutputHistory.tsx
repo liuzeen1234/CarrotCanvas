@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Image, Space, Tag, Typography, message } from 'antd';
 import { CheckOutlined, DownloadOutlined } from '@ant-design/icons';
 import { request } from 'umi';
+import { RunDuration } from './RunTiming';
 
 export interface NodeHistoryRun {
   id: string;
@@ -11,6 +12,9 @@ export interface NodeHistoryRun {
   outputParts?: { positive: string; negative: string } | null;
   inputSnapshot?: { carrotOutputMode?: string; carrotPromptIntent?: string } | null;
   createdAt: string;
+  queuedAt?: number | null;
+  startedAt?: number | null;
+  finishedAt?: number | null;
   candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null;
 }
 
@@ -44,10 +48,11 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeCo
   return <div className="canvas-node-history">
     <Typography.Text type="secondary" style={{ fontSize: 12 }}>生成历史 · {runs.reduce((sum, run) => sum + Math.max(1, run.outputAssetIds.length), 0)}</Typography.Text>
     <div className="canvas-node-history__rail">
-      {runs.flatMap((run) => kind === 'text' ? [<button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span>{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button>] : run.outputAssetIds.map((assetId) => {
+      {runs.flatMap((run) => kind === 'text' ? [<button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span><RunDuration timestamps={run} />{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button>] : run.outputAssetIds.map((assetId) => {
         const current = run.candidateGroup?.selectedAssetId === assetId;
         return <div key={assetId} className={`canvas-node-history__media${current ? ' is-current' : ''}`}>
           {kind === 'video' ? <video src={`/api/assets/${assetId}`} muted preload="metadata" /> : <Image src={`/api/assets/${assetId}`} width={88} height={66} style={{ objectFit: 'cover' }} preview={{ mask: '预览' }} />}
+          <RunDuration timestamps={run} />
           <Space size={2}>{current ? <Tag color="blue" icon={<CheckOutlined />}>当前</Tag> : <Button size="small" disabled={readOnly} onClick={() => void chooseAsset(run, assetId)}>使用</Button>}<Button size="small" type="text" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download aria-label="下载历史产物" /></Space>
         </div>;
       }))}

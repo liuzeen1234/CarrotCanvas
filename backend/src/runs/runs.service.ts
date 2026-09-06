@@ -14,7 +14,7 @@ export class RunsService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.runs.createQueryBuilder().update().set({ status: 'needs_attention', error: { code: 'PROVIDER_STATE_UNCONFIRMED', message: '服务重启后无法确认提供方任务状态' } }).where('status IN (:...statuses)', { statuses: ['queued', 'running'] }).execute();
+    await this.runs.createQueryBuilder().update().set({ status: 'needs_attention', finishedAt: Date.now(), error: { code: 'PROVIDER_STATE_UNCONFIRMED', message: '服务重启后无法确认提供方任务状态' } }).where('status IN (:...statuses)', { statuses: ['queued', 'running'] }).execute();
   }
 
   async begin(input: Partial<GenerationRun> & Pick<GenerationRun, 'provider' | 'inputSnapshot'>) {

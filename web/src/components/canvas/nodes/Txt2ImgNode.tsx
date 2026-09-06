@@ -10,6 +10,7 @@ import { useComfyRun } from '@/components/comfyui/useComfyRun';
 import { CanvasNodeDataContext } from '../context';
 import { Txt2ImgNodeData, resultSourceHandle, workflowInputHandle, workflowOutputKind } from './types';
 import NodeOutputHistory from '../NodeOutputHistory';
+import { RunElapsed } from '../RunTiming';
 
 const isEmpty = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 
@@ -156,6 +157,7 @@ export default function Txt2ImgNode(props: NodeProps) {
     <div className="canvas-node__header">
       <span className="canvas-node__type" style={{ background: workflow?.category === 'img2img' ? '#52c41a' : '#1677ff' }}>{workflow?.categoryLabel || '工作流'}</span>
       <span className="canvas-node__bind" title={data.workflowName}>{data.workflowName || '未绑定工作流'}</span>
+      <RunElapsed status={visibleRunState?.status} queuedAt={visibleRunState?.queuedAt} startedAt={visibleRunState?.startedAt} />
       {run.running
         ? <Button size="small" type="text" danger disabled={readOnly} icon={<PauseCircleOutlined />} className="nodrag canvas-node__run-action" aria-label="中断运行" onClick={() => void run.interrupt()} />
         : <Popconfirm title="确认运行该节点？" description="运行可能消耗 API 额度并需要一定时间。" okText="确认运行" cancelText="取消" onConfirm={() => void handleRun()}>
