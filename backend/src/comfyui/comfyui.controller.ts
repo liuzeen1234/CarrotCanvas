@@ -21,6 +21,7 @@ import { WorkflowCategory } from '../workflows/workflow-category';
 import { CanvasService } from '../canvas/canvas.service';
 import { AssetsService } from '../assets/assets.service';
 import { promises as fs } from 'fs';
+import { RunsService } from '../runs/runs.service';
 
 interface PreviewBody {
   filename: string;
@@ -45,6 +46,15 @@ interface RunBody {
   canvasId?: string;
   /** 画布内节点 id（覆盖清理键，需与 canvasId 同传） */
   nodeId?: string;
+  leaseToken?: string;
+  leaseEpoch?: number;
+  expectedRevision?: number;
+  idempotencyKey?: string;
+  actorType?: 'human' | 'agent';
+  actorId?: string;
+  inputAssetIds?: string[];
+  shotId?: string;
+  parentRunId?: string;
 }
 
 @Controller('comfyui')
@@ -57,6 +67,7 @@ export class ComfyUIController {
     private readonly capture: ComfyUIAssetCaptureService,
     private readonly canvas: CanvasService,
     private readonly assets: AssetsService,
+    private readonly persistentRuns: RunsService,
   ) {}
 
   // ---------- 步骤②：工作流导入 ----------
@@ -168,7 +179,7 @@ export class ComfyUIController {
 
     // 画布节点发起：先确认画布存在，避免把产物捕获到不存在的分区
     if (body.canvasId) {
-      await this.canvas.findOne(body.canvasId);
+      await this.canvas.assertWriteAccess(body.canvasId, body as any);
     }
 
     let apiJson: Record<string, unknown>;
@@ -186,45 +197,65 @@ export class ComfyUIController {
       apiJson = workflow.apiJson as Record<string, unknown>;
     }
 
-    const run = await this.runner.submit(apiJson, {
+    const begun = await this.persistentRuns.begin({
+      provider: 'comfyui', canvasId: body.canvasId ?? null, nodeId: body.nodeId ?? null,
+      shotId: body.shotId ?? null, parentRunId: body.parentRunId ?? null,
+      capabilityId: workflow.id, capabilityVersion: workflow.updatedAt.toISOString(),
+      inputSnapshot: apiJson, inputAssetIds: body.inputAssetIds ?? [],
+      actorType: body.actorType ?? 'human', actorId: body.actorId ?? 'web',
+      idempotencyKey: body.idempotencyKey ?? null,
+    });
+    if (begun.replay) return { run: { ...begun.run, runId: begun.run.id, promptId: begun.run.providerRunId }, replay: true };
+    let run: RunState;
+    try { run = await this.runner.submit(apiJson, {
       workflowId: workflow.id,
       title: workflow.name,
       canvasId: body.canvasId,
       nodeId: body.nodeId ?? null,
       // 画布节点运行成功 → 捕获输出字节进画布资产分区（C2）
       onComplete: async (finished) => {
-        if (!body.canvasId) return;
-        await this.capture.captureRunOutputs(
-          finished,
-          body.canvasId,
-          body.nodeId ?? null,
-          workflow.id,
-        );
+        if (body.canvasId && !finished.error && finished.status !== 'interrupted') await this.capture.captureRunOutputs(finished, body.canvasId, body.nodeId ?? null, workflow.id);
+        const ids = finished.outputs.flatMap((output) => output.assetId ? [output.assetId] : []);
+        const status = finished.status === 'interrupted' ? 'cancelled' : finished.error ? 'failed' : 'succeeded';
+        await this.persistentRuns.finish(begun.run.id, status, ids, finished.error ? { message: finished.error, nodeErrors: finished.nodeErrors } : null);
       },
       // 不再自动写回缩略图：改由前端在结果区点"作为封面"手动设置
-    });
-    return { run };
+    }); } catch (error) { await this.persistentRuns.finish(begun.run.id, 'failed', [], { message: (error as Error).message }); throw error; }
+    await this.persistentRuns.patch(begun.run.id, { providerRunId: run.promptId });
+    return { run: { ...run, runId: begun.run.id }, persistentRun: await this.persistentRuns.get(begun.run.id) };
   }
 
   /** 运行状态（供前端轮询） */
   @Get('runs/:promptId')
-  getRun(@Param('promptId') promptId: string) {
+  async getRun(@Param('promptId') promptId: string) {
     const run = this.runner.getRun(promptId);
     if (!run) {
       return { run: null };
     }
-    return { run };
+    const persistent = await this.persistentRuns.getByProviderRunId(promptId);
+    if (persistent && run.status === 'running' && persistent.status !== 'running') await this.persistentRuns.patch(persistent.id, { status: 'running', startedAt: run.startedAt ?? Date.now() });
+    return { run: { ...run, runId: persistent?.id } };
   }
 
   /** 最近运行列表 */
   @Get('runs')
-  listRuns() {
-    return { runs: this.runner.listRuns() };
+  async listRuns() {
+    const runs = this.runner.listRuns();
+    return { runs: await Promise.all(runs.map(async (run) => {
+      let persistent = await this.persistentRuns.getByProviderRunId(run.promptId);
+      if (persistent) {
+        if (run.status === 'running' && persistent.status !== 'running') persistent = await this.persistentRuns.patch(persistent.id, { status: 'running', startedAt: run.startedAt ?? Date.now() });
+        if (run.status === 'pending' && persistent.status !== 'queued') persistent = await this.persistentRuns.patch(persistent.id, { status: 'queued' });
+      }
+      return { ...run, runId: persistent?.id };
+    })) };
   }
 
   /** 中断运行 */
   @Post('runs/:promptId/interrupt')
   async interrupt(@Param('promptId') _promptId: string) {
+    const active = this.runner.listRuns().filter((run) => ['pending', 'running'].includes(run.status));
+    if (active.length > 1) throw new HttpException({ code: 'CANCEL_NOT_PRECISE', message: 'ComfyUI 仅支持全局中断，并发运行时拒绝危险取消' }, HttpStatus.CONFLICT);
     await this.runner.interrupt();
     return { ok: true };
   }

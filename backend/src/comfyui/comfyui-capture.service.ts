@@ -7,7 +7,7 @@ import { AssetKind } from '../assets/asset.entity';
 /**
  * C2 画布运行产物捕获（CANVAS-INTEGRATION §4.3 / §4.6）。
  * 画布节点发起的运行成功后，把 ComfyUI 输出字节捕获进该画布资产分区并建 asset 行，
- * 再按节点覆盖清理上一版 generated 资产（先建新、后清旧，避免捕获失败丢光旧产物）。
+ * 每次运行追加新资产；旧候选由生成历史持久保留。
  * 工具箱运行（不带 canvasId）不经过本服务，维持"代理不落盘"现状。
  */
 @Injectable()
@@ -81,12 +81,8 @@ export class ComfyUIAssetCaptureService {
       }
     }
 
-    // 整组成功 + 指定了节点 → 覆盖清理上一版（先建新后清旧，保留本次新捕获的资产）
-    if (allOk && nodeId && captured.size) {
-      await this.assets.deleteGeneratedByNode(canvasId, nodeId, [...captured.values()].map((c) => c.assetId));
-      this.logger.log(
-        `运行 ${run.promptId} 产物已捕获并覆盖清理节点 ${nodeId} 旧产物（${captured.size} 个文件）`,
-      );
+    if (allOk && captured.size) {
+      this.logger.log(`运行 ${run.promptId} 追加捕获 ${captured.size} 个候选资产`);
     } else if (!allOk) {
       this.logger.warn(
         `运行 ${run.promptId} 部分输出捕获失败，保留旧产物，本次已捕获 ${captured.size} 个文件`,

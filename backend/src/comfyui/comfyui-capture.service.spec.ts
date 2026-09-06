@@ -49,7 +49,7 @@ function makeAssets(over: any = {}) {
 }
 
 describe('ComfyUIAssetCaptureService', () => {
-  it('全部输出捕获成功 → 回填 assetId/assetUrl，并按节点覆盖清理旧产物（先建新后清旧）', async () => {
+  it('全部输出捕获成功 → 回填 assetId/assetUrl，并保留旧候选', async () => {
     const client = makeClient();
     const assets = makeAssets();
     const svc = new ComfyUIAssetCaptureService(client as any, assets as any);
@@ -70,15 +70,7 @@ describe('ComfyUIAssetCaptureService', () => {
         mime: 'image/png',
       }),
     );
-    // 先建新、后清旧（§4.6.4），且保留本次新捕获的 assetId
-    const saveOrder = assets.saveGenerated.mock.invocationCallOrder[0];
-    const clearOrder = assets.deleteGeneratedByNode.mock.invocationCallOrder[0];
-    expect(saveOrder).toBeLessThan(clearOrder);
-    expect(assets.deleteGeneratedByNode).toHaveBeenCalledWith(
-      'canvas-1',
-      'node-1',
-      expect.arrayContaining(['asset-ComfyUI_00001_.png', 'asset-ComfyUI_00002_.png']),
-    );
+    expect(assets.deleteGeneratedByNode).not.toHaveBeenCalled();
     // 回填 outputs
     expect(run.outputs[0].assetId).toMatch(/^asset-/);
     expect(run.outputs[0].assetUrl).toMatch(/^\/api\/assets\//);

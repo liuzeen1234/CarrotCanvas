@@ -1,16 +1,18 @@
-import { BadRequestException, Controller, Delete, Get, Headers, Param, Query, Res, StreamableFile } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Query, Res, StreamableFile } from '@nestjs/common';
 import { basename } from 'path';
 import { stat } from 'fs/promises';
 import { AssetsService } from './assets.service';
+import { CanvasService, LeaseProof } from '../canvas/canvas.service';
 
 @Controller('assets')
 export class AssetsController {
-  constructor(private readonly assets: AssetsService) {}
+  constructor(private readonly assets: AssetsService, private readonly canvas: CanvasService) {}
 
   /** 删除画布节点的全部生成资产（删除生成节点时调用） */
   @Delete('generated/by-node')
-  async deleteGeneratedByNode(@Query('canvasId') canvasId: string, @Query('nodeId') nodeId: string) {
+  async deleteGeneratedByNode(@Query('canvasId') canvasId: string, @Query('nodeId') nodeId: string, @Body() proof: Partial<LeaseProof>) {
     if (!canvasId || !nodeId) throw new BadRequestException('缺少 canvasId 或 nodeId');
+    await this.canvas.assertWriteAccess(canvasId, proof ?? {});
     await this.assets.deleteGeneratedByNode(canvasId, nodeId);
     return { ok: true };
   }
@@ -52,6 +54,10 @@ export class AssetsController {
   ): Promise<StreamableFile> {
     const { asset, absPath } = await this.assets.read(id);
     const filename = asset.originName || basename(absPath);
+    const size = (await stat(absPath)).size;
+    res.setHeader('Content-Length', size);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, no-transform');
     res.setHeader(
       'Content-Disposition',
       contentDisposition('attachment', filename),

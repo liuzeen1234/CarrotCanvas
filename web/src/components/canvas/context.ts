@@ -19,6 +19,9 @@ export interface CanvasUpstreamTextState {
 }
 
 export interface CanvasNodeDataApi {
+  /** 当前画布是否只读；节点内所有共享副作用必须服从此标志。 */
+  readOnly: boolean;
+  control?: { leaseToken: string; leaseEpoch: number; expectedRevision: number };
   /** 局部更新某节点 data（浅合并） */
   updateNodeData: (nodeId: string, patch: Record<string, unknown>) => void;
   /** 删除某节点（同时移除其相连边）。二次确认由节点自身 UI 负责。 */
@@ -26,6 +29,8 @@ export interface CanvasNodeDataApi {
   canvasId?: string;
   ensureResultNode: (sourceNodeId: string, kind?: 'image' | 'video') => void;
   setNodeRunState: (nodeId: string, run: RunStateData | null) => void;
+  /** 读取节点的共享运行态，让只读观察者也能看到进度和终态。 */
+  getNodeRunState: (nodeId: string) => RunStateData | null;
   getResultState: (resultNodeId: string) => CanvasResultState;
   getUpstreamAsset: (targetNodeId: string, targetHandle: string, kind: string) => CanvasResultState['assets'][number] | null;
   /** 读取文本输入端口连接的上游节点最后一次完整输出。 */
@@ -33,10 +38,12 @@ export interface CanvasNodeDataApi {
 }
 
 export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
+  readOnly: true,
   updateNodeData: () => {},
   deleteNode: () => {},
   ensureResultNode: () => {},
   setNodeRunState: () => {},
+  getNodeRunState: () => null,
   getResultState: () => ({ run: null, assets: [] }),
   getUpstreamAsset: () => null,
   getUpstreamText: () => ({ connected: false, text: '' }),

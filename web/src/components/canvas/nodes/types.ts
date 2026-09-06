@@ -23,6 +23,7 @@ export const workflowOutputKind = (category?: string): 'image' | 'video' =>
   category === 'txt2vid' || category === 'img2vid' ? 'video' : 'image';
 export const resultSourceHandle = (kind: string) => `${kind}-source`;
 export const resultTargetHandle = (kind: string) => `${kind}-target`;
+export const promptPartSourceHandle = (part: 'positive' | 'negative') => `text-${part}-source`;
 /** Codex2API 能力卡片当前只有一个可连接文本字段：提示词。 */
 export const capabilityPromptHandle = () => resultTargetHandle('text');
 /** 图片端点保留旧 id 兼容已保存画布；其他类型在 id 中携带 kind 供连线校验。 */
@@ -59,7 +60,9 @@ export interface CodexCapabilityNodeData {
   size?: string;
   responseFormat?: 'url' | 'b64_json';
   stream?: boolean;
+  outputMode?: 'text' | 'image-prompts' | 'video-prompts';
   lastText?: string;
+  lastTextParts?: { positive: string; negative: string };
   lastAssets?: { assetId: string; url: string; kind: string; filename?: string }[];
   [key: string]: unknown;
 }

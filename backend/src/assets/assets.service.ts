@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -6,6 +6,8 @@ import { join, resolve, sep } from 'path';
 import { existsSync, createReadStream } from 'fs';
 import { promises as fs } from 'fs';
 import { Asset, AssetKind, AssetSource } from './asset.entity';
+import { CanvasCheckpoint } from '../canvas/canvas.entity';
+import { GenerationCandidateGroup } from '../runs/generation-run.entity';
 
 /**
  * 平台资产根目录：默认与 SQLite 文件同目录（backend/data/assets/）。
@@ -53,6 +55,12 @@ export class AssetsService {
   constructor(
     @InjectRepository(Asset)
     private readonly repo: Repository<Asset>,
+    @Optional()
+    @InjectRepository(CanvasCheckpoint)
+    private readonly checkpoints?: Repository<CanvasCheckpoint>,
+    @Optional()
+    @InjectRepository(GenerationCandidateGroup)
+    private readonly candidateGroups?: Repository<GenerationCandidateGroup>,
   ) {}
 
   // ---------- 分区 ----------
@@ -170,10 +178,31 @@ export class AssetsService {
     const assets = await this.repo.find({
       where: { canvasId, nodeId, source: 'generated' },
     });
+    const protectedIds = await this.checkpointAssetIds(canvasId);
+    if (this.candidateGroups) {
+      const groups = await this.candidateGroups.find({ where: { canvasId } });
+      for (const group of groups) if (group.approvedAssetId) protectedIds.add(group.approvedAssetId);
+    }
     for (const asset of assets) {
-      if (keepIds?.includes(asset.id)) continue;
+      if (keepIds?.includes(asset.id) || protectedIds.has(asset.id)) continue;
       await this.removeAssetRowAndFile(asset);
     }
+  }
+
+  /** 恢复点是强引用：只要其 graph 仍引用某资产，覆盖重跑和节点清理都不得删除。 */
+  private async checkpointAssetIds(canvasId: string): Promise<Set<string>> {
+    if (!this.checkpoints) return new Set();
+    const checkpoints = await this.checkpoints.find({ where: { canvasId } });
+    const ids = new Set<string>();
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) { value.forEach(visit); return; }
+      if (!value || typeof value !== 'object') return;
+      const record = value as Record<string, unknown>;
+      if (typeof record.assetId === 'string' && record.assetId) ids.add(record.assetId);
+      Object.values(record).forEach(visit);
+    };
+    checkpoints.forEach((checkpoint) => visit(checkpoint.graph));
+    return ids;
   }
 
   private async removeAssetRowAndFile(asset: Asset): Promise<void> {
