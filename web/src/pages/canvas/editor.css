@@ -237,7 +237,10 @@ body.canvas-editor-page .ant-pro-layout-content {
 .canvas-node-history__rail { display: flex; gap: 8px; overflow-x: auto; padding: 6px 1px 4px; scrollbar-width: thin; }
 .canvas-node-history__media { flex: 0 0 92px; padding: 2px; border: 2px solid transparent; border-radius: 8px; background: #fafafa; }
 .canvas-node-history__media.is-current, .canvas-node-history__text.is-current { border-color: #1677ff; background: #e6f4ff; }
-.canvas-node-history__media video { width: 88px; height: 66px; display: block; object-fit: cover; border-radius: 5px; }
+.canvas-node-history__media .canvas-media-trigger--history { height: 66px; margin-bottom: 0; width: 88px; }
+.canvas-node-history__media .canvas-media-trigger--history img,
+.canvas-node-history__media .canvas-media-trigger--history video { height: 66px; object-fit: cover; width: 88px; }
+.canvas-node-history__media .canvas-media-trigger__play { font-size: 26px; }
 .canvas-node-history__text { position: relative; display: flex; flex: 0 0 180px; flex-direction: column; box-sizing: border-box; height: 104px; overflow: hidden; text-align: left; border: 2px solid transparent; border-radius: 8px; padding: 9px 30px 7px 9px; background: #fafafa; color: inherit; cursor: pointer; }
 .canvas-node-history__text-summary { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.45; }
 .canvas-node-history__mode { display: inline-block; margin: 0 0 4px; padding: 1px 5px; border-radius: 4px; background: #e6f4ff; color: #1677ff; font-size: 10px; line-height: 16px; }

@@ -1,8 +1,8 @@
 /** C6 文生图节点：schema 表单、提交校验、运行/中断与平台资产回写。 */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Alert, Button, Image, Popconfirm, Progress, Space, Spin, Tag, message } from 'antd';
-import { DeleteOutlined, DownloadOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { Alert, Button, Popconfirm, Progress, Space, Spin, Tag, message } from 'antd';
+import { DeleteOutlined, DownloadOutlined, PauseCircleOutlined, PlayCircleFilled, PlayCircleOutlined } from '@ant-design/icons';
 import { request } from 'umi';
 import { ComfyUIAPI, RunStateData, SchemaField, applyFormValues, fileKey, splitByExposure } from '@/components/comfyui/types';
 import { ComfySchemaForm } from '@/components/comfyui/ComfySchemaForm';
@@ -11,6 +11,7 @@ import { CanvasNodeDataContext } from '../context';
 import { Txt2ImgNodeData, resultSourceHandle, workflowInputHandle, workflowOutputKind } from './types';
 import NodeOutputHistory from '../NodeOutputHistory';
 import { RunElapsed } from '../RunTiming';
+import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview';
 
 const isEmpty = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 
@@ -20,6 +21,7 @@ export default function Txt2ImgNode(props: NodeProps) {
   const [workflow, setWorkflow] = useState<ComfyUIAPI | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [missingKeys, setMissingKeys] = useState<Set<string>>(new Set());
   const [historyVersion, setHistoryVersion] = useState(0);
   const initializedRef = useRef(false);
@@ -178,9 +180,10 @@ export default function Txt2ImgNode(props: NodeProps) {
         <Tag color={visibleRunState.status === 'success' ? 'success' : visibleRunState.status === 'error' ? 'error' : visibleRunState.status === 'interrupted' ? 'warning' : 'processing'}>{statusLabel[visibleRunState.status] || visibleRunState.status}</Tag>
         {visibleRunState.error ? <div style={{ color: '#ff4d4f', marginTop: 4, wordBreak: 'break-word' }}>{visibleRunState.error}</div> : null}
       </div>}
-      {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset) => <div key={asset.assetId}>{asset.kind === 'video' ? <video src={asset.url} controls playsInline preload="metadata" style={{ width: '100%', display: 'block' }} /> : <Image src={asset.url} width="100%" />}<Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
+      {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset, assetIndex) => <div key={asset.assetId}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
       <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={historyVersion} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} />
     </div>
+    <CanvasMediaPreview open={previewIndex !== null} items={(data.lastAssets ?? []).filter((asset): asset is CanvasMediaItem => asset.kind === 'image' || asset.kind === 'video')} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
     <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={`${outputKind === 'video' ? '视频' : '图片'}输出`} />
   </div>;
 }

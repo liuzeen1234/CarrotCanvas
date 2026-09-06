@@ -125,3 +125,38 @@
   display: block;
   margin-bottom: 6px;
 }
+
+.canvas-media-trigger {
+  appearance: none;
+  background: #111;
+  border: 0;
+  border-radius: 6px;
+  cursor: zoom-in;
+  display: block;
+  margin: 0 0 6px;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  width: 100%;
+}
+
+.canvas-media-trigger img,
+.canvas-media-trigger video {
+  display: block;
+  height: auto;
+  max-height: 240px;
+  object-fit: contain;
+  pointer-events: none;
+  width: 100%;
+}
+
+.canvas-media-trigger__play {
+  color: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.65));
+  font-size: 40px;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}

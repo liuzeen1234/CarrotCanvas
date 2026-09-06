@@ -1,9 +1,10 @@
 /** C6 结果节点：通过连线读取上游运行态与平台资产，不冗余持久化引用。 */
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Alert, Button, Empty, Image, Popconfirm, Progress, Space, Spin } from 'antd';
-import { DeleteOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Alert, Button, Empty, Popconfirm, Progress, Space, Spin } from 'antd';
+import { DeleteOutlined, DownloadOutlined, PlayCircleFilled } from '@ant-design/icons';
 import { CanvasNodeDataContext } from '../context';
+import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview';
 import { ResultNodeData, resultSourceHandle, resultTargetHandle } from './types';
 
 export default function ResultNode(props: NodeProps) {
@@ -16,6 +17,8 @@ export default function ResultNode(props: NodeProps) {
   const images = assets.filter((asset) => asset.kind === 'image');
   const videos = assets.filter((asset) => asset.kind === 'video');
   const mediaCount = kind === 'video' ? videos.length : images.length;
+  const previewItems = (kind === 'video' ? videos : images) as CanvasMediaItem[];
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   return <div className={`canvas-node canvas-node--result${props.selected ? ' selected' : ''}`}>
     <Handle type="target" position={Position.Left} id={resultTargetHandle(kind)} className={`canvas-handle--${kind}`} title={`${kind === 'video' ? '视频' : '图片'}输入`} />
@@ -31,9 +34,9 @@ export default function ResultNode(props: NodeProps) {
       {running ? <div style={{ width: '100%', textAlign: 'center' }}><Spin /><div style={{ margin: '8px 0', color: '#888' }}>{run?.status === 'pending' ? '等待 ComfyUI 执行…' : run?.currentNodeTitle || '正在生成…'}</div><Progress size="small" percent={percent} status="active" showInfo={percent !== undefined} /></div>
         : run?.status === 'error' ? <Alert style={{ width: '100%' }} type="error" showIcon message="生成失败" description={run.error || '请检查 ComfyUI 后重试'} />
         : run?.status === 'interrupted' ? <Alert style={{ width: '100%' }} type="warning" showIcon message="运行已中断" />
-        : kind === 'video' && videos.length ? <Space direction="vertical" size={8} style={{ width: '100%' }}>{videos.map((asset) => <div key={asset.assetId} className="canvas-result-image"><video src={asset.url} controls playsInline preload="metadata" style={{ width: '100%', display: 'block', marginBottom: 6 }} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download={asset.filename || 'canvas-video.mp4'} onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space>
-        : images.length ? <Image.PreviewGroup><Space direction="vertical" size={8} style={{ width: '100%' }}>{images.map((asset) => <div key={asset.assetId} className="canvas-result-image"><Image src={asset.url} alt={asset.filename || '生成图片'} width="100%" /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download={asset.filename || 'canvas-image.png'} onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space></Image.PreviewGroup>
+        : previewItems.length ? <Space direction="vertical" size={8} style={{ width: '100%' }}>{previewItems.map((asset, assetIndex) => <div key={asset.assetId} className="canvas-result-image"><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download={asset.filename || (asset.kind === 'video' ? 'canvas-video.mp4' : 'canvas-image.png')} onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space>
         : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="等待上游生成结果" />}
     </div>
+    <CanvasMediaPreview open={previewIndex !== null} items={previewItems} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
   </div>;
 }
