@@ -15,6 +15,7 @@ import {
   TERMINAL_RUN_STATUS,
   applyFormValues,
   fileKey,
+  randomSeedValue,
 } from './types';
 
 /** schema 按 workflowId 缓存，避免重复请求 /object_info 分析；编辑/导入变更后调用 clearSchemaCache 失效 */
@@ -59,6 +60,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [mode, setModeState] = useState<RunMode>('form');
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+  const [autoRandomSeedKeys, setAutoRandomSeedKeys] = useState<Set<string>>(new Set());
   const [jsonText, setJsonText] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [runState, setRunState] = useState<RunStateData | null>(null);
@@ -91,7 +93,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
 
   /** 加载（或命中缓存）工作流 schema 并初始化表单值。由使用方在“打开/绑定”时显式调用。 */
   const init = useCallback(
-    async (w: ComfyUIAPI, initialValues?: Record<string, unknown>) => {
+    async (w: ComfyUIAPI, initialValues?: Record<string, unknown>, initialAutoRandomSeedKeys?: string[]) => {
       const seq = ++initSeq.current;
       clearPoll();
       setRunState(null);
@@ -100,6 +102,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
       setSchemaError(null);
       setFormError(null);
       setModeState('form');
+      setAutoRandomSeedKeys(new Set(initialAutoRandomSeedKeys ?? []));
       setJsonText(JSON.stringify(w.apiJson, null, 2));
       setSchemaLoading(true);
       try {
@@ -142,6 +145,18 @@ export function useComfyRun(args: UseComfyRunArgs) {
   /** 通用表单值写入（key=`${nodeId}::${param}`），ComfySchemaForm 用 */
   const handleFormChange = useCallback((key: string, value: unknown) => {
     setFormValues((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const randomizeSeed = useCallback((field: SchemaField) => {
+    handleFormChange(fileKey(field), randomSeedValue(field));
+  }, [handleFormChange]);
+
+  const setAutoRandomSeed = useCallback((key: string, enabled: boolean) => {
+    setAutoRandomSeedKeys((previous) => {
+      const next = new Set(previous);
+      if (enabled) next.add(key); else next.delete(key);
+      return next;
+    });
   }, []);
 
   const appendUploadOption = useCallback((f: SchemaField, name: string) => {
@@ -232,6 +247,15 @@ export function useComfyRun(args: UseComfyRunArgs) {
         apiJson = JSON.parse(jsonText);
       } else {
         apiJson = applyFormValues(w.apiJson, formValues);
+      }
+      const generatedSeeds: Record<string, unknown> = {};
+      for (const group of schema?.groups ?? []) for (const field of group.fields) {
+        const key = fileKey(field);
+        if (field.isSeed && autoRandomSeedKeys.has(key)) generatedSeeds[key] = randomSeedValue(field);
+      }
+      if (Object.keys(generatedSeeds).length) {
+        apiJson = applyFormValues(apiJson, generatedSeeds);
+        setFormValues((previous) => ({ ...previous, ...generatedSeeds }));
       }
     } catch (e: any) {
       setFormError(e?.message || 'JSON 格式错误');
@@ -328,6 +352,9 @@ export function useComfyRun(args: UseComfyRunArgs) {
     mode,
     setMode,
     formValues,
+    autoRandomSeedKeys,
+    setAutoRandomSeed,
+    randomizeSeed,
     setFormValues,
     setFieldValue,
     handleFormChange,

@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Alert, Button, Collapse, Col, Divider, Image, InputNumber, Progress, Row, Select, Switch, Upload, message } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import { ReloadOutlined, UploadOutlined } from '@ant-design/icons';
 import { ImeSafeInput, ImeSafeTextArea } from '@/components/canvas/ImeSafeInput';
 import {
   ExposureConfig,
@@ -46,6 +46,9 @@ export interface ComfySchemaFormProps {
   /** 画布连线实际提供的图片；存在时优先于卡片自身保存的默认图片展示。 */
   getConnectedImage?: (field: SchemaField) => { url: string; label?: string } | null;
   getConnectedText?: (field: SchemaField) => { text: string } | null;
+  autoRandomSeedKeys?: ReadonlySet<string>;
+  onAutoRandomSeedChange?: (key: string, enabled: boolean) => void;
+  onRandomizeSeed?: (field: SchemaField) => void;
 }
 
 /** schema 字段 → antd 控件（受控，值来自 props.values，key=`${nodeId}::${param}`） */
@@ -65,6 +68,9 @@ export function ComfySchemaForm({
   renderInputConnector,
   getConnectedImage,
   getConnectedText,
+  autoRandomSeedKeys,
+  onAutoRandomSeedChange,
+  onRandomizeSeed,
 }: ComfySchemaFormProps) {
   if (schemaLoading) {
     return (
@@ -91,7 +97,7 @@ export function ComfySchemaForm({
   return (
     <div style={scroll ? { maxHeight, overflow: 'auto', paddingRight: 8 } : { overflow: 'visible' }}>
       {primary.length > 0 ? (
-        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} />
+        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} autoRandomSeedKeys={autoRandomSeedKeys} onAutoRandomSeedChange={onAutoRandomSeedChange} onRandomizeSeed={onRandomizeSeed} />
       ) : (
         <Alert
           type="info"
@@ -108,7 +114,7 @@ export function ComfySchemaForm({
               key: 'advanced',
               label: `高级参数（${advancedCount} 项）`,
               children: (
-                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} />
+                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} autoRandomSeedKeys={autoRandomSeedKeys} onAutoRandomSeedChange={onAutoRandomSeedChange} onRandomizeSeed={onRandomizeSeed} />
               ),
             },
           ]}
@@ -130,10 +136,13 @@ interface RunGroupsProps {
   renderInputConnector?: (field: SchemaField) => React.ReactNode;
   getConnectedImage?: (field: SchemaField) => { url: string; label?: string } | null;
   getConnectedText?: (field: SchemaField) => { text: string } | null;
+  autoRandomSeedKeys?: ReadonlySet<string>;
+  onAutoRandomSeedChange?: (key: string, enabled: boolean) => void;
+  onRandomizeSeed?: (field: SchemaField) => void;
 }
 
 /** 渲染一组节点分组的表单控件 */
-function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn, invalidKeys, renderInputConnector, getConnectedImage, getConnectedText }: RunGroupsProps) {
+function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn, invalidKeys, renderInputConnector, getConnectedImage, getConnectedText, autoRandomSeedKeys, onAutoRandomSeedChange, onRandomizeSeed }: RunGroupsProps) {
   return (
     <>
       {groups.map((g) => (
@@ -162,6 +171,11 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
                     connectedImage={f.control === 'upload' ? getConnectedImage?.(f) ?? null : null}
                     connectedText={f.control === 'textarea' || f.control === 'input' ? getConnectedText?.(f) ?? null : null}
                   />
+                  {f.isSeed ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                    <Button size="small" icon={<ReloadOutlined />} disabled={disabled} onClick={() => onRandomizeSeed?.(f)}>随机</Button>
+                    <Switch size="small" checked={autoRandomSeedKeys?.has(fileKey(f))} disabled={disabled} onChange={(checked) => onAutoRandomSeedChange?.(fileKey(f), checked)} />
+                    <span style={{ color: '#8c8c8c', fontSize: 11 }}>每次运行自动随机</span>
+                  </div> : null}
                   </div>
                   {f.description ? <div style={{ marginTop: 3, color: '#8c8c8c', fontSize: 11, lineHeight: 1.4 }}>{f.description}</div> : null}
                 </Col>

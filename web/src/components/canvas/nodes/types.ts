@@ -42,6 +42,8 @@ export interface Txt2ImgNodeData {
   workflowName?: string;
   /** 表单值（key=`${nodeId}::${param}`），含提示词字段；C6 提交时值级写回 apiJson */
   formValues?: Record<string, unknown>;
+  /** 自动随机的 seed 字段 key（`${nodeId}::${param}`）。 */
+  autoRandomSeedKeys?: string[];
   /** 最近一次成功运行的平台资产引用（C6 写入） */
   lastAssets?: { assetId: string; url: string; kind: string }[];
   [key: string]: unknown;

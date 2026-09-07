@@ -125,6 +125,7 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-07（Issue #9）：所有经 `/object_info` schema 与节点语义可靠识别的 ComfyUI 整数 seed（当前覆盖 KSampler `seed`、RandomNoise `noise_seed` 及声明 `control_after_generate` 的自定义种子节点）统一获得“一键随机”和“每次运行自动随机”。随机值限制在字段约束与 JavaScript 安全整数范围内；自动随机发生在创建平台 Run 前，实际 API JSON 同时作为 provider 请求和 `inputSnapshot` 冻结，确保幂等重放不重新抽取。画布卡片持久化自动随机开关，运行后回显实际 seed；节点历史与画布生成流水展示并可复制 seed，节点历史支持把一次 Run 的全部 seed 恢复到卡片。普通整数以及仅字段名相似、缺少节点/schema 种子语义的参数不会误判。
 - 2026-09-05（AI Native 1A）：ComfyUI 每次提交会先创建平台 GenerationRun，保存最终 API JSON、工作流版本与画布/节点/资产 lineage；成功产物追加进候选组。服务重启后无法确认的 queued/running 任务标记 `needs_attention`；由于底层 interrupt 为全局语义，并发运行时明确拒绝伪装成精确取消。
 - 2026-09-05（实机验收）：Z-Image 文生图在同一画布节点连续运行两次均成功；第二次命中 ComfyUI 缓存但平台仍生成独立 Run 和独立资产，候选组保留两个资产。后端重启后 Run、候选与 selected 状态保持，历史页面可见。
 - 2026-09-03（配置）：MiniMax H3 文生视频与图生视频工作流的持久化采样步数统一从 20 调整为 8（高质量/快速分支均为 8），降低本机单次生成耗时。

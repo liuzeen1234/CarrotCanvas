@@ -48,7 +48,7 @@ export default function Txt2ImgNode(props: NodeProps) {
       .then((loaded) => {
         if (!alive) return;
         setWorkflow(loaded);
-        return run.init(loaded, data.formValues ?? {}).then(() => { initializedRef.current = true; });
+        return run.init(loaded, data.formValues ?? {}, data.autoRandomSeedKeys ?? []).then(() => { initializedRef.current = true; });
       })
       .catch((error: any) => {
         if (!alive) return;
@@ -65,6 +65,12 @@ export default function Txt2ImgNode(props: NodeProps) {
     const timer = setTimeout(() => updateNodeData(nodeId, { formValues: run.formValues }), 300);
     return () => clearTimeout(timer);
   }, [nodeId, run.formValues, updateNodeData]);
+
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    const timer = setTimeout(() => updateNodeData(nodeId, { autoRandomSeedKeys: [...run.autoRandomSeedKeys] }), 300);
+    return () => clearTimeout(timer);
+  }, [nodeId, run.autoRandomSeedKeys, updateNodeData]);
 
   useEffect(() => setNodeRunState(nodeId, run.runState), [nodeId, run.runState, setNodeRunState]);
 
@@ -173,7 +179,7 @@ export default function Txt2ImgNode(props: NodeProps) {
       {!data.workflowId ? <Alert type="warning" showIcon message="未绑定工作流" />
         : workflowLoading || run.schemaLoading ? <div style={{ textAlign: 'center', padding: '16px 0' }}><Spin size="small" /><div style={{ color: '#999', marginTop: 6 }}>加载入参表单…</div></div>
         : loadError || run.schemaError ? <Alert type="warning" showIcon message={loadError || run.schemaError} description={data.lastAssets?.length ? '历史结果仍可在结果节点查看。' : undefined} />
-        : <ComfySchemaForm schema={run.schema} values={run.formValues} onChange={(key, value) => { run.handleFormChange(key, value); setMissingKeys((prev) => { const next = new Set(prev); next.delete(key); return next; }); }} disabled={readOnly || run.running} exposure={workflow?.exposureConfig ?? null} onUploadImage={readOnly ? undefined : run.uploadImage} uploading={run.uploading} scroll={false} singleColumn invalidKeys={missingKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} />}
+        : <ComfySchemaForm schema={run.schema} values={run.formValues} onChange={(key, value) => { run.handleFormChange(key, value); setMissingKeys((prev) => { const next = new Set(prev); next.delete(key); return next; }); }} disabled={readOnly || run.running} exposure={workflow?.exposureConfig ?? null} onUploadImage={readOnly ? undefined : run.uploadImage} uploading={run.uploading} scroll={false} singleColumn invalidKeys={missingKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} autoRandomSeedKeys={run.autoRandomSeedKeys} onAutoRandomSeedChange={run.setAutoRandomSeed} onRandomizeSeed={run.randomizeSeed} />}
       {missingKeys.size > 0 && <Alert style={{ marginTop: 8 }} type="error" showIcon message={`还有 ${missingKeys.size} 个必填参数未填写`} />}
       {visibleRunState && <div style={{ marginTop: 8 }}>
         {visibleRunning ? <Progress size="small" percent={percent} status="active" showInfo={percent !== undefined} /> : null}
@@ -181,7 +187,7 @@ export default function Txt2ImgNode(props: NodeProps) {
         {visibleRunState.error ? <div style={{ color: '#ff4d4f', marginTop: 4, wordBreak: 'break-word' }}>{visibleRunState.error}</div> : null}
       </div>}
       {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset, assetIndex) => <div key={asset.assetId}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
-      <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={historyVersion} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} />
+      <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={historyVersion} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} onRestoreSeeds={(values) => run.setFormValues((previous) => ({ ...previous, ...values }))} />
     </div>
     <CanvasMediaPreview open={previewIndex !== null} items={(data.lastAssets ?? []).filter((asset): asset is CanvasMediaItem => asset.kind === 'image' || asset.kind === 'video')} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
     <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={`${outputKind === 'video' ? '视频' : '图片'}输出`} />

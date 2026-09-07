@@ -205,6 +205,9 @@ export default function ComfyRunModal({ open, workflow, onClose, onCoverSaved }:
               exposure={workflow?.exposureConfig ?? null}
               onUploadImage={run.uploadImage}
               uploading={run.uploading}
+              autoRandomSeedKeys={run.autoRandomSeedKeys}
+              onAutoRandomSeedChange={run.setAutoRandomSeed}
+              onRandomizeSeed={run.randomizeSeed}
               maxHeight="58vh"
             />
           ) : (

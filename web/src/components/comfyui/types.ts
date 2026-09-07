@@ -93,6 +93,7 @@ export interface SchemaField {
   imageUpload?: boolean;
   required: boolean;
   description?: string;
+  isSeed?: boolean;
 }
 
 export interface SchemaNodeGroup {
@@ -117,6 +118,31 @@ export type RunMode = 'form' | 'json';
 
 /** 表单值 key：`${nodeId}::${param}` */
 export const fileKey = (f: { nodeId: string; param: string }) => `${f.nodeId}::${f.param}`;
+
+export const randomSeedValue = (field: Pick<SchemaField, 'min' | 'max'>): number => {
+  const min = Math.max(Number.MIN_SAFE_INTEGER, Math.ceil(field.min ?? 0));
+  const max = Math.min(Number.MAX_SAFE_INTEGER, Math.floor(field.max ?? Number.MAX_SAFE_INTEGER));
+  const safeMax = max >= min ? max : min;
+  const words = new Uint32Array(2);
+  crypto.getRandomValues(words);
+  const raw = (words[0] & 0x1fffff) * 0x100000000 + words[1];
+  const range = safeMax - min + 1;
+  return range >= Number.MAX_SAFE_INTEGER ? raw : min + (raw % range);
+};
+
+export const extractSeedValues = (snapshot: unknown): Record<string, number> => {
+  if (!snapshot || typeof snapshot !== 'object') return {};
+  const result: Record<string, number> = {};
+  for (const [nodeId, rawNode] of Object.entries(snapshot as Record<string, any>)) {
+    const classType = String(rawNode?.class_type ?? '').toLowerCase();
+    if (!/sampler|noise|seed/.test(classType) || !rawNode?.inputs) continue;
+    for (const param of ['seed', 'noise_seed', 'random_seed']) {
+      const value = rawNode.inputs[param];
+      if (Number.isSafeInteger(value)) result[`${nodeId}::${param}`] = value;
+    }
+  }
+  return result;
+};
 
 /** 把表单值（key=`${nodeId}::${param}`）按值级写入 apiJson 深拷贝（值级替换，非字符串拼接） */
 export const applyFormValues = (base: unknown, values: Record<string, unknown>): unknown => {

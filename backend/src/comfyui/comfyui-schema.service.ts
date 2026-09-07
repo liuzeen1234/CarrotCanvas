@@ -49,6 +49,8 @@ export interface SchemaField {
   required: boolean;
   /** 工作流级自定义使用建议，由 controller 合并。 */
   description?: string;
+  /** 可靠识别出的 ComfyUI 随机种子字段，可安全提供随机化交互。 */
+  isSeed?: boolean;
 }
 
 export interface SchemaNodeGroup {
@@ -194,6 +196,7 @@ export class ComfyUISchemaService {
       current: value,
       default: meta.default,
       required: def.required,
+      isSeed: this.isSeedInput(classType, param, typeOrCombo, meta),
     };
 
     if (Array.isArray(typeOrCombo)) {
@@ -253,5 +256,19 @@ export class ComfyUISchemaService {
         // MODEL/CLIP/LATENT/CONDITIONING 等：正常应由上游连接提供，裸值则隐藏
         return { ...common, control: 'hidden', valueType: type };
     }
+  }
+
+  private isSeedInput(
+    classType: string,
+    param: string,
+    typeOrCombo: unknown,
+    meta: Record<string, unknown>,
+  ): boolean {
+    if (String(typeOrCombo) !== 'INT') return false;
+    const normalizedParam = param.toLowerCase();
+    if (!['seed', 'noise_seed', 'random_seed'].includes(normalizedParam)) return false;
+    const normalizedClass = classType.toLowerCase();
+    return /sampler|noise|seed/.test(normalizedClass)
+      || ['randomize', 'increment', 'decrement'].includes(String(meta.control_after_generate ?? '').toLowerCase());
   }
 }
