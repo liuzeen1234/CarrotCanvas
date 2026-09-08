@@ -20,7 +20,7 @@ export const HANDLE_IMAGE_TARGET = 'image-target';
 export const HANDLE_VIDEO_SOURCE = 'video-source';
 export const HANDLE_VIDEO_TARGET = 'video-target';
 export const workflowOutputKind = (category?: string): 'image' | 'video' =>
-  category === 'txt2vid' || category === 'img2vid' ? 'video' : 'image';
+  category === 'txt2vid' || category === 'img2vid' || category === 'reference' || category === 'vid2vid' ? 'video' : 'image';
 export const resultSourceHandle = (kind: string) => `${kind}-source`;
 export const resultTargetHandle = (kind: string) => `${kind}-target`;
 export const promptPartSourceHandle = (part: 'positive' | 'negative') => `text-${part}-source`;

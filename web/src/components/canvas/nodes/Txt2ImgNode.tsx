@@ -105,12 +105,13 @@ export default function Txt2ImgNode(props: NodeProps) {
       if (!exposedKeys.has(key) || field.control === 'hidden') continue;
       const upstreamText = upstreamTextFor(field);
       const effectiveValue = upstreamText.connected ? upstreamText.text : run.formValues[key];
-      if ((field.required || field.control === 'upload') && isEmpty(effectiveValue) && !upstreamAssetFor(field)) missing.add(key);
+      if (field.required && isEmpty(effectiveValue) && !upstreamAssetFor(field)) missing.add(key);
     }
     setMissingKeys(missing);
     if (missing.size) { message.warning(`请先填写 ${missing.size} 个必填参数`); return; }
     try {
       const resolvedValues = { ...run.formValues };
+      const inputAssetIds = new Set<string>();
       for (const input of workflow.inputConfig?.fields ?? []) {
         if (input.kind === 'text') {
           const upstreamText = upstreamTextFor(input);
@@ -121,16 +122,19 @@ export default function Txt2ImgNode(props: NodeProps) {
           continue;
         }
         const asset = upstreamAssetFor(input);
-        if (!asset) continue;
-        if (input.kind !== 'image') throw new Error(`暂不支持 ${input.kind} 输入回灌`);
+        if (!asset) {
+          if (getUpstreamText(nodeId, workflowInputHandle(input.nodeId, input.param, input.kind)).connected) throw new Error('上游媒体节点尚未上传或生成内容');
+          continue;
+        }
+        inputAssetIds.add(asset.assetId);
         const uploaded = await request<{ file: { name: string } }>('/api/comfyui/upload/asset', {
           method: 'POST', data: { canvasId, assetId: asset.assetId },
         });
         resolvedValues[`${input.nodeId}::${input.param}`] = uploaded.file.name;
       }
-      await run.submit(applyFormValues(workflow.apiJson, resolvedValues));
+      await run.submit(applyFormValues(workflow.apiJson, resolvedValues), new Set((workflow.inputConfig?.fields ?? []).filter(f => f.kind === 'text' && upstreamTextFor(f).connected).map(fileKey)), [...inputAssetIds]);
     }
-    catch (error: any) { message.error(error?.response?.data?.message || '提交运行失败'); }
+    catch (error: any) { message.error(error?.response?.data?.message || error?.message || '提交运行失败'); }
   };
 
   const renderInputConnector = useCallback((field: SchemaField) => {
@@ -145,8 +149,8 @@ export default function Txt2ImgNode(props: NodeProps) {
 
   const getConnectedImage = useCallback((field: SchemaField) => {
     const asset = upstreamAssetFor(field);
-    if (!asset || asset.kind !== 'image') return null;
-    return { url: asset.url, label: asset.filename || '上游生成图片' };
+    if (!asset) return null;
+    return { url: asset.url, label: asset.filename || '上游媒体' };
   }, [upstreamAssetFor]);
 
   const getConnectedText = useCallback((field: SchemaField) => {

@@ -1,0 +1,13 @@
+import fs from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const dir=fileURLToPath(new URL('./',import.meta.url));
+const video=dir+'Sky_Reboot.mp4';
+const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_streams','-show_format','-of','json',video],{encoding:'utf8'}));
+await fs.writeFile(dir+'media-info.json',JSON.stringify(probe,null,2));
+const duration=Number(probe.format.duration);
+execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',video,'-vf',`fps=6/${duration},scale=672:-1,tile=3x2`,'-frames:v','1',dir+'contact-sheet.jpg']);
+for(const [name,fraction] of [['start',0.05],['middle',0.5],['end',0.92]])execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String(duration*fraction),'-i',video,'-frames:v','1',dir+name+'.png']);
+execFileSync('ffmpeg',['-hide_banner','-v','error','-i',video,'-f','null','-']);
+const audio=execFileSync('ffmpeg',['-hide_banner','-i',video,'-vn','-af','volumedetect','-f','null','-'],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
+console.log(JSON.stringify({duration,streams:probe.streams.map(s=>({type:s.codec_type,codec:s.codec_name,width:s.width,height:s.height,fps:s.r_frame_rate,channels:s.channels,sample_rate:s.sample_rate}))},null,2));

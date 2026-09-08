@@ -1,0 +1,26 @@
+subject_definitions: <Subject 1> is a female character with wavy blue hair, red eyes, and two red curved horns. She wears a black halter top with a gold bell at the neck, a white and blue high-collared open coat with flowing sleeves, dark leggings, and black gloves. Accessories include a golden key belt buckle, a hanging tassel, and red ribbon bows on her shoes. The palette is ice-blue, navy, white, gold, and red against a starry deep blue void.
+
+summary: [reference generation] A 15-second high-impact character PV montage featuring <Subject 1> in cel-shaded anime fashion editorial style. The sequence maintains stable anatomy and clear hands, using action-match cuts, ink wipes, and graphic transitions. The visual theme employs ice-blue, navy, white, gold, and red accents. The exact title "Pixel Fantasy" appears only twice, once at Shot 9 and again at the final Shot 15.
+
+retention_analysis: <Subject 1>: fully_preserved.
+
+detailed_description:
+[Shot 1] Full body standing pose; <Subject 1> stands center frame with arms relaxed at sides, facing forward in a neutral stance.
+[Shot 2] At 00:01.000, Medium close-up of the upper torso; <Subject 1> begins to lift her right arm slightly as a sharp ink wipe transition occurs across the screen.
+[Shot 3] At 00:02.000, Side profile three-quarter view; <Subject 1> steps forward with her left leg while tilting her head to the right, matched by a hard cut.
+[Shot 4] At 00:03.000, Dynamic low-angle shot from below; <Subject 1> lunges forward with a determined expression, utilizing an occlusion cut where a graphic shape briefly covers the frame.
+[Shot 5] At 00:04.000, Extreme close-up on the face and eyes; <Subject 1> gazes intensely at the camera, synchronized with a comic panel style flash effect.
+[Shot 6] At 00:05.000, High-angle shot looking down from above; <Subject 1> raises both hands in a defensive or casting gesture, matched by an ink wipe transition.
+[Shot 7] At 00:06.000, Mid-shot from the front; <Subject 1> brings her hands together in front of her chest, palms open, with a sharp action-match cut.
+[Shot 8] At 00:07.000, Low-angle hero shot emphasizing height; <Subject 1> strikes a powerful pose with one hand on hip and the other extended, utilizing a graphic shape overlay.
+[Shot 9] At 00:08.000, Full body shot with dramatic lighting; <Subject 1> stands confidently as the exact title "Pixel Fantasy" appears in bold letters behind her silhouette.
+[Shot 10] At 00:09.000, Close-up on the flowing coat details; <Subject 1> spins slightly to show the movement of the white and blue fabric, matched by a quick ink wipe.
+[Shot 11] At 00:10.000, Dynamic side view in motion; <Subject 1> dashes forward with legs blurred, utilizing an action-match cut to maintain momentum.
+[Shot 12] At 00:11.000, Over-the-shoulder shot; <Subject 1> looks back over her left shoulder with a slight smile, synchronized with a comic panel flash effect.
+[Shot 13] At 00:12.000, Extreme close-up on the gold bell and neck area; <Subject 1> tilts her head down slightly, matched by a graphic shape transition.
+[Shot 14] At 00:13.000, Full body shot with arms wide open; <Subject 1} stands tall in a welcoming or commanding posture, utilizing an occlusion cut for emphasis.
+[Shot 15] At 00:14.000, Final heroic pose from a low angle; <Subject 1> stands triumphantly as the exact title "Pixel Fantasy" reappears behind her for the second time to conclude the sequence.
+
+overall_soundscape: Sparse whooshes and impacts below the music align with visual transitions; no intelligible speech or dialogue is present.
+
+non_diegetic_music: Energetic 132 BPM 4/4 instrumental electronic pop beat with melodic synth leads, punchy drums, and bass; the track features a musical rise and final resolution with no lyrics.

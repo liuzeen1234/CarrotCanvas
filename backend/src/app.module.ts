@@ -9,6 +9,7 @@ import { CanvasModule } from './canvas/canvas.module';
 import { AssetsModule } from './assets/assets.module';
 import { Codex2ApiModule } from './codex2api/codex2api.module';
 import { RunsModule } from './runs/runs.module';
+import { SystemResourcesModule } from './system-resources/system-resources.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RunsModule } from './runs/runs.module';
     AssetsModule,
     Codex2ApiModule,
     RunsModule,
+    SystemResourcesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

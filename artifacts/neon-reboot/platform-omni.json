@@ -1,0 +1,1127 @@
+{
+  "id": "35c2f155-78f6-4762-9ce1-93b90c78856e",
+  "name": "MiniMax H3 全能参考 · 重启天际",
+  "category": "reference",
+  "description": "全能参考：9 张图片、3 段视频、3 路对应视频配音、3 段独立音频。未填写的可选参考自动略过。视频上传转换为 24fps，需 2–15 秒。提示词使用 <Picture n> / <Video n> / <Audio n>。所有可编辑参数均可连线；数字、布尔、枚举接收文本并校验类型。默认保留双图《重启天际》实测配置。",
+  "tags": [
+    "MiniMax H3",
+    "全能参考",
+    "R2V",
+    "Turbo"
+  ],
+  "thumbnailPath": null,
+  "exposureConfig": {
+    "version": 1,
+    "fields": [
+      {
+        "nodeId": "92",
+        "param": "filename_prefix"
+      },
+      {
+        "nodeId": "92",
+        "param": "format"
+      },
+      {
+        "nodeId": "92",
+        "param": "codec"
+      },
+      {
+        "nodeId": "115",
+        "param": "aspect_ratio"
+      },
+      {
+        "nodeId": "115",
+        "param": "megapixels"
+      },
+      {
+        "nodeId": "115",
+        "param": "multiple"
+      },
+      {
+        "nodeId": "119",
+        "param": "vae_name"
+      },
+      {
+        "nodeId": "120",
+        "param": "vae_name"
+      },
+      {
+        "nodeId": "123",
+        "param": "sampler_name"
+      },
+      {
+        "nodeId": "124",
+        "param": "scheduler"
+      },
+      {
+        "nodeId": "124",
+        "param": "denoise"
+      },
+      {
+        "nodeId": "127",
+        "param": "unet_name"
+      },
+      {
+        "nodeId": "127",
+        "param": "weight_dtype"
+      },
+      {
+        "nodeId": "128",
+        "param": "clip_name"
+      },
+      {
+        "nodeId": "128",
+        "param": "type"
+      },
+      {
+        "nodeId": "128",
+        "param": "device"
+      },
+      {
+        "nodeId": "129",
+        "param": "noise_seed"
+      },
+      {
+        "nodeId": "130",
+        "param": "fps"
+      },
+      {
+        "nodeId": "130",
+        "param": "bit_depth"
+      },
+      {
+        "nodeId": "131",
+        "param": "expression"
+      },
+      {
+        "nodeId": "132",
+        "param": "value"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_image_size"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_2"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_3"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_4"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_5"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_6"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_7"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_8"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_0"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_1"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_2"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_0"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_1"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_2"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_0"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_1"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_2"
+      },
+      {
+        "nodeId": "137",
+        "param": "image"
+      },
+      {
+        "nodeId": "138",
+        "param": "value"
+      },
+      {
+        "nodeId": "139",
+        "param": "image"
+      },
+      {
+        "nodeId": "143",
+        "param": "value"
+      },
+      {
+        "nodeId": "144",
+        "param": "value"
+      },
+      {
+        "nodeId": "145",
+        "param": "lora_name"
+      },
+      {
+        "nodeId": "145",
+        "param": "strength_model"
+      },
+      {
+        "nodeId": "146",
+        "param": "value"
+      }
+    ]
+  },
+  "inputConfig": {
+    "version": 1,
+    "fields": [
+      {
+        "nodeId": "92",
+        "param": "filename_prefix",
+        "kind": "text"
+      },
+      {
+        "nodeId": "92",
+        "param": "format",
+        "kind": "text"
+      },
+      {
+        "nodeId": "92",
+        "param": "codec",
+        "kind": "text"
+      },
+      {
+        "nodeId": "115",
+        "param": "aspect_ratio",
+        "kind": "text"
+      },
+      {
+        "nodeId": "115",
+        "param": "megapixels",
+        "kind": "text"
+      },
+      {
+        "nodeId": "115",
+        "param": "multiple",
+        "kind": "text"
+      },
+      {
+        "nodeId": "119",
+        "param": "vae_name",
+        "kind": "text"
+      },
+      {
+        "nodeId": "120",
+        "param": "vae_name",
+        "kind": "text"
+      },
+      {
+        "nodeId": "123",
+        "param": "sampler_name",
+        "kind": "text"
+      },
+      {
+        "nodeId": "124",
+        "param": "scheduler",
+        "kind": "text"
+      },
+      {
+        "nodeId": "124",
+        "param": "denoise",
+        "kind": "text"
+      },
+      {
+        "nodeId": "127",
+        "param": "unet_name",
+        "kind": "text"
+      },
+      {
+        "nodeId": "127",
+        "param": "weight_dtype",
+        "kind": "text"
+      },
+      {
+        "nodeId": "128",
+        "param": "clip_name",
+        "kind": "text"
+      },
+      {
+        "nodeId": "128",
+        "param": "type",
+        "kind": "text"
+      },
+      {
+        "nodeId": "128",
+        "param": "device",
+        "kind": "text"
+      },
+      {
+        "nodeId": "129",
+        "param": "noise_seed",
+        "kind": "text"
+      },
+      {
+        "nodeId": "130",
+        "param": "fps",
+        "kind": "text"
+      },
+      {
+        "nodeId": "130",
+        "param": "bit_depth",
+        "kind": "text"
+      },
+      {
+        "nodeId": "131",
+        "param": "expression",
+        "kind": "text"
+      },
+      {
+        "nodeId": "132",
+        "param": "value",
+        "kind": "text"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_image_size",
+        "kind": "text"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_2",
+        "kind": "image"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_3",
+        "kind": "image"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_4",
+        "kind": "image"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_5",
+        "kind": "image"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_6",
+        "kind": "image"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_7",
+        "kind": "image"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_8",
+        "kind": "image"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_0",
+        "kind": "video"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_1",
+        "kind": "video"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_2",
+        "kind": "video"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_0",
+        "kind": "audio"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_1",
+        "kind": "audio"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_2",
+        "kind": "audio"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_0",
+        "kind": "audio"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_1",
+        "kind": "audio"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_2",
+        "kind": "audio"
+      },
+      {
+        "nodeId": "137",
+        "param": "image",
+        "kind": "image"
+      },
+      {
+        "nodeId": "138",
+        "param": "value",
+        "kind": "text"
+      },
+      {
+        "nodeId": "139",
+        "param": "image",
+        "kind": "image"
+      },
+      {
+        "nodeId": "143",
+        "param": "value",
+        "kind": "text"
+      },
+      {
+        "nodeId": "144",
+        "param": "value",
+        "kind": "text"
+      },
+      {
+        "nodeId": "145",
+        "param": "lora_name",
+        "kind": "text"
+      },
+      {
+        "nodeId": "145",
+        "param": "strength_model",
+        "kind": "text"
+      },
+      {
+        "nodeId": "146",
+        "param": "value",
+        "kind": "text"
+      }
+    ]
+  },
+  "fieldConfig": {
+    "version": 1,
+    "fields": [
+      {
+        "nodeId": "92",
+        "param": "filename_prefix",
+        "label": "输出文件前缀",
+        "description": "生成文件保存时使用的名称前缀，不影响画面内容。"
+      },
+      {
+        "nodeId": "92",
+        "param": "format",
+        "label": "视频容器",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "115",
+        "param": "aspect_ratio",
+        "label": "画面比例",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "115",
+        "param": "megapixels",
+        "label": "画面像素量（百万）",
+        "description": "默认 0.98，当前 16:9 比例输出 1344×768。"
+      },
+      {
+        "nodeId": "115",
+        "param": "multiple",
+        "label": "尺寸对齐倍数",
+        "description": "文本连线填写数字，提交时校验类型与范围。"
+      },
+      {
+        "nodeId": "119",
+        "param": "vae_name",
+        "label": "视频 VAE 模型",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "120",
+        "param": "vae_name",
+        "label": "音频 VAE 模型",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "123",
+        "param": "sampler_name",
+        "label": "采样器",
+        "description": "控制采样算法。没有明确需求时建议保留工作流默认值。"
+      },
+      {
+        "nodeId": "124",
+        "param": "scheduler",
+        "label": "调度器",
+        "description": "控制降噪过程的步长分布，通常与采样器配套使用；建议保留工作流默认值。"
+      },
+      {
+        "nodeId": "124",
+        "param": "denoise",
+        "label": "去噪强度",
+        "description": "越低越保留原图，越高越按提示词重绘。轻微调整可用 0.3–0.55，明显改色或改造可从 0.65–0.8 尝试；过高可能改变构图和主体。"
+      },
+      {
+        "nodeId": "127",
+        "param": "unet_name",
+        "label": "视频模型",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "127",
+        "param": "weight_dtype",
+        "label": "模型精度",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "128",
+        "param": "clip_name",
+        "label": "文本编码模型",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "128",
+        "param": "type",
+        "label": "文本编码器类型",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "128",
+        "param": "device",
+        "label": "文本编码器设备",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "129",
+        "param": "noise_seed",
+        "label": "随机种子",
+        "description": "默认 2609071842，为《重启天际》实测种子。"
+      },
+      {
+        "nodeId": "130",
+        "param": "fps",
+        "label": "输出帧率",
+        "description": "文本连线填写数字，提交时校验类型与范围。"
+      },
+      {
+        "nodeId": "130",
+        "param": "bit_depth",
+        "label": "视频位深",
+        "description": "文本连线填写数字，提交时校验类型与范围。"
+      },
+      {
+        "nodeId": "131",
+        "param": "expression",
+        "label": "时长转帧数公式",
+        "description": "可直接填写或连接文本节点。"
+      },
+      {
+        "nodeId": "132",
+        "param": "value",
+        "label": "视频时长（秒）",
+        "description": "默认 6 秒；模型按帧数规则对齐，实测输出约 6.58 秒。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_image_size",
+        "label": "参考图尺寸策略",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_2",
+        "label": "参考图片 3",
+        "description": "可选；提示词使用 <Picture 3>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_3",
+        "label": "参考图片 4",
+        "description": "可选；提示词使用 <Picture 4>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_4",
+        "label": "参考图片 5",
+        "description": "可选；提示词使用 <Picture 5>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_5",
+        "label": "参考图片 6",
+        "description": "可选；提示词使用 <Picture 6>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_6",
+        "label": "参考图片 7",
+        "description": "可选；提示词使用 <Picture 7>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_7",
+        "label": "参考图片 8",
+        "description": "可选；提示词使用 <Picture 8>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_images.ref_image_8",
+        "label": "参考图片 9",
+        "description": "可选；提示词使用 <Picture 9>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_0",
+        "label": "参考视频 1",
+        "description": "可选，按顺序从第 1 路填写，2–15 秒。上传时转换为 24 fps；标签 <Video n>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_1",
+        "label": "参考视频 2",
+        "description": "可选，按顺序从第 1 路填写，2–15 秒。上传时转换为 24 fps；标签 <Video n>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_videos.ref_video_2",
+        "label": "参考视频 3",
+        "description": "可选，按顺序从第 1 路填写，2–15 秒。上传时转换为 24 fps；标签 <Video n>。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_0",
+        "label": "视频配音 1",
+        "description": "可选，与同编号参考视频配对；请保持内容及时间对应。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_1",
+        "label": "视频配音 2",
+        "description": "可选，与同编号参考视频配对；请保持内容及时间对应。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_video_audios.ref_video_audio_2",
+        "label": "视频配音 3",
+        "description": "可选，与同编号参考视频配对；请保持内容及时间对应。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_0",
+        "label": "独立参考音频 1",
+        "description": "可选；音频标签按已连接的视频配音在前、独立音频在后，从 <Audio 1> 连续编号。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_1",
+        "label": "独立参考音频 2",
+        "description": "可选；音频标签按已连接的视频配音在前、独立音频在后，从 <Audio 1> 连续编号。"
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_audios.ref_audio_2",
+        "label": "独立参考音频 3",
+        "description": "可选；音频标签按已连接的视频配音在前、独立音频在后，从 <Audio 1> 连续编号。"
+      },
+      {
+        "nodeId": "137",
+        "param": "image",
+        "label": "参考图片 1（角色）",
+        "description": "上传图片或连接画布图片节点。提示词使用 <Picture 1> 引用。"
+      },
+      {
+        "nodeId": "138",
+        "param": "value",
+        "label": "视频提示词",
+        "description": "描述两张参考图的用途、镜头运动、动作顺序和声音；支持连接文本节点。"
+      },
+      {
+        "nodeId": "139",
+        "param": "image",
+        "label": "参考图片 2（场景）",
+        "description": "上传图片或连接画布图片节点。提示词使用 <Picture 2> 引用。"
+      },
+      {
+        "nodeId": "143",
+        "param": "value",
+        "label": "标准模式步数",
+        "description": "文本连线填写数字，提交时校验类型与范围。"
+      },
+      {
+        "nodeId": "144",
+        "param": "value",
+        "label": "Turbo 模式步数",
+        "description": "文本连线填写数字，提交时校验类型与范围。"
+      },
+      {
+        "nodeId": "145",
+        "param": "lora_name",
+        "label": "Turbo LoRA 模型",
+        "description": "文本连线填写下拉选项的完整值。"
+      },
+      {
+        "nodeId": "145",
+        "param": "strength_model",
+        "label": "LoRA 强度",
+        "description": "文本连线填写数字，提交时校验类型与范围。"
+      },
+      {
+        "nodeId": "146",
+        "param": "value",
+        "label": "启用 Turbo",
+        "description": "默认启用 4 步 Turbo；关闭后使用 20 步分支。"
+      },
+      {
+        "nodeId": "92",
+        "param": "codec",
+        "label": "视频编码",
+        "description": "默认 auto；文本连线可填写 auto 或 h264。"
+      }
+    ],
+    "groups": [
+      {
+        "nodeId": "137",
+        "label": "参考图片 1（角色）"
+      },
+      {
+        "nodeId": "139",
+        "label": "参考图片 2（场景）"
+      },
+      {
+        "nodeId": "138",
+        "label": "视频提示词"
+      },
+      {
+        "nodeId": "132",
+        "label": "视频时长（秒）"
+      },
+      {
+        "nodeId": "115",
+        "label": "画面像素量（百万）"
+      },
+      {
+        "nodeId": "129",
+        "label": "随机种子"
+      },
+      {
+        "nodeId": "146",
+        "label": "启用 Turbo"
+      }
+    ]
+  },
+  "createdAt": "2026-09-07T15:55:28.000Z",
+  "updatedAt": "2026-09-07T22:50:01.000Z",
+  "categoryLabel": "全能参考",
+  "apiJson": {
+    "92": {
+      "inputs": {
+        "filename_prefix": "video/Sky_Reboot_R2V",
+        "format": "auto",
+        "codec": "auto",
+        "video": [
+          "130",
+          0
+        ]
+      },
+      "class_type": "SaveVideo",
+      "_meta": {
+        "title": "SaveVideo"
+      }
+    },
+    "115": {
+      "inputs": {
+        "aspect_ratio": "16:9 (Widescreen)",
+        "megapixels": 0.98,
+        "multiple": 32
+      },
+      "class_type": "ResolutionSelector",
+      "_meta": {
+        "title": "Resolution Selector (Size)"
+      }
+    },
+    "119": {
+      "inputs": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      },
+      "class_type": "VAELoader",
+      "_meta": {
+        "title": "VAELoader"
+      }
+    },
+    "120": {
+      "inputs": {
+        "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+      },
+      "class_type": "VAELoader",
+      "_meta": {
+        "title": "VAELoader"
+      }
+    },
+    "121": {
+      "inputs": {
+        "samples": [
+          "125",
+          0
+        ],
+        "vae": [
+          "120",
+          0
+        ]
+      },
+      "class_type": "VAEDecodeAudio",
+      "_meta": {
+        "title": "VAEDecodeAudio"
+      }
+    },
+    "122": {
+      "inputs": {
+        "samples": [
+          "125",
+          0
+        ],
+        "vae": [
+          "119",
+          0
+        ]
+      },
+      "class_type": "VAEDecode",
+      "_meta": {
+        "title": "VAEDecode"
+      }
+    },
+    "123": {
+      "inputs": {
+        "sampler_name": "res_multistep"
+      },
+      "class_type": "KSamplerSelect",
+      "_meta": {
+        "title": "KSamplerSelect"
+      }
+    },
+    "124": {
+      "inputs": {
+        "scheduler": "simple",
+        "steps": [
+          "142",
+          0
+        ],
+        "denoise": 1,
+        "model": [
+          "127",
+          0
+        ]
+      },
+      "class_type": "BasicScheduler",
+      "_meta": {
+        "title": "BasicScheduler"
+      }
+    },
+    "125": {
+      "inputs": {
+        "noise": [
+          "129",
+          0
+        ],
+        "guider": [
+          "126",
+          0
+        ],
+        "sampler": [
+          "123",
+          0
+        ],
+        "sigmas": [
+          "124",
+          0
+        ],
+        "latent_image": [
+          "136",
+          1
+        ]
+      },
+      "class_type": "SamplerCustomAdvanced",
+      "_meta": {
+        "title": "SamplerCustomAdvanced"
+      }
+    },
+    "126": {
+      "inputs": {
+        "model": [
+          "141",
+          0
+        ],
+        "conditioning": [
+          "136",
+          0
+        ]
+      },
+      "class_type": "BasicGuider",
+      "_meta": {
+        "title": "BasicGuider"
+      }
+    },
+    "127": {
+      "inputs": {
+        "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      },
+      "class_type": "UNETLoader",
+      "_meta": {
+        "title": "UNETLoader"
+      }
+    },
+    "128": {
+      "inputs": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      },
+      "class_type": "CLIPLoader",
+      "_meta": {
+        "title": "CLIPLoader"
+      }
+    },
+    "129": {
+      "inputs": {
+        "noise_seed": 2609071842
+      },
+      "class_type": "RandomNoise",
+      "_meta": {
+        "title": "RandomNoise"
+      }
+    },
+    "130": {
+      "inputs": {
+        "fps": 24,
+        "bit_depth": 8,
+        "images": [
+          "122",
+          0
+        ],
+        "audio": [
+          "121",
+          0
+        ]
+      },
+      "class_type": "CreateVideo",
+      "_meta": {
+        "title": "CreateVideo"
+      }
+    },
+    "131": {
+      "inputs": {
+        "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+        "values.a": [
+          "132",
+          0
+        ]
+      },
+      "class_type": "ComfyMathExpression",
+      "_meta": {
+        "title": "ComfyMathExpression"
+      }
+    },
+    "132": {
+      "inputs": {
+        "value": 6
+      },
+      "class_type": "PrimitiveFloat",
+      "_meta": {
+        "title": "Float (Duration)"
+      }
+    },
+    "136": {
+      "inputs": {
+        "prompt": [
+          "138",
+          0
+        ],
+        "width": [
+          "115",
+          0
+        ],
+        "height": [
+          "115",
+          1
+        ],
+        "length": [
+          "131",
+          1
+        ],
+        "ref_image_size": "match",
+        "clip": [
+          "128",
+          0
+        ],
+        "vae": [
+          "119",
+          0
+        ],
+        "audio_vae": [
+          "120",
+          0
+        ],
+        "ref_images.ref_image_0": [
+          "137",
+          0
+        ],
+        "ref_images.ref_image_1": [
+          "139",
+          0
+        ]
+      },
+      "class_type": "MiniMaxH3ReferenceToVideo",
+      "_meta": {
+        "title": "MiniMaxH3ReferenceToVideo"
+      }
+    },
+    "137": {
+      "inputs": {
+        "image": "sky-reboot-reference-1.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "LoadImage"
+      }
+    },
+    "138": {
+      "inputs": {
+        "value": "Create one continuous six-second cinematic shot for Sky Reboot. Use <Picture 1> for the adult female courier, her face, short black bob, pearl-white and graphite armor, and cyan core. Use <Picture 2> for the platform, skyline, architecture, and dormant blue-hour lighting. Start waist-up at a three-quarter frontal angle, with the skyline visible beside her. Perform a smooth, modest dolly backward throughout; keep a level horizon and consistent perspective, with no cuts. 0–2 seconds: she stands grounded, calmly holding the core above her right palm; her fingers gently open while her left arm remains relaxed. 2–4 seconds: the sphere rises twenty centimeters, maintaining its shape, then unfolds a thin horizontal geometric halo around itself. Her eyes follow it with minimal head movement. 4–6 seconds: the halo releases one broad cyan pulse that sweeps outward across the skyline, sequentially activating architectural light strips and windows. Keep the pulse translucent so buildings remain readable. Finish with the courier steady and the illuminated city revealed behind her. Preserve facial identity, stable anatomy, five natural fingers per hand, detailed armor surfaces, and sharp architectural edges. Restrained glow; no fog, blur, text, or watermarks. Native electronic sound effects: soft core hum, delicate ascending shimmer, then a clean resonant activation pulse. No dialogue or music."
+      },
+      "class_type": "PrimitiveStringMultiline",
+      "_meta": {
+        "title": "Input Text (Prompt)"
+      }
+    },
+    "139": {
+      "inputs": {
+        "image": "sky-reboot-reference-2.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "LoadImage"
+      }
+    },
+    "141": {
+      "inputs": {
+        "switch": [
+          "146",
+          0
+        ],
+        "on_false": [
+          "127",
+          0
+        ],
+        "on_true": [
+          "145",
+          0
+        ]
+      },
+      "class_type": "ComfySwitchNode",
+      "_meta": {
+        "title": "If/Else Switch (model)"
+      }
+    },
+    "142": {
+      "inputs": {
+        "switch": [
+          "146",
+          0
+        ],
+        "on_false": [
+          "143",
+          0
+        ],
+        "on_true": [
+          "144",
+          0
+        ]
+      },
+      "class_type": "ComfySwitchNode",
+      "_meta": {
+        "title": "If/Else Switch (Steps)"
+      }
+    },
+    "143": {
+      "inputs": {
+        "value": 20,
+        "fixed": "fixed"
+      },
+      "class_type": "PrimitiveInt",
+      "_meta": {
+        "title": "Int (Full)"
+      }
+    },
+    "144": {
+      "inputs": {
+        "value": 4,
+        "fixed": "fixed"
+      },
+      "class_type": "PrimitiveInt",
+      "_meta": {
+        "title": "Int (Lightning LoRA)"
+      }
+    },
+    "145": {
+      "inputs": {
+        "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+        "strength_model": 1,
+        "model": [
+          "127",
+          0
+        ]
+      },
+      "class_type": "LoraLoaderModelOnly",
+      "_meta": {
+        "title": "LoraLoaderModelOnly"
+      }
+    },
+    "146": {
+      "inputs": {
+        "value": true
+      },
+      "class_type": "PrimitiveBoolean",
+      "_meta": {
+        "title": "Boolean (Enable Lightning LoRA)"
+      }
+    }
+  }
+}

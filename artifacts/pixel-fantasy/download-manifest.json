@@ -1,0 +1,20 @@
+[
+  {
+    "url": "https://hf-mirror.com/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
+    "path": "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI\\ComfyUI\\models\\LLM\\Qwen3.5-9B-Q4_K_M.gguf",
+    "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+    "size": 5680522464
+  },
+  {
+    "url": "https://hf-mirror.com/unsloth/Qwen3.5-9B-GGUF/resolve/main/mmproj-F16.gguf",
+    "path": "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI\\ComfyUI\\models\\LLM\\Qwen3.5-9B-mmproj-F16.gguf",
+    "sha256": "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f",
+    "size": 918166080
+  },
+  {
+    "url": "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.49-cu130-win-20260831/llama_cpp_python-0.3.49%2Bcu130-cp313-cp313-win_amd64.whl",
+    "path": "D:\\dev\\CarrotCanvas\\artifacts\\pixel-fantasy\\llama_cpp_python-0.3.49+cu130-cp313-cp313-win_amd64.whl",
+    "sha256": "42bb04196d988080c842b1e77ac446c71adf17baeef01f014427e2fb4791ec99",
+    "size": 297819242
+  }
+]

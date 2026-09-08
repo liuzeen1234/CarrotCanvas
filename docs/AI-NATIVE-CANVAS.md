@@ -1,7 +1,7 @@
 # AI 原生画布与人机接力
 
 > 状态：Phase 1B 已实现并通过行为级验收；当前需求范围已完成，Phase 2 及后续阶段暂不实施
-> 最后更新：2026-09-06
+> 最后更新：2026-09-08
 > GitHub Issue：[Issue #1](https://github.com/liuzeen1234/CarrotCanvas/issues/1)
 
 本文是 AI 原生画布控制、人机接力、生成历史与自主视频生产的仓库内唯一设计入口。Issue 用于讨论和追踪；本文记录已拍板决策、实施边界、阶段状态和后续 AI 会话必须遵守的约束。当前交付边界止于 Phase 1B；Phase 2、Phase 3 及其最终 Skill/成片闭环验收仅保留为未来参考，不属于当前需求、Issue #1 完成条件或 `v1.0.0` 发布范围。
@@ -483,6 +483,17 @@ Skill 应指导 AI：能力发现、请求交接、lease 生命周期、安全 o
 
 Skill 应随各阶段接口逐步更新，不能等全部代码完成后才首次编写；最终由一个没有项目历史上下文的新 AI 做黑盒验收。
 
+### 8.1 跨项目基础 Skill——已实现并验证（2026-09-08）
+
+用户于 2026-09-08 单独授权交付跨项目画布控制 Skill。本次封装已完成的 Phase 0A–1B 能力，不重启 Phase 2/3，也不宣称满足 §7.7 的最终视频生产黑盒验收。
+
+- 仓库维护源为 `skills/carrot-canvas/`，用户级安装目录为 `C:/Users/liu/.codex/skills/carrot-canvas/`。Skill 通过实时 Action Registry、agent-view 与工作流 schema 发现能力；对于当前宽泛 schema，引用文件补充已核对的节点、运行、媒体协议并明确其边界。
+- 自带无第三方依赖的 Node 22+ `scripts/canvas.mjs`，支持从任意当前目录读取 API、新建画布、语义批次、任务模块、multipart 媒体上传和资产下载。默认 `http://localhost:3100/api`，可通过 `CARROT_CANVAS_URL` 配置，不依赖后端源码或 pnpm workspace。
+- `withCanvas` 统一正常请求交接、有限等待、10 秒续租、完整状态检查、串行写入、revision 跟踪、排空与主动释放。状态不明立即关闭写闸，不自动重取租约；业务写入不自动重试或覆盖冲突。长 provider 请求可在交接后继续服务端落库，禁止新 graph 写入。多个 Run 时以最新 Run 保存交接锚点，其余仍在同画布历史；无 Run 时直接释放，保留操作日志。
+- 使用约束包括 agent 身份、批准保护、已有授权边界、Run ID 区分、非精确取消、实际参数解析及生成后 graph 产物同步。当前没有通用 DAG 自动执行器，Skill 明确要求调用方解析上游入参。下载拒绝覆盖已有文件。
+- 验证：官方 `quick_validate.py` 通过；3 项 Node 行为测试覆盖在途图写入排空后交接、同步 provider 未结束先交接、续租异常禁止写入与不重取。仓库外真实 3100 HTTP 验收覆盖创建两节点/typed 连线、移动、revision 冲突、幂等重放、非法批次原子拒绝、multipart 上传/下载字节一致/覆盖保护、超过 45 秒 TTL 的自动续租、AI→人工与人工→AI 协议交接、任务异常主动 release，均通过。临时画布 `c7c95937-5ef8-4f23-9ba3-381addb15aa0` 已清理，生成 Run 数为 0。
+- 本次未改后端业务或前端，不需重建重启；新增 Skill 没有重新执行真实 provider 生成或浏览器人工交接验收。真实生成与 UI 接力继续引用 Phase 1B 原有证据，不能将客户端模拟测试当成新一次 provider/UI 验收。
+
 ## 9. 核心验收门槛
 
 当前范围（截至 Phase 1B）至少满足第 1–10、13 项；这些门槛已经随各阶段完成并留存证据。第 11–12 项依赖 Phase 2/3 和最终 Skill，当前暂不实施，仅保留为未来目标。
@@ -522,6 +533,9 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-08：按用户单独授权新增跨项目基础 `carrot-canvas` Skill 与独立 Node 控制脚本，覆盖动态能力发现、受控画布写入、双向交接、媒体上传下载及现有生成协议；结构校验、3 项生命周期测试和无费用真实 HTTP 验收通过。范围与证据见 §8.1，Phase 2/3 和最终成片 Skill 合同状态不变。
+
+- 2026-09-07：实现 Issue #4 画布系统资源监控。画布右上角新增可折叠的 CPU/GPU/内存三圆环：圆环进度统一表示使用率，CPU/GPU 圆心优先显示温度、温度不可用时回退使用率，内存圆心显示占用率；GPU 点击详情可逐卡查看型号、负载、温度和显存。新增只读 `GET /api/system/resources` 与 `system.resources` Action，后端缓存采样并隔离单项失败；当前 Windows 环境使用 Node 系统时间/内存 API 和 `nvidia-smi`，CPU 温度无可靠传感器来源时明确返回不可用。展开/可见时 2 秒刷新，折叠或页面隐藏时降频；折叠状态仅存浏览器 localStorage，不修改 canonical graph 或 revision。新增 CPU 差分、多 NVIDIA GPU 解析及异常输出测试；完整后端 12 suite / 84 用例、后端 TypeScript 编译与前端生产构建通过。
 - 2026-09-07：实现 Issue #9 ComfyUI seed 随机化。共享 schema 表单仅对结合 `/object_info` INT 类型与 KSampler/Noise/Seed 节点语义可靠识别的字段提供“一键随机 / 每次运行自动随机”，因此独立工具箱和所有含可识别 seed 的画布工作流卡片行为一致；画布持久化自动随机选项。自动 seed 在 Run 创建和 provider 提交前写入同一份最终 API JSON，`inputSnapshot` 保存实际值；卡片即时回显，节点历史与画布流水可显示/复制，节点历史可恢复一次 Run 的全部 seed。新增识别、误判保护及自定义节点元数据测试；完整后端 11 suite / 81 用例、后端 TypeScript 编译与前端生产构建通过。
 - 2026-09-07：Issue #8 文生文上游文本二次加工通过用户手动验收并完成交付。仅 `capability=text` 在连接文本入参时将上游产物显示为只读“输入文本”，并保留独立可编辑的“加工要求”；未连接入参继续使用原有提示词逻辑，断开/重连不覆盖本地提示词。后端在请求提供方前以明确分区组合两部分，并在 Run 输入快照中分别保存 `carrotInputText` 与 `carrotInstruction` 以便复现审计；图像理解/图生文路径不受影响。新增组合边界、内部字段不透传和快照分字段回归测试；完整后端 10 suite / 78 用例、后端 TypeScript 编译与前端生产构建通过，3100 后端重启后健康检查正常。
 - 2026-09-06：实现 Issue #7 图片与视频统一媒体预览。结果节点、ComfyUI/Codex2API 当前产物及节点生成历史统一使用独立预览层，支持同组稳定翻页、方向键切换、当前产物下载与关闭后恢复画布；视频节点卡片改为缩略入口，预览默认按源像素 100% 显示并提供“适应窗口”切换、源分辨率标识，切换或关闭时停止旧视频。该功能仅维护本地展示状态，不修改 canonical canvas revision。前端生产构建通过；真实画布验证图片双候选 `1/2 → 2/2` 翻页与下载目标同步，以及视频 `864 × 480` 原始分辨率、100% 默认模式和独立播放控件均正确。
@@ -559,3 +573,7 @@ Phase 0A 推荐的新会话指令：
 - 2026-09-05：按新增验收合同补齐 Phase 0A：operation 与幂等回执改为同一事务；旧 lease 重放先校验控制权；Action Registry 补真实 schema/error 元数据与遗漏入口；带 canvasId 的运行、产物写入和资产清理接入控制校验；前端交接改为保存队列排空后释放，并完整限制只读副作用、显示控制者。新增 SQLite 集成测试并完成双会话页面只读→请求交接→恢复编辑→保存及 viewport 不增版验收。
 - 2026-09-05：完成 Phase 0A 初版：Action Registry、CanvasDoc revision 元数据、持久化控制租约、请求交接/人工故障接管、结构化冲突、幂等 operation receipt、Agent View 与 operations API；人工前端同步接入租约/只读/交接，viewport 从 canonical graph 分离。
 - 2026-09-05：建立仓库内设计入口；确认单写者、请求交接优先、lease + revision、Action Registry、生成历史前置门槛、Phase 1A/1B 拆分及最终 Skill 交付要求。
+
+- 2026-09-07（配置）：画布图生视频菜单新增 `MiniMax H3 双图参考生视频 · 重启天际`（工作流 ID `35c2f155-78f6-4762-9ce1-93b90c78856e`），支持两路图片与一路文本动态输入；默认素材与提示词可直接使用。入库与 schema 校验通过，本次未修改 canonical canvas graph、运行引擎或阶段完成状态。当前工作流不包含视频/音频参考输入。
+
+- 2026-09-08（现有画布能力扩展，阶段状态不变）：MiniMax H3 全能参考在画布开放 46 个 typed 输入，包含完整 9 图 / 3 视频 / 3 对应配音 / 3 独立音频槽位以及可经文本连线输入的标量参数。新增 result.inputMode 输入节点（图片/视频/音频上传、文字字面量），沿用 create_node/update_node/connect 与 canonical revision/lease，未引入 Phase 2/3。带 canvasId 的媒体上传先后校验控制权，保存平台 upload 资产；多媒体回灌校验画布归属，运行提交冻结转换后的实际图与 inputAssetIds。真实示例画布 73b899eb-e086-4d54-a309-bc36c5b3c56d 经受控 operations 创建 5 节点 / 4 连线，随后正常释放 AI lease；Chrome 验证端点、媒体预览和文本同步，后端测试/构建及前端生产构建通过，详细证据见 COMFYUI-INTEGRATION.md。

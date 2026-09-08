@@ -1,0 +1,3 @@
+interface:
+  display_name: "CarrotCanvas 画布控制"
+  short_description: "跨项目编排画布、运行生成任务、获取素材，并与人工正常交接控制权"

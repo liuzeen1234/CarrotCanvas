@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { REFERENCE_INPUTS } from './comfyui-reference';
 
 /**
  * 步骤④：schema 分析服务。
@@ -45,6 +46,7 @@ export interface SchemaField {
   options?: (string | number)[];
   multiline?: boolean;
   imageUpload?: boolean;
+  mediaKind?: 'image' | 'video' | 'audio';
   /** 来自 object_info.input.required；供画布节点提交前校验 */
   required: boolean;
   /** 工作流级自定义使用建议，由 controller 合并。 */
@@ -121,11 +123,32 @@ export class ComfyUISchemaService {
           pdef,
         );
         if (field) {
+          if (classType === 'LoadImage' && param === 'image') {
+            const consumers = entries.flatMap(([, consumer]) => {
+              const c = consumer as { class_type?: string; inputs?: Record<string, unknown> };
+              return Object.entries(c.inputs ?? {}).filter(([, v]) => this.isConnection(v) && (v as unknown[])[0] === nodeId).map(([key]) => ({ type: c.class_type, key }));
+            });
+            if (consumers.length && consumers.every(c => c.type === 'MiniMaxH3ReferenceToVideo' && c.key.startsWith('ref_images.ref_image_'))) field.required = false;
+          }
           fields.push(field);
           if (field.control !== 'hidden') editableCount++;
         }
       }
 
+      if (classType === 'MiniMaxH3ReferenceToVideo') {
+        for (const spec of REFERENCE_INPUTS) for (let i = 0; i < spec.count; i++) {
+          const param = `${spec.prefix}${i}`;
+          if (this.isConnection(n.inputs?.[param])) continue;
+          fields.push({ nodeId, nodeTitle, classType, param, label: `${spec.label} ${i + 1}`,
+            control: 'upload', valueType: spec.kind.toUpperCase(), mediaKind: spec.kind,
+            required: false, current: n.inputs?.[param] ?? '', options: [],
+            description: spec.kind === 'video' ? '可选，2–15 秒；上传时转换为 24 fps。提示词使用 <Video n>。'
+              : spec.prefix.startsWith('ref_video_audios') ? '可选，与同编号参考视频配对；请保持内容及时间对应。'
+              : `可选；提示词使用 <${spec.kind === 'image' ? 'Picture' : 'Audio'} ${i + 1}>。`,
+          });
+          totalFieldCount++; editableCount++;
+        }
+      }
       if (fields.length) {
         groups.push({ nodeId, nodeTitle, classType, fields });
       }
@@ -199,16 +222,18 @@ export class ComfyUISchemaService {
       isSeed: this.isSeedInput(classType, param, typeOrCombo, meta),
     };
 
-    if (Array.isArray(typeOrCombo)) {
+    if (Array.isArray(typeOrCombo) || typeOrCombo === 'COMBO' || typeOrCombo === 'COMFY_DYNAMICCOMBO_V3') {
       // COMBO 枚举
-      const options = typeOrCombo as (string | number)[];
-      if (meta.image_upload) {
+      const options = (Array.isArray(typeOrCombo) ? typeOrCombo : typeOrCombo === 'COMFY_DYNAMICCOMBO_V3'
+        ? (meta.options as {key:string}[] ?? []).map(o => o.key) : meta.options ?? []) as (string | number)[];
+      if (meta.image_upload || meta.video_upload || meta.audio_upload) {
         return {
           ...common,
           control: 'upload',
           valueType: 'COMBO',
           options,
           imageUpload: true,
+          mediaKind: meta.video_upload ? 'video' : meta.audio_upload ? 'audio' : 'image',
         };
       }
       return { ...common, control: 'select', valueType: 'COMBO', options };

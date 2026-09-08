@@ -14,7 +14,7 @@ body.canvas-editor-page .ant-pro-layout-content {
   align-items: center;
   gap: 8px;
   z-index: 10;
-  max-width: calc(100% - 32px);
+  max-width: calc(100% - 300px);
   margin: 16px;
 }
 
@@ -199,6 +199,7 @@ body.canvas-editor-page .ant-pro-layout-content {
 
 @media (max-width: 767px) {
   .canvas-floating-header {
+    max-width: calc(100% - 20px);
     margin: max(10px, env(safe-area-inset-top)) 10px 10px max(10px, env(safe-area-inset-left));
   }
 

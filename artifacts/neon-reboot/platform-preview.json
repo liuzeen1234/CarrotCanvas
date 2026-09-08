@@ -1,0 +1,1403 @@
+{
+  "filename": "Sky_Reboot_R2V.json",
+  "derivedName": "Sky_Reboot_R2V",
+  "suggestedCategory": "img2vid",
+  "apiJson": {
+    "92": {
+      "inputs": {
+        "filename_prefix": "video/Sky_Reboot_R2V",
+        "format": "auto",
+        "codec": "auto",
+        "video": [
+          "130",
+          0
+        ]
+      },
+      "class_type": "SaveVideo",
+      "_meta": {
+        "title": "SaveVideo"
+      }
+    },
+    "115": {
+      "inputs": {
+        "aspect_ratio": "16:9 (Widescreen)",
+        "megapixels": 0.98,
+        "multiple": 32
+      },
+      "class_type": "ResolutionSelector",
+      "_meta": {
+        "title": "Resolution Selector (Size)"
+      }
+    },
+    "119": {
+      "inputs": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      },
+      "class_type": "VAELoader",
+      "_meta": {
+        "title": "VAELoader"
+      }
+    },
+    "120": {
+      "inputs": {
+        "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+      },
+      "class_type": "VAELoader",
+      "_meta": {
+        "title": "VAELoader"
+      }
+    },
+    "121": {
+      "inputs": {
+        "samples": [
+          "125",
+          0
+        ],
+        "vae": [
+          "120",
+          0
+        ]
+      },
+      "class_type": "VAEDecodeAudio",
+      "_meta": {
+        "title": "VAEDecodeAudio"
+      }
+    },
+    "122": {
+      "inputs": {
+        "samples": [
+          "125",
+          0
+        ],
+        "vae": [
+          "119",
+          0
+        ]
+      },
+      "class_type": "VAEDecode",
+      "_meta": {
+        "title": "VAEDecode"
+      }
+    },
+    "123": {
+      "inputs": {
+        "sampler_name": "res_multistep"
+      },
+      "class_type": "KSamplerSelect",
+      "_meta": {
+        "title": "KSamplerSelect"
+      }
+    },
+    "124": {
+      "inputs": {
+        "scheduler": "simple",
+        "steps": [
+          "142",
+          0
+        ],
+        "denoise": 1,
+        "model": [
+          "127",
+          0
+        ]
+      },
+      "class_type": "BasicScheduler",
+      "_meta": {
+        "title": "BasicScheduler"
+      }
+    },
+    "125": {
+      "inputs": {
+        "noise": [
+          "129",
+          0
+        ],
+        "guider": [
+          "126",
+          0
+        ],
+        "sampler": [
+          "123",
+          0
+        ],
+        "sigmas": [
+          "124",
+          0
+        ],
+        "latent_image": [
+          "136",
+          1
+        ]
+      },
+      "class_type": "SamplerCustomAdvanced",
+      "_meta": {
+        "title": "SamplerCustomAdvanced"
+      }
+    },
+    "126": {
+      "inputs": {
+        "model": [
+          "141",
+          0
+        ],
+        "conditioning": [
+          "136",
+          0
+        ]
+      },
+      "class_type": "BasicGuider",
+      "_meta": {
+        "title": "BasicGuider"
+      }
+    },
+    "127": {
+      "inputs": {
+        "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      },
+      "class_type": "UNETLoader",
+      "_meta": {
+        "title": "UNETLoader"
+      }
+    },
+    "128": {
+      "inputs": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      },
+      "class_type": "CLIPLoader",
+      "_meta": {
+        "title": "CLIPLoader"
+      }
+    },
+    "129": {
+      "inputs": {
+        "noise_seed": 2609071842
+      },
+      "class_type": "RandomNoise",
+      "_meta": {
+        "title": "RandomNoise"
+      }
+    },
+    "130": {
+      "inputs": {
+        "fps": 24,
+        "bit_depth": 8,
+        "images": [
+          "122",
+          0
+        ],
+        "audio": [
+          "121",
+          0
+        ]
+      },
+      "class_type": "CreateVideo",
+      "_meta": {
+        "title": "CreateVideo"
+      }
+    },
+    "131": {
+      "inputs": {
+        "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+        "values.a": [
+          "132",
+          0
+        ]
+      },
+      "class_type": "ComfyMathExpression",
+      "_meta": {
+        "title": "ComfyMathExpression"
+      }
+    },
+    "132": {
+      "inputs": {
+        "value": 6
+      },
+      "class_type": "PrimitiveFloat",
+      "_meta": {
+        "title": "Float (Duration)"
+      }
+    },
+    "136": {
+      "inputs": {
+        "prompt": [
+          "138",
+          0
+        ],
+        "width": [
+          "115",
+          0
+        ],
+        "height": [
+          "115",
+          1
+        ],
+        "length": [
+          "131",
+          1
+        ],
+        "ref_image_size": "match",
+        "clip": [
+          "128",
+          0
+        ],
+        "vae": [
+          "119",
+          0
+        ],
+        "audio_vae": [
+          "120",
+          0
+        ],
+        "ref_images.ref_image_0": [
+          "137",
+          0
+        ],
+        "ref_images.ref_image_1": [
+          "139",
+          0
+        ]
+      },
+      "class_type": "MiniMaxH3ReferenceToVideo",
+      "_meta": {
+        "title": "MiniMaxH3ReferenceToVideo"
+      }
+    },
+    "137": {
+      "inputs": {
+        "image": "sky-reboot-reference-1.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "LoadImage"
+      }
+    },
+    "138": {
+      "inputs": {
+        "value": "Create one continuous six-second cinematic shot for Sky Reboot. Use <Picture 1> for the adult female courier, her face, short black bob, pearl-white and graphite armor, and cyan core. Use <Picture 2> for the platform, skyline, architecture, and dormant blue-hour lighting. Start waist-up at a three-quarter frontal angle, with the skyline visible beside her. Perform a smooth, modest dolly backward throughout; keep a level horizon and consistent perspective, with no cuts. 0–2 seconds: she stands grounded, calmly holding the core above her right palm; her fingers gently open while her left arm remains relaxed. 2–4 seconds: the sphere rises twenty centimeters, maintaining its shape, then unfolds a thin horizontal geometric halo around itself. Her eyes follow it with minimal head movement. 4–6 seconds: the halo releases one broad cyan pulse that sweeps outward across the skyline, sequentially activating architectural light strips and windows. Keep the pulse translucent so buildings remain readable. Finish with the courier steady and the illuminated city revealed behind her. Preserve facial identity, stable anatomy, five natural fingers per hand, detailed armor surfaces, and sharp architectural edges. Restrained glow; no fog, blur, text, or watermarks. Native electronic sound effects: soft core hum, delicate ascending shimmer, then a clean resonant activation pulse. No dialogue or music."
+      },
+      "class_type": "PrimitiveStringMultiline",
+      "_meta": {
+        "title": "Input Text (Prompt)"
+      }
+    },
+    "139": {
+      "inputs": {
+        "image": "sky-reboot-reference-2.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "LoadImage"
+      }
+    },
+    "141": {
+      "inputs": {
+        "switch": [
+          "146",
+          0
+        ],
+        "on_false": [
+          "127",
+          0
+        ],
+        "on_true": [
+          "145",
+          0
+        ]
+      },
+      "class_type": "ComfySwitchNode",
+      "_meta": {
+        "title": "If/Else Switch (model)"
+      }
+    },
+    "142": {
+      "inputs": {
+        "switch": [
+          "146",
+          0
+        ],
+        "on_false": [
+          "143",
+          0
+        ],
+        "on_true": [
+          "144",
+          0
+        ]
+      },
+      "class_type": "ComfySwitchNode",
+      "_meta": {
+        "title": "If/Else Switch (Steps)"
+      }
+    },
+    "143": {
+      "inputs": {
+        "value": 20,
+        "fixed": "fixed"
+      },
+      "class_type": "PrimitiveInt",
+      "_meta": {
+        "title": "Int (Full)"
+      }
+    },
+    "144": {
+      "inputs": {
+        "value": 4,
+        "fixed": "fixed"
+      },
+      "class_type": "PrimitiveInt",
+      "_meta": {
+        "title": "Int (Lightning LoRA)"
+      }
+    },
+    "145": {
+      "inputs": {
+        "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+        "strength_model": 1,
+        "model": [
+          "127",
+          0
+        ]
+      },
+      "class_type": "LoraLoaderModelOnly",
+      "_meta": {
+        "title": "LoraLoaderModelOnly"
+      }
+    },
+    "146": {
+      "inputs": {
+        "value": true
+      },
+      "class_type": "PrimitiveBoolean",
+      "_meta": {
+        "title": "Boolean (Enable Lightning LoRA)"
+      }
+    }
+  },
+  "ok": true,
+  "errors": [],
+  "warnings": [],
+  "nodeCount": 26,
+  "format": "new",
+  "schema": {
+    "ok": true,
+    "source": "object_info",
+    "groups": [
+      {
+        "nodeId": "92",
+        "nodeTitle": "SaveVideo",
+        "classType": "SaveVideo",
+        "fields": [
+          {
+            "nodeId": "92",
+            "nodeTitle": "SaveVideo",
+            "classType": "SaveVideo",
+            "param": "filename_prefix",
+            "label": "filename_prefix",
+            "current": "video/Sky_Reboot_R2V",
+            "default": "video/ComfyUI",
+            "required": true,
+            "isSeed": false,
+            "control": "input",
+            "valueType": "STRING",
+            "multiline": false
+          },
+          {
+            "nodeId": "92",
+            "nodeTitle": "SaveVideo",
+            "classType": "SaveVideo",
+            "param": "format",
+            "label": "format",
+            "current": "auto",
+            "default": "auto",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          },
+          {
+            "nodeId": "92",
+            "nodeTitle": "SaveVideo",
+            "classType": "SaveVideo",
+            "param": "codec",
+            "label": "codec",
+            "current": "auto",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMFY_DYNAMICCOMBO_V3"
+          }
+        ]
+      },
+      {
+        "nodeId": "115",
+        "nodeTitle": "Resolution Selector (Size)",
+        "classType": "ResolutionSelector",
+        "fields": [
+          {
+            "nodeId": "115",
+            "nodeTitle": "Resolution Selector (Size)",
+            "classType": "ResolutionSelector",
+            "param": "aspect_ratio",
+            "label": "aspect_ratio",
+            "current": "16:9 (Widescreen)",
+            "default": "1:1 (Square)",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          },
+          {
+            "nodeId": "115",
+            "nodeTitle": "Resolution Selector (Size)",
+            "classType": "ResolutionSelector",
+            "param": "megapixels",
+            "label": "megapixels",
+            "current": 0.98,
+            "default": 1,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": 0.1,
+            "max": 16,
+            "step": 0.1
+          },
+          {
+            "nodeId": "115",
+            "nodeTitle": "Resolution Selector (Size)",
+            "classType": "ResolutionSelector",
+            "param": "multiple",
+            "label": "multiple",
+            "current": 32,
+            "default": 8,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": 8,
+            "max": 128,
+            "step": 4
+          }
+        ]
+      },
+      {
+        "nodeId": "119",
+        "nodeTitle": "VAELoader",
+        "classType": "VAELoader",
+        "fields": [
+          {
+            "nodeId": "119",
+            "nodeTitle": "VAELoader",
+            "classType": "VAELoader",
+            "param": "vae_name",
+            "label": "vae_name",
+            "current": "minimax_h3_video_vae_fp16.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "ae.safetensors",
+              "minimax_h3_audio_vae_fp32.safetensors",
+              "minimax_h3_video_vae_fp16.safetensors",
+              "pixel_space"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "120",
+        "nodeTitle": "VAELoader",
+        "classType": "VAELoader",
+        "fields": [
+          {
+            "nodeId": "120",
+            "nodeTitle": "VAELoader",
+            "classType": "VAELoader",
+            "param": "vae_name",
+            "label": "vae_name",
+            "current": "minimax_h3_audio_vae_fp32.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "ae.safetensors",
+              "minimax_h3_audio_vae_fp32.safetensors",
+              "minimax_h3_video_vae_fp16.safetensors",
+              "pixel_space"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "123",
+        "nodeTitle": "KSamplerSelect",
+        "classType": "KSamplerSelect",
+        "fields": [
+          {
+            "nodeId": "123",
+            "nodeTitle": "KSamplerSelect",
+            "classType": "KSamplerSelect",
+            "param": "sampler_name",
+            "label": "sampler_name",
+            "current": "res_multistep",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          }
+        ]
+      },
+      {
+        "nodeId": "124",
+        "nodeTitle": "BasicScheduler",
+        "classType": "BasicScheduler",
+        "fields": [
+          {
+            "nodeId": "124",
+            "nodeTitle": "BasicScheduler",
+            "classType": "BasicScheduler",
+            "param": "scheduler",
+            "label": "scheduler",
+            "current": "simple",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          },
+          {
+            "nodeId": "124",
+            "nodeTitle": "BasicScheduler",
+            "classType": "BasicScheduler",
+            "param": "denoise",
+            "label": "denoise",
+            "current": 1,
+            "default": 1,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          }
+        ]
+      },
+      {
+        "nodeId": "127",
+        "nodeTitle": "UNETLoader",
+        "classType": "UNETLoader",
+        "fields": [
+          {
+            "nodeId": "127",
+            "nodeTitle": "UNETLoader",
+            "classType": "UNETLoader",
+            "param": "unet_name",
+            "label": "unet_name",
+            "current": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps.safetensors",
+              "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+              "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+              "z_image_turbo_bf16.safetensors"
+            ]
+          },
+          {
+            "nodeId": "127",
+            "nodeTitle": "UNETLoader",
+            "classType": "UNETLoader",
+            "param": "weight_dtype",
+            "label": "weight_dtype",
+            "current": "default",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "default",
+              "fp8_e4m3fn",
+              "fp8_e4m3fn_fast",
+              "fp8_e5m2"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "128",
+        "nodeTitle": "CLIPLoader",
+        "classType": "CLIPLoader",
+        "fields": [
+          {
+            "nodeId": "128",
+            "nodeTitle": "CLIPLoader",
+            "classType": "CLIPLoader",
+            "param": "clip_name",
+            "label": "clip_name",
+            "current": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+              "qwen_3_4b.safetensors"
+            ]
+          },
+          {
+            "nodeId": "128",
+            "nodeTitle": "CLIPLoader",
+            "classType": "CLIPLoader",
+            "param": "type",
+            "label": "type",
+            "current": "minimax",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "stable_diffusion",
+              "stable_cascade",
+              "sd3",
+              "stable_audio",
+              "mochi",
+              "ltxv",
+              "pixart",
+              "cosmos",
+              "lumina2",
+              "wan",
+              "hidream",
+              "chroma",
+              "ace",
+              "omnigen2",
+              "qwen_image",
+              "hunyuan_image",
+              "flux2",
+              "ovis",
+              "longcat_image",
+              "cogvideox",
+              "lens",
+              "pixeldit",
+              "ideogram4",
+              "boogu",
+              "krea2",
+              "joyimage",
+              "mage",
+              "minimax"
+            ]
+          },
+          {
+            "nodeId": "128",
+            "nodeTitle": "CLIPLoader",
+            "classType": "CLIPLoader",
+            "param": "device",
+            "label": "device",
+            "current": "default",
+            "required": false,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "default",
+              "cpu"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "129",
+        "nodeTitle": "RandomNoise",
+        "classType": "RandomNoise",
+        "fields": [
+          {
+            "nodeId": "129",
+            "nodeTitle": "RandomNoise",
+            "classType": "RandomNoise",
+            "param": "noise_seed",
+            "label": "noise_seed",
+            "current": 2609071842,
+            "default": 0,
+            "required": true,
+            "isSeed": true,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": 0,
+            "max": 18446744073709552000,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "nodeId": "130",
+        "nodeTitle": "CreateVideo",
+        "classType": "CreateVideo",
+        "fields": [
+          {
+            "nodeId": "130",
+            "nodeTitle": "CreateVideo",
+            "classType": "CreateVideo",
+            "param": "fps",
+            "label": "fps",
+            "current": 24,
+            "default": 30,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": 1,
+            "max": 120,
+            "step": 1
+          },
+          {
+            "nodeId": "130",
+            "nodeTitle": "CreateVideo",
+            "classType": "CreateVideo",
+            "param": "bit_depth",
+            "label": "bit_depth",
+            "current": 8,
+            "default": 8,
+            "required": false,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": 8,
+            "max": 10,
+            "step": 2
+          }
+        ]
+      },
+      {
+        "nodeId": "131",
+        "nodeTitle": "ComfyMathExpression",
+        "classType": "ComfyMathExpression",
+        "fields": [
+          {
+            "nodeId": "131",
+            "nodeTitle": "ComfyMathExpression",
+            "classType": "ComfyMathExpression",
+            "param": "expression",
+            "label": "expression",
+            "current": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+            "default": "a + b",
+            "required": true,
+            "isSeed": false,
+            "control": "textarea",
+            "valueType": "STRING",
+            "multiline": true
+          }
+        ]
+      },
+      {
+        "nodeId": "132",
+        "nodeTitle": "Float (Duration)",
+        "classType": "PrimitiveFloat",
+        "fields": [
+          {
+            "nodeId": "132",
+            "nodeTitle": "Float (Duration)",
+            "classType": "PrimitiveFloat",
+            "param": "value",
+            "label": "value",
+            "current": 6,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": -9223372036854776000,
+            "max": 9223372036854776000,
+            "step": 0.1
+          }
+        ]
+      },
+      {
+        "nodeId": "136",
+        "nodeTitle": "MiniMaxH3ReferenceToVideo",
+        "classType": "MiniMaxH3ReferenceToVideo",
+        "fields": [
+          {
+            "nodeId": "136",
+            "nodeTitle": "MiniMaxH3ReferenceToVideo",
+            "classType": "MiniMaxH3ReferenceToVideo",
+            "param": "ref_image_size",
+            "label": "ref_image_size",
+            "current": "match",
+            "default": "match",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          }
+        ]
+      },
+      {
+        "nodeId": "137",
+        "nodeTitle": "LoadImage",
+        "classType": "LoadImage",
+        "fields": [
+          {
+            "nodeId": "137",
+            "nodeTitle": "LoadImage",
+            "classType": "LoadImage",
+            "param": "image",
+            "label": "image",
+            "current": "sky-reboot-reference-1.png",
+            "required": true,
+            "isSeed": false,
+            "control": "upload",
+            "valueType": "COMBO",
+            "options": [
+              "01_肖像.png",
+              "02_全身正面.png",
+              "03_全身侧面1.png",
+              "04_全身背面.png",
+              "Art-1787974296655.png",
+              "Z-Image-文生图_00001_ (1).png",
+              "bb89eb85-feb7-41c3-8dd8-3228edecc855__codex2api-1788568042799-1.png",
+              "cat_test.png",
+              "cat_test2.png",
+              "clipspace-mask-1788018540754.png",
+              "clipspace-paint-1788018540754.png",
+              "clipspace-painted-1788018540754.png",
+              "clipspace-painted-masked-1788018540754.png",
+              "codex2api-1788498032213-1.png",
+              "codex2api-1788568042799-1.png",
+              "codex2api-1788576371004-1.png",
+              "codex2api-1788621618892-1.png",
+              "codex2api-1788680200133-1.png",
+              "codex2api-1788680431065-1.png",
+              "codex2api-1788683451640-1.png",
+              "codex2api-1788684033202-2.png",
+              "phase2-reference.png",
+              "sky-reboot-reference-1.png",
+              "sky-reboot-reference-2.png",
+              "temp_upscale_input (1).png",
+              "temp_upscale_input.png",
+              "tt_test.png",
+              "z-image-turbo_00002_.png",
+              "zimage_2k_16x9_00009_.png",
+              "zimage_2k_16x9_00010_.png",
+              "zimage_2k_16x9_00011_.png",
+              "zimage_2k_16x9_00014_.png",
+              "zimage_2k_16x9_v4_00001_.png",
+              "zimage_img2img_00004_.png",
+              "宏大未来中国城市镜像.png",
+              "微信图片_20260628215636_43_33.jpg"
+            ],
+            "imageUpload": true
+          }
+        ]
+      },
+      {
+        "nodeId": "138",
+        "nodeTitle": "Input Text (Prompt)",
+        "classType": "PrimitiveStringMultiline",
+        "fields": [
+          {
+            "nodeId": "138",
+            "nodeTitle": "Input Text (Prompt)",
+            "classType": "PrimitiveStringMultiline",
+            "param": "value",
+            "label": "value",
+            "current": "Create one continuous six-second cinematic shot for Sky Reboot. Use <Picture 1> for the adult female courier, her face, short black bob, pearl-white and graphite armor, and cyan core. Use <Picture 2> for the platform, skyline, architecture, and dormant blue-hour lighting. Start waist-up at a three-quarter frontal angle, with the skyline visible beside her. Perform a smooth, modest dolly backward throughout; keep a level horizon and consistent perspective, with no cuts. 0–2 seconds: she stands grounded, calmly holding the core above her right palm; her fingers gently open while her left arm remains relaxed. 2–4 seconds: the sphere rises twenty centimeters, maintaining its shape, then unfolds a thin horizontal geometric halo around itself. Her eyes follow it with minimal head movement. 4–6 seconds: the halo releases one broad cyan pulse that sweeps outward across the skyline, sequentially activating architectural light strips and windows. Keep the pulse translucent so buildings remain readable. Finish with the courier steady and the illuminated city revealed behind her. Preserve facial identity, stable anatomy, five natural fingers per hand, detailed armor surfaces, and sharp architectural edges. Restrained glow; no fog, blur, text, or watermarks. Native electronic sound effects: soft core hum, delicate ascending shimmer, then a clean resonant activation pulse. No dialogue or music.",
+            "required": true,
+            "isSeed": false,
+            "control": "textarea",
+            "valueType": "STRING",
+            "multiline": true
+          }
+        ]
+      },
+      {
+        "nodeId": "139",
+        "nodeTitle": "LoadImage",
+        "classType": "LoadImage",
+        "fields": [
+          {
+            "nodeId": "139",
+            "nodeTitle": "LoadImage",
+            "classType": "LoadImage",
+            "param": "image",
+            "label": "image",
+            "current": "sky-reboot-reference-2.png",
+            "required": true,
+            "isSeed": false,
+            "control": "upload",
+            "valueType": "COMBO",
+            "options": [
+              "01_肖像.png",
+              "02_全身正面.png",
+              "03_全身侧面1.png",
+              "04_全身背面.png",
+              "Art-1787974296655.png",
+              "Z-Image-文生图_00001_ (1).png",
+              "bb89eb85-feb7-41c3-8dd8-3228edecc855__codex2api-1788568042799-1.png",
+              "cat_test.png",
+              "cat_test2.png",
+              "clipspace-mask-1788018540754.png",
+              "clipspace-paint-1788018540754.png",
+              "clipspace-painted-1788018540754.png",
+              "clipspace-painted-masked-1788018540754.png",
+              "codex2api-1788498032213-1.png",
+              "codex2api-1788568042799-1.png",
+              "codex2api-1788576371004-1.png",
+              "codex2api-1788621618892-1.png",
+              "codex2api-1788680200133-1.png",
+              "codex2api-1788680431065-1.png",
+              "codex2api-1788683451640-1.png",
+              "codex2api-1788684033202-2.png",
+              "phase2-reference.png",
+              "sky-reboot-reference-1.png",
+              "sky-reboot-reference-2.png",
+              "temp_upscale_input (1).png",
+              "temp_upscale_input.png",
+              "tt_test.png",
+              "z-image-turbo_00002_.png",
+              "zimage_2k_16x9_00009_.png",
+              "zimage_2k_16x9_00010_.png",
+              "zimage_2k_16x9_00011_.png",
+              "zimage_2k_16x9_00014_.png",
+              "zimage_2k_16x9_v4_00001_.png",
+              "zimage_img2img_00004_.png",
+              "宏大未来中国城市镜像.png",
+              "微信图片_20260628215636_43_33.jpg"
+            ],
+            "imageUpload": true
+          }
+        ]
+      },
+      {
+        "nodeId": "143",
+        "nodeTitle": "Int (Full)",
+        "classType": "PrimitiveInt",
+        "fields": [
+          {
+            "nodeId": "143",
+            "nodeTitle": "Int (Full)",
+            "classType": "PrimitiveInt",
+            "param": "value",
+            "label": "value",
+            "current": 20,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": -9223372036854776000,
+            "max": 9223372036854776000,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "nodeId": "144",
+        "nodeTitle": "Int (Lightning LoRA)",
+        "classType": "PrimitiveInt",
+        "fields": [
+          {
+            "nodeId": "144",
+            "nodeTitle": "Int (Lightning LoRA)",
+            "classType": "PrimitiveInt",
+            "param": "value",
+            "label": "value",
+            "current": 4,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": -9223372036854776000,
+            "max": 9223372036854776000,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "nodeId": "145",
+        "nodeTitle": "LoraLoaderModelOnly",
+        "classType": "LoraLoaderModelOnly",
+        "fields": [
+          {
+            "nodeId": "145",
+            "nodeTitle": "LoraLoaderModelOnly",
+            "classType": "LoraLoaderModelOnly",
+            "param": "lora_name",
+            "label": "lora_name",
+            "current": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+              "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"
+            ]
+          },
+          {
+            "nodeId": "145",
+            "nodeTitle": "LoraLoaderModelOnly",
+            "classType": "LoraLoaderModelOnly",
+            "param": "strength_model",
+            "label": "strength_model",
+            "current": 1,
+            "default": 1,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": -100,
+            "max": 100,
+            "step": 0.01
+          }
+        ]
+      },
+      {
+        "nodeId": "146",
+        "nodeTitle": "Boolean (Enable Lightning LoRA)",
+        "classType": "PrimitiveBoolean",
+        "fields": [
+          {
+            "nodeId": "146",
+            "nodeTitle": "Boolean (Enable Lightning LoRA)",
+            "classType": "PrimitiveBoolean",
+            "param": "value",
+            "label": "value",
+            "current": true,
+            "required": true,
+            "isSeed": false,
+            "control": "switch",
+            "valueType": "BOOLEAN"
+          }
+        ]
+      }
+    ],
+    "warnings": [],
+    "nodeCount": 26,
+    "editableCount": 24,
+    "totalFieldCount": 30
+  },
+  "suggestedExposure": {
+    "version": 1,
+    "fields": [
+      {
+        "nodeId": "131",
+        "param": "expression"
+      },
+      {
+        "nodeId": "137",
+        "param": "image"
+      },
+      {
+        "nodeId": "138",
+        "param": "value"
+      },
+      {
+        "nodeId": "139",
+        "param": "image"
+      }
+    ]
+  },
+  "suggestedInputConfig": {
+    "version": 1,
+    "fields": [
+      {
+        "nodeId": "92",
+        "param": "filename_prefix",
+        "kind": "text"
+      },
+      {
+        "nodeId": "131",
+        "param": "expression",
+        "kind": "text"
+      },
+      {
+        "nodeId": "137",
+        "param": "image",
+        "kind": "image"
+      },
+      {
+        "nodeId": "138",
+        "param": "value",
+        "kind": "text"
+      },
+      {
+        "nodeId": "139",
+        "param": "image",
+        "kind": "image"
+      }
+    ]
+  },
+  "suggestedFieldConfig": {
+    "version": 1,
+    "groups": [
+      {
+        "nodeId": "92",
+        "label": "视频输出设置"
+      },
+      {
+        "nodeId": "115",
+        "label": "Resolution Selector (Size)"
+      },
+      {
+        "nodeId": "119",
+        "label": "图像编码设置"
+      },
+      {
+        "nodeId": "120",
+        "label": "图像编码设置"
+      },
+      {
+        "nodeId": "123",
+        "label": "生成参数"
+      },
+      {
+        "nodeId": "124",
+        "label": "BasicScheduler"
+      },
+      {
+        "nodeId": "127",
+        "label": "模型设置"
+      },
+      {
+        "nodeId": "128",
+        "label": "文本模型设置"
+      },
+      {
+        "nodeId": "129",
+        "label": "RandomNoise"
+      },
+      {
+        "nodeId": "130",
+        "label": "CreateVideo"
+      },
+      {
+        "nodeId": "131",
+        "label": "ComfyMathExpression"
+      },
+      {
+        "nodeId": "132",
+        "label": "Float (Duration)"
+      },
+      {
+        "nodeId": "136",
+        "label": "MiniMaxH3ReferenceToVideo"
+      },
+      {
+        "nodeId": "137",
+        "label": "输入图片"
+      },
+      {
+        "nodeId": "138",
+        "label": "Input Text (Prompt)"
+      },
+      {
+        "nodeId": "139",
+        "label": "输入图片"
+      },
+      {
+        "nodeId": "143",
+        "label": "Int (Full)"
+      },
+      {
+        "nodeId": "144",
+        "label": "Int (Lightning LoRA)"
+      },
+      {
+        "nodeId": "145",
+        "label": "LoraLoaderModelOnly"
+      },
+      {
+        "nodeId": "146",
+        "label": "Boolean (Enable Lightning LoRA)"
+      }
+    ],
+    "fields": [
+      {
+        "nodeId": "92",
+        "param": "filename_prefix",
+        "label": "文件名前缀",
+        "description": "生成文件保存时使用的名称前缀，不影响画面内容。"
+      },
+      {
+        "nodeId": "92",
+        "param": "format",
+        "label": "format",
+        "description": ""
+      },
+      {
+        "nodeId": "92",
+        "param": "codec",
+        "label": "codec",
+        "description": ""
+      },
+      {
+        "nodeId": "115",
+        "param": "aspect_ratio",
+        "label": "aspect_ratio",
+        "description": ""
+      },
+      {
+        "nodeId": "115",
+        "param": "megapixels",
+        "label": "megapixels",
+        "description": ""
+      },
+      {
+        "nodeId": "115",
+        "param": "multiple",
+        "label": "multiple",
+        "description": ""
+      },
+      {
+        "nodeId": "119",
+        "param": "vae_name",
+        "label": "vae_name",
+        "description": ""
+      },
+      {
+        "nodeId": "120",
+        "param": "vae_name",
+        "label": "vae_name",
+        "description": ""
+      },
+      {
+        "nodeId": "123",
+        "param": "sampler_name",
+        "label": "采样器",
+        "description": "控制采样算法。没有明确需求时建议保留工作流默认值。"
+      },
+      {
+        "nodeId": "124",
+        "param": "scheduler",
+        "label": "调度器",
+        "description": "控制降噪过程的步长分布，通常与采样器配套使用；建议保留工作流默认值。"
+      },
+      {
+        "nodeId": "124",
+        "param": "denoise",
+        "label": "重绘强度",
+        "description": "越低越保留原图，越高越按提示词重绘。轻微调整可用 0.3–0.55，明显改色或改造可从 0.65–0.8 尝试；过高可能改变构图和主体。"
+      },
+      {
+        "nodeId": "127",
+        "param": "unet_name",
+        "label": "unet_name",
+        "description": ""
+      },
+      {
+        "nodeId": "127",
+        "param": "weight_dtype",
+        "label": "weight_dtype",
+        "description": ""
+      },
+      {
+        "nodeId": "128",
+        "param": "clip_name",
+        "label": "clip_name",
+        "description": ""
+      },
+      {
+        "nodeId": "128",
+        "param": "type",
+        "label": "type",
+        "description": ""
+      },
+      {
+        "nodeId": "128",
+        "param": "device",
+        "label": "device",
+        "description": ""
+      },
+      {
+        "nodeId": "129",
+        "param": "noise_seed",
+        "label": "随机种子",
+        "description": "相同参数和种子便于复现结果；更换种子可获得不同画面与运动细节。"
+      },
+      {
+        "nodeId": "130",
+        "param": "fps",
+        "label": "fps",
+        "description": ""
+      },
+      {
+        "nodeId": "130",
+        "param": "bit_depth",
+        "label": "bit_depth",
+        "description": ""
+      },
+      {
+        "nodeId": "131",
+        "param": "expression",
+        "label": "expression",
+        "description": ""
+      },
+      {
+        "nodeId": "132",
+        "param": "value",
+        "label": "value",
+        "description": ""
+      },
+      {
+        "nodeId": "136",
+        "param": "ref_image_size",
+        "label": "ref_image_size",
+        "description": ""
+      },
+      {
+        "nodeId": "137",
+        "param": "image",
+        "label": "输入图片",
+        "description": "图生图或图生视频的来源图片；画布连线存在时会优先使用上游实际图片。"
+      },
+      {
+        "nodeId": "138",
+        "param": "value",
+        "label": "value",
+        "description": ""
+      },
+      {
+        "nodeId": "139",
+        "param": "image",
+        "label": "输入图片",
+        "description": "图生图或图生视频的来源图片；画布连线存在时会优先使用上游实际图片。"
+      },
+      {
+        "nodeId": "143",
+        "param": "value",
+        "label": "value",
+        "description": ""
+      },
+      {
+        "nodeId": "144",
+        "param": "value",
+        "label": "value",
+        "description": ""
+      },
+      {
+        "nodeId": "145",
+        "param": "lora_name",
+        "label": "lora_name",
+        "description": ""
+      },
+      {
+        "nodeId": "145",
+        "param": "strength_model",
+        "label": "strength_model",
+        "description": ""
+      },
+      {
+        "nodeId": "146",
+        "param": "value",
+        "label": "value",
+        "description": ""
+      }
+    ]
+  }
+}

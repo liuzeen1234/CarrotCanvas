@@ -1,0 +1,712 @@
+{
+  "schema": {
+    "ok": true,
+    "source": "object_info",
+    "groups": [
+      {
+        "nodeId": "92",
+        "nodeTitle": "视频输出设置",
+        "classType": "SaveVideo",
+        "fields": [
+          {
+            "nodeId": "92",
+            "nodeTitle": "SaveVideo",
+            "classType": "SaveVideo",
+            "param": "filename_prefix",
+            "label": "文件名前缀",
+            "current": "video/Sky_Reboot_R2V",
+            "default": "video/ComfyUI",
+            "required": true,
+            "isSeed": false,
+            "control": "input",
+            "valueType": "STRING",
+            "multiline": false,
+            "description": "生成文件保存时使用的名称前缀，不影响画面内容。"
+          },
+          {
+            "nodeId": "92",
+            "nodeTitle": "SaveVideo",
+            "classType": "SaveVideo",
+            "param": "format",
+            "label": "format",
+            "current": "auto",
+            "default": "auto",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          },
+          {
+            "nodeId": "92",
+            "nodeTitle": "SaveVideo",
+            "classType": "SaveVideo",
+            "param": "codec",
+            "label": "codec",
+            "current": "auto",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMFY_DYNAMICCOMBO_V3"
+          }
+        ]
+      },
+      {
+        "nodeId": "115",
+        "nodeTitle": "画面像素量（百万）",
+        "classType": "ResolutionSelector",
+        "fields": [
+          {
+            "nodeId": "115",
+            "nodeTitle": "Resolution Selector (Size)",
+            "classType": "ResolutionSelector",
+            "param": "aspect_ratio",
+            "label": "aspect_ratio",
+            "current": "16:9 (Widescreen)",
+            "default": "1:1 (Square)",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          },
+          {
+            "nodeId": "115",
+            "nodeTitle": "Resolution Selector (Size)",
+            "classType": "ResolutionSelector",
+            "param": "megapixels",
+            "label": "画面像素量（百万）",
+            "current": 0.98,
+            "default": 1,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": 0.1,
+            "max": 16,
+            "step": 0.1,
+            "description": "默认 0.98，当前 16:9 比例输出 1344×768。"
+          },
+          {
+            "nodeId": "115",
+            "nodeTitle": "Resolution Selector (Size)",
+            "classType": "ResolutionSelector",
+            "param": "multiple",
+            "label": "multiple",
+            "current": 32,
+            "default": 8,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": 8,
+            "max": 128,
+            "step": 4
+          }
+        ]
+      },
+      {
+        "nodeId": "119",
+        "nodeTitle": "图像编码设置",
+        "classType": "VAELoader",
+        "fields": [
+          {
+            "nodeId": "119",
+            "nodeTitle": "VAELoader",
+            "classType": "VAELoader",
+            "param": "vae_name",
+            "label": "vae_name",
+            "current": "minimax_h3_video_vae_fp16.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "ae.safetensors",
+              "minimax_h3_audio_vae_fp32.safetensors",
+              "minimax_h3_video_vae_fp16.safetensors",
+              "pixel_space"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "120",
+        "nodeTitle": "图像编码设置",
+        "classType": "VAELoader",
+        "fields": [
+          {
+            "nodeId": "120",
+            "nodeTitle": "VAELoader",
+            "classType": "VAELoader",
+            "param": "vae_name",
+            "label": "vae_name",
+            "current": "minimax_h3_audio_vae_fp32.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "ae.safetensors",
+              "minimax_h3_audio_vae_fp32.safetensors",
+              "minimax_h3_video_vae_fp16.safetensors",
+              "pixel_space"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "123",
+        "nodeTitle": "生成参数",
+        "classType": "KSamplerSelect",
+        "fields": [
+          {
+            "nodeId": "123",
+            "nodeTitle": "KSamplerSelect",
+            "classType": "KSamplerSelect",
+            "param": "sampler_name",
+            "label": "采样器",
+            "current": "res_multistep",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO",
+            "description": "控制采样算法。没有明确需求时建议保留工作流默认值。"
+          }
+        ]
+      },
+      {
+        "nodeId": "124",
+        "nodeTitle": "BasicScheduler",
+        "classType": "BasicScheduler",
+        "fields": [
+          {
+            "nodeId": "124",
+            "nodeTitle": "BasicScheduler",
+            "classType": "BasicScheduler",
+            "param": "scheduler",
+            "label": "调度器",
+            "current": "simple",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO",
+            "description": "控制降噪过程的步长分布，通常与采样器配套使用；建议保留工作流默认值。"
+          },
+          {
+            "nodeId": "124",
+            "nodeTitle": "BasicScheduler",
+            "classType": "BasicScheduler",
+            "param": "denoise",
+            "label": "重绘强度",
+            "current": 1,
+            "default": 1,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "description": "越低越保留原图，越高越按提示词重绘。轻微调整可用 0.3–0.55，明显改色或改造可从 0.65–0.8 尝试；过高可能改变构图和主体。"
+          }
+        ]
+      },
+      {
+        "nodeId": "127",
+        "nodeTitle": "模型设置",
+        "classType": "UNETLoader",
+        "fields": [
+          {
+            "nodeId": "127",
+            "nodeTitle": "UNETLoader",
+            "classType": "UNETLoader",
+            "param": "unet_name",
+            "label": "unet_name",
+            "current": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps.safetensors",
+              "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+              "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+              "z_image_turbo_bf16.safetensors"
+            ]
+          },
+          {
+            "nodeId": "127",
+            "nodeTitle": "UNETLoader",
+            "classType": "UNETLoader",
+            "param": "weight_dtype",
+            "label": "weight_dtype",
+            "current": "default",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "default",
+              "fp8_e4m3fn",
+              "fp8_e4m3fn_fast",
+              "fp8_e5m2"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "128",
+        "nodeTitle": "文本模型设置",
+        "classType": "CLIPLoader",
+        "fields": [
+          {
+            "nodeId": "128",
+            "nodeTitle": "CLIPLoader",
+            "classType": "CLIPLoader",
+            "param": "clip_name",
+            "label": "clip_name",
+            "current": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+              "qwen_3_4b.safetensors"
+            ]
+          },
+          {
+            "nodeId": "128",
+            "nodeTitle": "CLIPLoader",
+            "classType": "CLIPLoader",
+            "param": "type",
+            "label": "type",
+            "current": "minimax",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "stable_diffusion",
+              "stable_cascade",
+              "sd3",
+              "stable_audio",
+              "mochi",
+              "ltxv",
+              "pixart",
+              "cosmos",
+              "lumina2",
+              "wan",
+              "hidream",
+              "chroma",
+              "ace",
+              "omnigen2",
+              "qwen_image",
+              "hunyuan_image",
+              "flux2",
+              "ovis",
+              "longcat_image",
+              "cogvideox",
+              "lens",
+              "pixeldit",
+              "ideogram4",
+              "boogu",
+              "krea2",
+              "joyimage",
+              "mage",
+              "minimax"
+            ]
+          },
+          {
+            "nodeId": "128",
+            "nodeTitle": "CLIPLoader",
+            "classType": "CLIPLoader",
+            "param": "device",
+            "label": "device",
+            "current": "default",
+            "required": false,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "default",
+              "cpu"
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "129",
+        "nodeTitle": "随机种子",
+        "classType": "RandomNoise",
+        "fields": [
+          {
+            "nodeId": "129",
+            "nodeTitle": "RandomNoise",
+            "classType": "RandomNoise",
+            "param": "noise_seed",
+            "label": "随机种子",
+            "current": 2609071842,
+            "default": 0,
+            "required": true,
+            "isSeed": true,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": 0,
+            "max": 18446744073709552000,
+            "step": 1,
+            "description": "默认 2609071842，为《重启天际》实测种子。"
+          }
+        ]
+      },
+      {
+        "nodeId": "130",
+        "nodeTitle": "CreateVideo",
+        "classType": "CreateVideo",
+        "fields": [
+          {
+            "nodeId": "130",
+            "nodeTitle": "CreateVideo",
+            "classType": "CreateVideo",
+            "param": "fps",
+            "label": "fps",
+            "current": 24,
+            "default": 30,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": 1,
+            "max": 120,
+            "step": 1
+          },
+          {
+            "nodeId": "130",
+            "nodeTitle": "CreateVideo",
+            "classType": "CreateVideo",
+            "param": "bit_depth",
+            "label": "bit_depth",
+            "current": 8,
+            "default": 8,
+            "required": false,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": 8,
+            "max": 10,
+            "step": 2
+          }
+        ]
+      },
+      {
+        "nodeId": "131",
+        "nodeTitle": "ComfyMathExpression",
+        "classType": "ComfyMathExpression",
+        "fields": [
+          {
+            "nodeId": "131",
+            "nodeTitle": "ComfyMathExpression",
+            "classType": "ComfyMathExpression",
+            "param": "expression",
+            "label": "expression",
+            "current": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+            "default": "a + b",
+            "required": true,
+            "isSeed": false,
+            "control": "textarea",
+            "valueType": "STRING",
+            "multiline": true
+          }
+        ]
+      },
+      {
+        "nodeId": "132",
+        "nodeTitle": "视频时长（秒）",
+        "classType": "PrimitiveFloat",
+        "fields": [
+          {
+            "nodeId": "132",
+            "nodeTitle": "Float (Duration)",
+            "classType": "PrimitiveFloat",
+            "param": "value",
+            "label": "视频时长（秒）",
+            "current": 6,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": -9223372036854776000,
+            "max": 9223372036854776000,
+            "step": 0.1,
+            "description": "默认 6 秒；模型按帧数规则对齐，实测输出约 6.58 秒。"
+          }
+        ]
+      },
+      {
+        "nodeId": "136",
+        "nodeTitle": "MiniMaxH3ReferenceToVideo",
+        "classType": "MiniMaxH3ReferenceToVideo",
+        "fields": [
+          {
+            "nodeId": "136",
+            "nodeTitle": "MiniMaxH3ReferenceToVideo",
+            "classType": "MiniMaxH3ReferenceToVideo",
+            "param": "ref_image_size",
+            "label": "ref_image_size",
+            "current": "match",
+            "default": "match",
+            "required": true,
+            "isSeed": false,
+            "control": "hidden",
+            "valueType": "COMBO"
+          }
+        ]
+      },
+      {
+        "nodeId": "137",
+        "nodeTitle": "参考图片 1（角色）",
+        "classType": "LoadImage",
+        "fields": [
+          {
+            "nodeId": "137",
+            "nodeTitle": "LoadImage",
+            "classType": "LoadImage",
+            "param": "image",
+            "label": "参考图片 1（角色）",
+            "current": "sky-reboot-reference-1.png",
+            "required": true,
+            "isSeed": false,
+            "control": "upload",
+            "valueType": "COMBO",
+            "options": [
+              "01_肖像.png",
+              "02_全身正面.png",
+              "03_全身侧面1.png",
+              "04_全身背面.png",
+              "Art-1787974296655.png",
+              "Z-Image-文生图_00001_ (1).png",
+              "bb89eb85-feb7-41c3-8dd8-3228edecc855__codex2api-1788568042799-1.png",
+              "cat_test.png",
+              "cat_test2.png",
+              "clipspace-mask-1788018540754.png",
+              "clipspace-paint-1788018540754.png",
+              "clipspace-painted-1788018540754.png",
+              "clipspace-painted-masked-1788018540754.png",
+              "codex2api-1788498032213-1.png",
+              "codex2api-1788568042799-1.png",
+              "codex2api-1788576371004-1.png",
+              "codex2api-1788621618892-1.png",
+              "codex2api-1788680200133-1.png",
+              "codex2api-1788680431065-1.png",
+              "codex2api-1788683451640-1.png",
+              "codex2api-1788684033202-2.png",
+              "phase2-reference.png",
+              "sky-reboot-reference-1.png",
+              "sky-reboot-reference-2.png",
+              "temp_upscale_input (1).png",
+              "temp_upscale_input.png",
+              "tt_test.png",
+              "z-image-turbo_00002_.png",
+              "zimage_2k_16x9_00009_.png",
+              "zimage_2k_16x9_00010_.png",
+              "zimage_2k_16x9_00011_.png",
+              "zimage_2k_16x9_00014_.png",
+              "zimage_2k_16x9_v4_00001_.png",
+              "zimage_img2img_00004_.png",
+              "宏大未来中国城市镜像.png",
+              "微信图片_20260628215636_43_33.jpg"
+            ],
+            "imageUpload": true,
+            "description": "上传图片或连接画布图片节点。提示词使用 <Picture 1> 引用。"
+          }
+        ]
+      },
+      {
+        "nodeId": "138",
+        "nodeTitle": "视频提示词",
+        "classType": "PrimitiveStringMultiline",
+        "fields": [
+          {
+            "nodeId": "138",
+            "nodeTitle": "Input Text (Prompt)",
+            "classType": "PrimitiveStringMultiline",
+            "param": "value",
+            "label": "视频提示词",
+            "current": "Create one continuous six-second cinematic shot for Sky Reboot. Use <Picture 1> for the adult female courier, her face, short black bob, pearl-white and graphite armor, and cyan core. Use <Picture 2> for the platform, skyline, architecture, and dormant blue-hour lighting. Start waist-up at a three-quarter frontal angle, with the skyline visible beside her. Perform a smooth, modest dolly backward throughout; keep a level horizon and consistent perspective, with no cuts. 0–2 seconds: she stands grounded, calmly holding the core above her right palm; her fingers gently open while her left arm remains relaxed. 2–4 seconds: the sphere rises twenty centimeters, maintaining its shape, then unfolds a thin horizontal geometric halo around itself. Her eyes follow it with minimal head movement. 4–6 seconds: the halo releases one broad cyan pulse that sweeps outward across the skyline, sequentially activating architectural light strips and windows. Keep the pulse translucent so buildings remain readable. Finish with the courier steady and the illuminated city revealed behind her. Preserve facial identity, stable anatomy, five natural fingers per hand, detailed armor surfaces, and sharp architectural edges. Restrained glow; no fog, blur, text, or watermarks. Native electronic sound effects: soft core hum, delicate ascending shimmer, then a clean resonant activation pulse. No dialogue or music.",
+            "required": true,
+            "isSeed": false,
+            "control": "textarea",
+            "valueType": "STRING",
+            "multiline": true,
+            "description": "描述两张参考图的用途、镜头运动、动作顺序和声音；支持连接文本节点。"
+          }
+        ]
+      },
+      {
+        "nodeId": "139",
+        "nodeTitle": "参考图片 2（场景）",
+        "classType": "LoadImage",
+        "fields": [
+          {
+            "nodeId": "139",
+            "nodeTitle": "LoadImage",
+            "classType": "LoadImage",
+            "param": "image",
+            "label": "参考图片 2（场景）",
+            "current": "sky-reboot-reference-2.png",
+            "required": true,
+            "isSeed": false,
+            "control": "upload",
+            "valueType": "COMBO",
+            "options": [
+              "01_肖像.png",
+              "02_全身正面.png",
+              "03_全身侧面1.png",
+              "04_全身背面.png",
+              "Art-1787974296655.png",
+              "Z-Image-文生图_00001_ (1).png",
+              "bb89eb85-feb7-41c3-8dd8-3228edecc855__codex2api-1788568042799-1.png",
+              "cat_test.png",
+              "cat_test2.png",
+              "clipspace-mask-1788018540754.png",
+              "clipspace-paint-1788018540754.png",
+              "clipspace-painted-1788018540754.png",
+              "clipspace-painted-masked-1788018540754.png",
+              "codex2api-1788498032213-1.png",
+              "codex2api-1788568042799-1.png",
+              "codex2api-1788576371004-1.png",
+              "codex2api-1788621618892-1.png",
+              "codex2api-1788680200133-1.png",
+              "codex2api-1788680431065-1.png",
+              "codex2api-1788683451640-1.png",
+              "codex2api-1788684033202-2.png",
+              "phase2-reference.png",
+              "sky-reboot-reference-1.png",
+              "sky-reboot-reference-2.png",
+              "temp_upscale_input (1).png",
+              "temp_upscale_input.png",
+              "tt_test.png",
+              "z-image-turbo_00002_.png",
+              "zimage_2k_16x9_00009_.png",
+              "zimage_2k_16x9_00010_.png",
+              "zimage_2k_16x9_00011_.png",
+              "zimage_2k_16x9_00014_.png",
+              "zimage_2k_16x9_v4_00001_.png",
+              "zimage_img2img_00004_.png",
+              "宏大未来中国城市镜像.png",
+              "微信图片_20260628215636_43_33.jpg"
+            ],
+            "imageUpload": true,
+            "description": "上传图片或连接画布图片节点。提示词使用 <Picture 2> 引用。"
+          }
+        ]
+      },
+      {
+        "nodeId": "143",
+        "nodeTitle": "Int (Full)",
+        "classType": "PrimitiveInt",
+        "fields": [
+          {
+            "nodeId": "143",
+            "nodeTitle": "Int (Full)",
+            "classType": "PrimitiveInt",
+            "param": "value",
+            "label": "value",
+            "current": 20,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": -9223372036854776000,
+            "max": 9223372036854776000,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "nodeId": "144",
+        "nodeTitle": "Int (Lightning LoRA)",
+        "classType": "PrimitiveInt",
+        "fields": [
+          {
+            "nodeId": "144",
+            "nodeTitle": "Int (Lightning LoRA)",
+            "classType": "PrimitiveInt",
+            "param": "value",
+            "label": "value",
+            "current": 4,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "INT",
+            "min": -9223372036854776000,
+            "max": 9223372036854776000,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "nodeId": "145",
+        "nodeTitle": "LoraLoaderModelOnly",
+        "classType": "LoraLoaderModelOnly",
+        "fields": [
+          {
+            "nodeId": "145",
+            "nodeTitle": "LoraLoaderModelOnly",
+            "classType": "LoraLoaderModelOnly",
+            "param": "lora_name",
+            "label": "lora_name",
+            "current": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+            "required": true,
+            "isSeed": false,
+            "control": "select",
+            "valueType": "COMBO",
+            "options": [
+              "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+              "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"
+            ]
+          },
+          {
+            "nodeId": "145",
+            "nodeTitle": "LoraLoaderModelOnly",
+            "classType": "LoraLoaderModelOnly",
+            "param": "strength_model",
+            "label": "strength_model",
+            "current": 1,
+            "default": 1,
+            "required": true,
+            "isSeed": false,
+            "control": "input_number",
+            "valueType": "FLOAT",
+            "min": -100,
+            "max": 100,
+            "step": 0.01
+          }
+        ]
+      },
+      {
+        "nodeId": "146",
+        "nodeTitle": "启用 Turbo",
+        "classType": "PrimitiveBoolean",
+        "fields": [
+          {
+            "nodeId": "146",
+            "nodeTitle": "Boolean (Enable Lightning LoRA)",
+            "classType": "PrimitiveBoolean",
+            "param": "value",
+            "label": "启用 Turbo",
+            "current": true,
+            "required": true,
+            "isSeed": false,
+            "control": "switch",
+            "valueType": "BOOLEAN",
+            "description": "默认启用 4 步 Turbo；关闭后使用 20 步分支。"
+          }
+        ]
+      }
+    ],
+    "warnings": [],
+    "nodeCount": 26,
+    "editableCount": 24,
+    "totalFieldCount": 30
+  }
+}

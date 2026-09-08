@@ -125,6 +125,10 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-08（Pixel Fantasy 本地适配）：按用户要求仅在 ComfyUI Desktop 保存 `Pixel_Fantasy_5060Ti_15s_Auto` / `Manual`，未导入平台。原工作流缺失节点、模型与动态连线迁移至本机 Ref2VA INT8、NVFP4 文本编码、4 步 Turbo、官方音视频输出和 XB llama 视觉扩写；补齐 CUDA llama.cpp 与 Qwen3.5-9B Q4，8192 上下文、全 GPU 层加载、扩写结束释放显存。指定人物图完成两条 864×480 / 24fps / 362 帧 / 15.083 秒音视频，人工提示词版 311.535 秒，自动版视频阶段 329.740 秒（复用约 40 秒扩写缓存）。媒体全量解码与逐秒抽帧通过；扩写存在眼睛颜色误判，人工版保留校准提示词。采样 GPU 平均约 99.3%，仍保留必要 RAM 暂存与 CPU 调度。证据与使用说明：`artifacts/pixel-fantasy/README.md`。本次不改平台业务代码、运行协议或阶段状态。
+
+- 2026-09-07（Desktop R2V 实测）：官方 MiniMax H3 Ref2VA 工作流通过两张 codex2api 生成的角色/城市参考图完成《重启天际》视频，Desktop 保存为 `Sky_Reboot_R2V`。4 步 Turbo LoRA、种子 2609071842，输出 1344×768 / 24fps / 6.58 秒及双声道音轨，执行 655 秒。实际请求保留 `ref_images.ref_image_0/1` 扁平动态输入名；旧版 LoadImage 下拉框仅枚举 input 根目录，故 Desktop 可复现副本使用根目录图片。提示词、工作流、执行记录与抽帧见 `artifacts/neon-reboot/README.md`。此次为 ComfyUI Desktop 直接测试，不涉及平台代码或运行协议变更，也未测试外部视频/音频参考。
+
 - 2026-09-07（Issue #9）：所有经 `/object_info` schema 与节点语义可靠识别的 ComfyUI 整数 seed（当前覆盖 KSampler `seed`、RandomNoise `noise_seed` 及声明 `control_after_generate` 的自定义种子节点）统一获得“一键随机”和“每次运行自动随机”。随机值限制在字段约束与 JavaScript 安全整数范围内；自动随机发生在创建平台 Run 前，实际 API JSON 同时作为 provider 请求和 `inputSnapshot` 冻结，确保幂等重放不重新抽取。画布卡片持久化自动随机开关，运行后回显实际 seed；节点历史与画布生成流水展示并可复制 seed，节点历史支持把一次 Run 的全部 seed 恢复到卡片。普通整数以及仅字段名相似、缺少节点/schema 种子语义的参数不会误判。
 - 2026-09-05（AI Native 1A）：ComfyUI 每次提交会先创建平台 GenerationRun，保存最终 API JSON、工作流版本与画布/节点/资产 lineage；成功产物追加进候选组。服务重启后无法确认的 queued/running 任务标记 `needs_attention`；由于底层 interrupt 为全局语义，并发运行时明确拒绝伪装成精确取消。
 - 2026-09-05（实机验收）：Z-Image 文生图在同一画布节点连续运行两次均成功；第二次命中 ComfyUI 缓存但平台仍生成独立 Run 和独立资产，候选组保留两个资产。后端重启后 Run、候选与 selected 状态保持，历史页面可见。
@@ -138,3 +142,9 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 - 2026-09-01（实现）：落地步骤②（工作流导入）与步骤③/⑦（运行执行）——新增 `backend/src/comfyui/` 模块（client / graph-converter / runner / controller）；复刻官方 graphToPrompt 并补充子图展开（subgraph 节点展开为 `父id:子id` 内部节点）与 Reroute 穿透；旧格式（位置 widgets_values）按 /object_info 映射；提交前展开 `%date%`/`%time%` 前端通配符；运行状态内存化 + 成功回写缩略图；前端接入「从 ComfyUI 导入」与运行面板。
 - 2026-09-01（补充）：新增「工作流导入」方案（§4.4）——通过 8188 官方 `/userdata` 端点直接拉取 ComfyUI 已保存工作流，后端复刻官方前端 `graphToPrompt` 算法做 UI→API 转换后入库，免去手动导出上传；落地步骤新增 ②。
 - 2026-09-01：创建本文档，沉淀需求讨论（独立菜单 / 卡片式 / JSONText+文件占位符 / object_info 自动表单）。
+
+- 2026-09-07（工作流配置）：将已在 ComfyUI Desktop 实测成功的《重启天际》导入平台，名称 `MiniMax H3 双图参考生视频 · 重启天际`，ID `35c2f155-78f6-4762-9ce1-93b90c78856e`，分类 `img2vid`（画布已开放入口）。配置 `137.image`、`139.image` 两路 image 输入与 `138.value` 一路 text 输入，暴露图片、提示词、时长、像素量、种子与 Turbo 开关共 7 个字段并添加中文说明。保留默认素材和 6 秒 / 1344×768 / 4 步 Turbo 参数；校验入库 26 节点 API JSON 与预览完全一致，动态参考图片连接保持扁平键，schema 正确生成上传及文本控件。本次为工作流数据配置，不改运行引擎或阶段状态，未重复提交视频生成。证据见 `artifacts/neon-reboot/platform-import.json`、`platform-workflow.json`、`platform-schema.json`。
+
+- 2026-09-08（全能参考与连线入参）：用户明确要求将 MiniMax H3 工作流归入 reference，并开放全部入参。工作流 35c2f155-78f6-4762-9ce1-93b90c78856e 更名为「MiniMax H3 全能参考 · 重启天际」，46 个当前可编辑参数全部暴露并配置输入端点（9 image、3 video、6 audio、28 text）。schema 支持现代 COMBO / 动态 codec 选项，按 MiniMax 官方 autogrow 上限扩出可选媒体槽位；原双图端点 ID 保持兼容。新增 multipart upload/media、视频 24 fps 归一化（ffmpeg/ffprobe，2–15 秒）、跨画布校验的多媒体 asset 回灌；运行前将可选参考文件编译成 LoadImage/LoadVideo/GetVideoComponents/LoadAudio 子图，再冻结 Run snapshot。空参考略过，两张旧默认图可清空；编号须从 1 连续，视频配音必须有对应视频。标量文本连线按 INT/FLOAT/BOOLEAN/COMBO 校验和转换，连线种子优先于自动随机，上游无产物时明确报错。新增画布输入节点，复用 result + inputMode 的 typed handle 合同，上传媒体持久化为 upload 资产；运行请求携带上游 inputAssetIds。
+  - 验证：后端完整 13 suites / 88 tests 通过，后续补充的 6 项 reference 定向测试通过；后端构建、前端生产构建通过，3100/8000 可访问。真实上传图片/视频/音频、画布视频/音频回灌、ComfyUI loader smoke Run 176711ae-7e33-4f25-ad5f-a77f8ba41ee0 成功输出 PNG/FLAC，未重复执行 MiniMax 成片采样。Chrome 验证 46 个 target handles、5 个 source handles、4 个音视频预览 readyState=4，文本连线实时覆盖数值输入；非法数字 HTTP 400，示例画布没有新生成 Run。
+  - 示例：画布 73b899eb-e086-4d54-a309-bc36c5b3c56d「全能参考 · 入参连线示例」，保留 5 节点 / 4 连线及有效时长 6。证据存 artifacts/neon-reboot/platform-omni.json、omni-canvas.json、omni-media-smoke.json、omni-loader-result.json。独立 tsc --noEmit 仍受项目现有 umi 类型解析、ImeSafeInput Event.isComposing、NodeOutputHistory onRestoreSeeds 等问题影响；本次新增局部类型错误已修复，未宣称全量 tsc 通过。

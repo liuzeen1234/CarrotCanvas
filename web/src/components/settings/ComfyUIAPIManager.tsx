@@ -391,7 +391,7 @@ export default function ComfyUIAPIManager() {
       const fieldByKey = new Map(editSchema?.groups.flatMap((g) => g.fields).map((f) => [`${f.nodeId}::${f.param}`, f]) ?? []);
       const inputConfig = { version: 1, fields: [...editInputKeys].map((k) => {
         const idx = k.lastIndexOf('::'); const f = fieldByKey.get(k);
-        return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text' };
+        return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.mediaKind ?? (f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text') };
       }) };
       const fieldConfig = buildFieldConfig(editFieldMeta, editGroupLabels);
       await request(`/api/workflows/${editing.id}`, {
@@ -489,7 +489,7 @@ export default function ComfyUIAPIManager() {
       const fieldByKey = new Map(remotePreview?.schema?.groups.flatMap((g) => g.fields).map((f) => [`${f.nodeId}::${f.param}`, f]) ?? []);
       const inputConfig = { version: 1, fields: [...inputKeys].map((k) => {
         const idx = k.lastIndexOf('::'); const f = fieldByKey.get(k);
-        return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text' };
+        return { nodeId: k.slice(0, idx), param: k.slice(idx + 2), kind: f?.mediaKind ?? (f?.control === 'upload' || f?.valueType === 'IMAGE' ? 'image' : 'text') };
       }) };
       const fieldConfig = buildFieldConfig(fieldMeta, groupLabels);
       await request('/api/comfyui/workflows/import', {
@@ -613,8 +613,7 @@ export default function ComfyUIAPIManager() {
               </div>
               {g.fields.map((f) => {
                 const key = `${f.nodeId}::${f.param}`;
-                const connectable = f.control === 'upload' || f.valueType === 'IMAGE' ||
-                  (f.valueType === 'STRING' && (f.control === 'textarea' || f.control === 'input'));
+                const connectable = f.control !== 'hidden';
                 const meta = metadata[key] ?? { label: '', description: '' };
                 const updateMeta = (patch: Partial<typeof meta>) => setMetadata?.({ ...metadata, [key]: { ...meta, ...patch } });
                 return (
@@ -630,7 +629,7 @@ export default function ComfyUIAPIManager() {
                       {connectable && connectSelected && setConnectSelected ? (
                         <Checkbox checked={connectSelected.has(key)} onChange={(e) => {
                           const next = new Set(connectSelected); if (e.target.checked) next.add(key); else next.delete(key); setConnectSelected(next);
-                        }}>允许{f.control === 'upload' || f.valueType === 'IMAGE' ? '图片' : '文本'}连线</Checkbox>
+                        }}>允许{f.mediaKind === 'video' ? '视频' : f.mediaKind === 'audio' ? '音频' : f.control === 'upload' ? '图片' : '文本'}连线</Checkbox>
                       ) : null}
                       <span title={previewValue(f.current)} style={{ fontSize: 11, color: '#bbb', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>当前值：{previewValue(f.current)}</span>
                     </div>

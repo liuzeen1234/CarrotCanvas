@@ -1,0 +1,2099 @@
+{
+  "da2816de-5b36-44bb-9aec-99dc8242c93c": {
+    "prompt": [
+      2,
+      "da2816de-5b36-44bb-9aec-99dc8242c93c",
+      {
+        "114": {
+          "inputs": {
+            "image": "Pixel_Fantasy_reference.png"
+          },
+          "class_type": "LoadImage",
+          "_meta": {
+            "title": "参考人物图片"
+          }
+        },
+        "115": {
+          "inputs": {
+            "aspect_ratio": "16:9 (Widescreen)",
+            "megapixels": 0.4,
+            "multiple": 32
+          },
+          "class_type": "ResolutionSelector",
+          "_meta": {
+            "title": "分辨率 · 5060 Ti 16GB"
+          }
+        },
+        "124": {
+          "inputs": {
+            "tile_size": 512,
+            "overlap": 64,
+            "temporal_size": 64,
+            "temporal_overlap": 8,
+            "samples": [
+              "186",
+              0
+            ],
+            "vae": [
+              "175",
+              0
+            ]
+          },
+          "class_type": "VAEDecodeTiled",
+          "_meta": {
+            "title": "GPU 分块解码 · 控制显存峰值"
+          }
+        },
+        "134": {
+          "inputs": {
+            "expression": "max(5, round(a * b)) + (5 - (max(5, round(a * b)) % 17)) % 17",
+            "values.a": [
+              "135",
+              0
+            ],
+            "values.b": [
+              "194",
+              0
+            ]
+          },
+          "class_type": "ComfyMathExpression",
+          "_meta": {
+            "title": "Math Expression"
+          }
+        },
+        "135": {
+          "inputs": {
+            "value": 15.0
+          },
+          "class_type": "PrimitiveFloat",
+          "_meta": {
+            "title": "时长（秒）"
+          }
+        },
+        "167": {
+          "inputs": {
+            "filename_prefix": "video/Pixel_Fantasy_5060Ti_15s",
+            "format": "mp4",
+            "codec": "h264",
+            "codec.encoding": "auto",
+            "video": [
+              "224",
+              0
+            ]
+          },
+          "class_type": "SaveVideo",
+          "_meta": {
+            "title": "保存 15 秒卡点 PV"
+          }
+        },
+        "168": {
+          "inputs": {
+            "samples": [
+              "186",
+              0
+            ],
+            "vae": [
+              "176",
+              0
+            ]
+          },
+          "class_type": "VAEDecodeAudio",
+          "_meta": {
+            "title": "VAE Decode Audio"
+          }
+        },
+        "174": {
+          "inputs": {
+            "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "type": "minimax",
+            "device": "default"
+          },
+          "class_type": "CLIPLoader",
+          "_meta": {
+            "title": "Qwen3-VL NVFP4 · GPU 编码"
+          }
+        },
+        "175": {
+          "inputs": {
+            "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+          },
+          "class_type": "VAELoader",
+          "_meta": {
+            "title": "Load VAE"
+          }
+        },
+        "176": {
+          "inputs": {
+            "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+          },
+          "class_type": "VAELoader",
+          "_meta": {
+            "title": "Load VAE"
+          }
+        },
+        "180": {
+          "inputs": {
+            "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+            "weight_dtype": "default"
+          },
+          "class_type": "UNETLoader",
+          "_meta": {
+            "title": "H3 Ref2VA INT8"
+          }
+        },
+        "183": {
+          "inputs": {
+            "model": [
+              "203",
+              0
+            ],
+            "conditioning": [
+              "212",
+              0
+            ]
+          },
+          "class_type": "BasicGuider",
+          "_meta": {
+            "title": "Basic Guider"
+          }
+        },
+        "184": {
+          "inputs": {
+            "noise_seed": 2609080715
+          },
+          "class_type": "RandomNoise",
+          "_meta": {
+            "title": "RandomNoise"
+          }
+        },
+        "186": {
+          "inputs": {
+            "noise": [
+              "184",
+              0
+            ],
+            "guider": [
+              "183",
+              0
+            ],
+            "sampler": [
+              "198",
+              0
+            ],
+            "sigmas": [
+              "199",
+              0
+            ],
+            "latent_image": [
+              "212",
+              1
+            ]
+          },
+          "class_type": "SamplerCustomAdvanced",
+          "_meta": {
+            "title": "SamplerCustomAdvanced"
+          }
+        },
+        "194": {
+          "inputs": {
+            "value": 24.0
+          },
+          "class_type": "PrimitiveFloat",
+          "_meta": {
+            "title": "帧率 · H3 固定 24"
+          }
+        },
+        "198": {
+          "inputs": {
+            "sampler_name": "res_multistep"
+          },
+          "class_type": "KSamplerSelect",
+          "_meta": {
+            "title": "KSamplerSelect"
+          }
+        },
+        "199": {
+          "inputs": {
+            "scheduler": "simple",
+            "steps": 4,
+            "denoise": 1.0,
+            "model": [
+              "203",
+              0
+            ]
+          },
+          "class_type": "BasicScheduler",
+          "_meta": {
+            "title": "BasicScheduler"
+          }
+        },
+        "200": {
+          "inputs": {
+            "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+            "strength_model": 1.0,
+            "model": [
+              "180",
+              0
+            ]
+          },
+          "class_type": "LoraLoaderModelOnly",
+          "_meta": {
+            "title": "Ref2V Turbo · 4 步"
+          }
+        },
+        "203": {
+          "inputs": {
+            "attention": "comfy kitchen attention",
+            "model": [
+              "200",
+              0
+            ]
+          },
+          "class_type": "ModelAttentionBackend",
+          "_meta": {
+            "title": "ModelAttentionBackend"
+          }
+        },
+        "208": {
+          "inputs": {
+            "max_tokens": 3072,
+            "top_k": 30,
+            "top_p": 0.9,
+            "min_p": 0.05,
+            "typical_p": 1.0,
+            "temperature": 0.6,
+            "repeat_penalty": 1.05,
+            "frequency_penalty": 0.0,
+            "present_penalty": 0.0,
+            "mirostat_mode": 0,
+            "mirostat_eta": 0.1,
+            "mirostat_tau": 5.0,
+            "state_uid": -1
+          },
+          "class_type": "XB_llamaParameters",
+          "_meta": {
+            "title": "XB-llama - ⚙️ 推理参数"
+          }
+        },
+        "209": {
+          "inputs": {
+            "model": "Qwen3.5-9B-Q4_K_M.gguf",
+            "mmproj": "Qwen3.5-9B-mmproj-F16.gguf",
+            "chat_handler": "Qwen3.5",
+            "n_ctx": 8192,
+            "vram_limit": -1,
+            "image_min_tokens": 0,
+            "image_max_tokens": 1024
+          },
+          "class_type": "XB_llamaModelLoader",
+          "_meta": {
+            "title": "XB-llama - 📦 模型加载器"
+          }
+        },
+        "210": {
+          "inputs": {
+            "preset_prompt": "Empty - Nothing",
+            "custom_prompt": "制作15秒高冲击人物PV卡点混剪，15个分镜。保持参考图中的人物、脸、发型、服装、配饰和配色。标题为“Pixel Fantasy”。\n\nFill the following production template. COPY EVERY FIELD NAME AND TIMESTAMP EXACTLY. Replace each parenthesized instruction with a concise English description. Do not remove timestamps. Use only deliberate edits, never body morphing. Do not invent glove clasps or extra garments.\nsubject_definitions: (describe the visible reference character accurately)\nsummary: [reference generation] (15-second anime character PV)\nretention_analysis: <Subject 1>: fully_preserved.\ndetailed_description:\n[Shot 1] (eye close-up; one action)\n[Shot 2] At 00:01.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 3] At 00:02.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 4] At 00:03.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 5] At 00:04.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 6] At 00:05.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 7] At 00:06.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 8] At 00:07.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 9] At 00:08.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\n[Shot 10] At 00:09.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 11] At 00:10.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 12] At 00:11.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 13] At 00:12.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 14] At 00:13.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 15] At 00:14.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\noverall_soundscape: (sparse whooshes, impacts below music; no speech)\nnon_diegetic_music: (132 BPM 4/4 instrumental electronic pop; musical rise and final resolution, no intelligible lyrics)",
+            "system_prompt": "You write MiniMax H3 reference-to-video prompts. Inspect the supplied image and expand the user's concept into ONE English production prompt, without reasoning or code fences. Use these six fields in order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.\nDefine the sole pictured character as <Subject 1>; use only visibly supported appearance facts. Preserve their face, hair, eye color, horns or ornaments, clothing, gloves, footwear, accessories and original palette throughout. Do not invent or copy characters or change clothing. The image is an identity reference, not necessarily the opening composition. The original background may be replaced by graphic stages in the character's palette. Do not write dimensions or aspect ratio.\nThe summary starts [reference generation]. Plan exactly 15 seconds with 15 distinct, readable shots. Use [Shot 1] without timestamp, then [Shot N] At MM:SS.mmm at increasing one-second intervals 00:01.000 through 00:14.000. Give each shot a concise concrete composition, character action and camera or graphic response. Use cel-shaded anime fashion editorial styling, ice-blue/navy/white graphic shapes with restrained gold/red accents when supported by the image. Maintain stable anatomy and clear hands. Use action-match cuts, occlusion cuts, ink wipes and comic panels without body morphing. Increase intensity toward a heroic final pose. Use the exact title \"Pixel Fantasy\" only twice; no other text or logos. Do not merely describe the reference or reuse an unrelated example character.\nretention_analysis explicitly says <Subject 1>: fully_preserved. The subject never speaks or sings. Use an energetic 132 BPM 4/4 instrumental electronic pop beat, melodic synth, punchy drums and bass, sparse whooshes and impacts below the music; align cuts and gestures with strong beats. No intelligible lyrics, dialogue or voiceover. Stay under 6500 English characters; finish all six fields.",
+            "inference_mode": "images",
+            "max_frames": 2,
+            "max_size": 768,
+            "seed": 2609080715,
+            "force_offload": true,
+            "save_states": false,
+            "llama_model": [
+              "209",
+              0
+            ],
+            "parameters": [
+              "208",
+              0
+            ],
+            "images": [
+              "114",
+              0
+            ]
+          },
+          "class_type": "XB_llamaInstruct",
+          "_meta": {
+            "title": "XB-llama - 💬 指令推理"
+          }
+        },
+        "211": {
+          "inputs": {
+            "text": [
+              "210",
+              0
+            ]
+          },
+          "class_type": "ShowText|pysssss",
+          "_meta": {
+            "title": "视频提示词 · 可手动修改"
+          }
+        },
+        "212": {
+          "inputs": {
+            "prompt": [
+              "211",
+              0
+            ],
+            "width": [
+              "115",
+              0
+            ],
+            "height": [
+              "115",
+              1
+            ],
+            "length": [
+              "134",
+              1
+            ],
+            "ref_image_size": "match",
+            "clip": [
+              "174",
+              0
+            ],
+            "vae": [
+              "175",
+              0
+            ],
+            "audio_vae": [
+              "176",
+              0
+            ],
+            "ref_images.ref_image_0": [
+              "114",
+              0
+            ]
+          },
+          "class_type": "MiniMaxH3ReferenceToVideo",
+          "_meta": {
+            "title": "MiniMax H3 Reference to Video"
+          }
+        },
+        "224": {
+          "inputs": {
+            "fps": [
+              "194",
+              0
+            ],
+            "bit_depth": 8,
+            "images": [
+              "124",
+              0
+            ],
+            "audio": [
+              "168",
+              0
+            ]
+          },
+          "class_type": "CreateVideo",
+          "_meta": {
+            "title": "Create Video"
+          }
+        }
+      },
+      {
+        "comfy_usage_source": "comfyui-frontend",
+        "extra_pnginfo": {
+          "workflow": {
+            "id": "799f9540-7ab8-4b03-933d-6edf07285b0f",
+            "revision": 0,
+            "last_node_id": 230,
+            "last_link_id": 32,
+            "nodes": [
+              {
+                "id": 174,
+                "type": "CLIPLoader",
+                "pos": [
+                  0,
+                  60
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 0,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "CLIP",
+                    "type": "CLIP",
+                    "slot_index": 0,
+                    "links": [
+                      6
+                    ]
+                  }
+                ],
+                "title": "Qwen3-VL NVFP4 · GPU 编码",
+                "properties": {
+                  "Node name for S&R": "CLIPLoader"
+                },
+                "widgets_values": [
+                  "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+                  "minimax",
+                  "default"
+                ],
+                "widgets_values_named": {
+                  "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+                  "type": "minimax",
+                  "device": "default"
+                }
+              },
+              {
+                "id": 175,
+                "type": "VAELoader",
+                "pos": [
+                  0,
+                  300
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 1,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "VAE",
+                    "type": "VAE",
+                    "slot_index": 0,
+                    "links": [
+                      7,
+                      23
+                    ]
+                  }
+                ],
+                "title": "Load VAE",
+                "properties": {
+                  "Node name for S&R": "VAELoader"
+                },
+                "widgets_values": [
+                  "minimax_h3_video_vae_fp16.safetensors"
+                ],
+                "widgets_values_named": {
+                  "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+                }
+              },
+              {
+                "id": 176,
+                "type": "VAELoader",
+                "pos": [
+                  0,
+                  540
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 2,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "VAE",
+                    "type": "VAE",
+                    "slot_index": 0,
+                    "links": [
+                      8,
+                      25
+                    ]
+                  }
+                ],
+                "title": "Load VAE",
+                "properties": {
+                  "Node name for S&R": "VAELoader"
+                },
+                "widgets_values": [
+                  "minimax_h3_audio_vae_fp32.safetensors"
+                ],
+                "widgets_values_named": {
+                  "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+                }
+              },
+              {
+                "id": 180,
+                "type": "UNETLoader",
+                "pos": [
+                  0,
+                  780
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 3,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "MODEL",
+                    "type": "MODEL",
+                    "slot_index": 0,
+                    "links": [
+                      1
+                    ]
+                  }
+                ],
+                "title": "H3 Ref2VA INT8",
+                "properties": {
+                  "Node name for S&R": "UNETLoader"
+                },
+                "widgets_values": [
+                  "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+                  "default"
+                ],
+                "widgets_values_named": {
+                  "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+                  "weight_dtype": "default"
+                }
+              },
+              {
+                "id": 200,
+                "type": "LoraLoaderModelOnly",
+                "pos": [
+                  0,
+                  1020
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 12,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "model",
+                    "type": "MODEL",
+                    "link": 1
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "MODEL",
+                    "type": "MODEL",
+                    "slot_index": 0,
+                    "links": [
+                      2
+                    ]
+                  }
+                ],
+                "title": "Ref2V Turbo · 4 步",
+                "properties": {
+                  "Node name for S&R": "LoraLoaderModelOnly"
+                },
+                "widgets_values": [
+                  "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+                  1
+                ],
+                "widgets_values_named": {
+                  "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+                  "strength_model": 1
+                }
+              },
+              {
+                "id": 203,
+                "type": "ModelAttentionBackend",
+                "pos": [
+                  1830,
+                  620
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 15,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "model",
+                    "type": "MODEL",
+                    "link": 2
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "MODEL",
+                    "type": "MODEL",
+                    "slot_index": 0,
+                    "links": [
+                      14,
+                      16
+                    ]
+                  }
+                ],
+                "properties": {
+                  "Node name for S&R": "ModelAttentionBackend"
+                },
+                "widgets_values": [
+                  "comfy kitchen attention"
+                ],
+                "widgets_values_named": {
+                  "attention": "comfy kitchen attention"
+                }
+              },
+              {
+                "id": 115,
+                "type": "ResolutionSelector",
+                "pos": [
+                  410,
+                  550
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 4,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "width",
+                    "type": "INT",
+                    "slot_index": 0,
+                    "links": [
+                      10
+                    ]
+                  },
+                  {
+                    "name": "height",
+                    "type": "INT",
+                    "slot_index": 1,
+                    "links": [
+                      11
+                    ]
+                  }
+                ],
+                "title": "分辨率 · 5060 Ti 16GB",
+                "properties": {
+                  "Node name for S&R": "ResolutionSelector"
+                },
+                "widgets_values": [
+                  "16:9 (Widescreen)",
+                  0.4,
+                  32
+                ],
+                "widgets_values_named": {
+                  "aspect_ratio": "16:9 (Widescreen)",
+                  "megapixels": 0.4,
+                  "multiple": 32
+                }
+              },
+              {
+                "id": 135,
+                "type": "PrimitiveFloat",
+                "pos": [
+                  410,
+                  790
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 5,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "FLOAT",
+                    "type": "FLOAT",
+                    "slot_index": 0,
+                    "links": [
+                      3
+                    ]
+                  }
+                ],
+                "title": "时长（秒）",
+                "properties": {
+                  "Node name for S&R": "PrimitiveFloat"
+                },
+                "widgets_values": [
+                  15
+                ],
+                "widgets_values_named": {
+                  "value": 15
+                }
+              },
+              {
+                "id": 194,
+                "type": "PrimitiveFloat",
+                "pos": [
+                  410,
+                  1030
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 6,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "FLOAT",
+                    "type": "FLOAT",
+                    "slot_index": 0,
+                    "links": [
+                      4,
+                      27
+                    ]
+                  }
+                ],
+                "title": "帧率 · H3 固定 24",
+                "properties": {
+                  "Node name for S&R": "PrimitiveFloat"
+                },
+                "widgets_values": [
+                  24
+                ],
+                "widgets_values_named": {
+                  "value": 24
+                }
+              },
+              {
+                "id": 134,
+                "type": "ComfyMathExpression",
+                "pos": [
+                  410,
+                  1270
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 13,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "values.a",
+                    "type": "FLOAT,INT,BOOLEAN",
+                    "link": 3
+                  },
+                  {
+                    "label": "b",
+                    "name": "values.b",
+                    "shape": 7,
+                    "type": "FLOAT,INT,BOOLEAN",
+                    "link": 4
+                  },
+                  {
+                    "label": "c",
+                    "name": "values.c",
+                    "shape": 7,
+                    "type": "FLOAT,INT,BOOLEAN",
+                    "link": null
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "FLOAT",
+                    "type": "FLOAT",
+                    "slot_index": 0,
+                    "links": []
+                  },
+                  {
+                    "name": "INT",
+                    "type": "INT",
+                    "slot_index": 1,
+                    "links": [
+                      12
+                    ]
+                  },
+                  {
+                    "name": "BOOL",
+                    "type": "BOOLEAN",
+                    "slot_index": 2,
+                    "links": []
+                  }
+                ],
+                "title": "Math Expression",
+                "properties": {
+                  "Node name for S&R": "ComfyMathExpression"
+                },
+                "widgets_values": [
+                  "max(5, round(a * b)) + (5 - (max(5, round(a * b)) % 17)) % 17"
+                ],
+                "widgets_values_named": {
+                  "expression": "max(5, round(a * b)) + (5 - (max(5, round(a * b)) % 17)) % 17"
+                }
+              },
+              {
+                "id": 114,
+                "type": "LoadImage",
+                "pos": [
+                  410,
+                  60
+                ],
+                "size": [
+                  360,
+                  430
+                ],
+                "flags": {},
+                "order": 7,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "IMAGE",
+                    "type": "IMAGE",
+                    "slot_index": 0,
+                    "links": [
+                      13,
+                      32
+                    ]
+                  },
+                  {
+                    "name": "MASK",
+                    "type": "MASK",
+                    "slot_index": 1,
+                    "links": []
+                  }
+                ],
+                "title": "参考人物图片",
+                "properties": {
+                  "Node name for S&R": "LoadImage"
+                },
+                "widgets_values": [
+                  "Pixel_Fantasy_reference.png",
+                  "image"
+                ],
+                "widgets_values_named": {
+                  "image": "Pixel_Fantasy_reference.png",
+                  "upload": "image"
+                }
+              },
+              {
+                "id": 211,
+                "type": "ShowText|pysssss",
+                "pos": [
+                  1210,
+                  740
+                ],
+                "size": [
+                  550,
+                  500
+                ],
+                "flags": {},
+                "order": 16,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "text",
+                    "type": "STRING",
+                    "link": 5
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "STRING",
+                    "shape": 6,
+                    "type": "STRING",
+                    "slot_index": 0,
+                    "links": [
+                      9
+                    ]
+                  }
+                ],
+                "title": "视频提示词 · 可手动修改",
+                "properties": {
+                  "Node name for S&R": "ShowText|pysssss"
+                }
+              },
+              {
+                "id": 212,
+                "type": "MiniMaxH3ReferenceToVideo",
+                "pos": [
+                  1830,
+                  60
+                ],
+                "size": [
+                  345,
+                  500
+                ],
+                "flags": {},
+                "order": 18,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "clip",
+                    "type": "CLIP",
+                    "link": 6
+                  },
+                  {
+                    "name": "vae",
+                    "type": "VAE",
+                    "link": 7
+                  },
+                  {
+                    "name": "audio_vae",
+                    "type": "VAE",
+                    "link": 8
+                  },
+                  {
+                    "name": "ref_images.ref_image_0",
+                    "shape": 7,
+                    "type": "IMAGE",
+                    "link": 13
+                  },
+                  {
+                    "label": "ref_image_1",
+                    "name": "ref_images.ref_image_1",
+                    "shape": 7,
+                    "type": "IMAGE",
+                    "link": null
+                  },
+                  {
+                    "label": "ref_video_0",
+                    "name": "ref_videos.ref_video_0",
+                    "shape": 7,
+                    "type": "IMAGE",
+                    "link": null
+                  },
+                  {
+                    "label": "ref_video_audio_0",
+                    "name": "ref_video_audios.ref_video_audio_0",
+                    "shape": 7,
+                    "type": "AUDIO",
+                    "link": null
+                  },
+                  {
+                    "label": "ref_audio_0",
+                    "name": "ref_audios.ref_audio_0",
+                    "shape": 7,
+                    "type": "AUDIO",
+                    "link": null
+                  },
+                  {
+                    "name": "prompt",
+                    "type": "STRING",
+                    "widget": {
+                      "name": "prompt"
+                    },
+                    "link": 9
+                  },
+                  {
+                    "name": "width",
+                    "type": "INT",
+                    "widget": {
+                      "name": "width"
+                    },
+                    "link": 10
+                  },
+                  {
+                    "name": "height",
+                    "type": "INT",
+                    "widget": {
+                      "name": "height"
+                    },
+                    "link": 11
+                  },
+                  {
+                    "name": "length",
+                    "type": "INT",
+                    "widget": {
+                      "name": "length"
+                    },
+                    "link": 12
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "positive",
+                    "type": "CONDITIONING",
+                    "slot_index": 0,
+                    "links": [
+                      15
+                    ]
+                  },
+                  {
+                    "name": "LATENT",
+                    "type": "LATENT",
+                    "slot_index": 1,
+                    "links": [
+                      21
+                    ]
+                  }
+                ],
+                "properties": {
+                  "Node name for S&R": "MiniMaxH3ReferenceToVideo"
+                },
+                "widgets_values": [
+                  0,
+                  1344,
+                  768,
+                  124,
+                  "match"
+                ],
+                "widgets_values_named": {
+                  "prompt": 0,
+                  "width": 1344,
+                  "height": 768,
+                  "length": 124,
+                  "ref_image_size": "match"
+                }
+              },
+              {
+                "id": 183,
+                "type": "BasicGuider",
+                "pos": [
+                  1830,
+                  860
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 19,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "model",
+                    "type": "MODEL",
+                    "link": 14
+                  },
+                  {
+                    "name": "conditioning",
+                    "type": "CONDITIONING",
+                    "link": 15
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "GUIDER",
+                    "type": "GUIDER",
+                    "slot_index": 0,
+                    "links": [
+                      18
+                    ]
+                  }
+                ],
+                "title": "Basic Guider",
+                "properties": {
+                  "Node name for S&R": "BasicGuider"
+                }
+              },
+              {
+                "id": 184,
+                "type": "RandomNoise",
+                "pos": [
+                  2220,
+                  550
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 8,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "NOISE",
+                    "type": "NOISE",
+                    "slot_index": 0,
+                    "links": [
+                      17
+                    ]
+                  }
+                ],
+                "title": "RandomNoise",
+                "properties": {
+                  "Node name for S&R": "RandomNoise"
+                },
+                "widgets_values": [
+                  2609080715,
+                  "fixed"
+                ],
+                "widgets_values_named": {
+                  "noise_seed": 2609080715,
+                  "control_after_generate": "fixed"
+                }
+              },
+              {
+                "id": 198,
+                "type": "KSamplerSelect",
+                "pos": [
+                  2220,
+                  310
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 9,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "SAMPLER",
+                    "type": "SAMPLER",
+                    "slot_index": 0,
+                    "links": [
+                      19
+                    ]
+                  }
+                ],
+                "title": "KSamplerSelect",
+                "properties": {
+                  "Node name for S&R": "KSamplerSelect"
+                },
+                "widgets_values": [
+                  "res_multistep"
+                ],
+                "widgets_values_named": {
+                  "sampler_name": "res_multistep"
+                }
+              },
+              {
+                "id": 199,
+                "type": "BasicScheduler",
+                "pos": [
+                  2220,
+                  60
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 17,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "model",
+                    "type": "MODEL",
+                    "link": 16
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "SIGMAS",
+                    "type": "SIGMAS",
+                    "slot_index": 0,
+                    "links": [
+                      20
+                    ]
+                  }
+                ],
+                "title": "BasicScheduler",
+                "properties": {
+                  "Node name for S&R": "BasicScheduler"
+                },
+                "widgets_values": [
+                  "simple",
+                  4,
+                  1
+                ],
+                "widgets_values_named": {
+                  "scheduler": "simple",
+                  "steps": 4,
+                  "denoise": 1
+                }
+              },
+              {
+                "id": 186,
+                "type": "SamplerCustomAdvanced",
+                "pos": [
+                  2220,
+                  790
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 20,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "noise",
+                    "type": "NOISE",
+                    "link": 17
+                  },
+                  {
+                    "name": "guider",
+                    "type": "GUIDER",
+                    "link": 18
+                  },
+                  {
+                    "name": "sampler",
+                    "type": "SAMPLER",
+                    "link": 19
+                  },
+                  {
+                    "name": "sigmas",
+                    "type": "SIGMAS",
+                    "link": 20
+                  },
+                  {
+                    "name": "latent_image",
+                    "type": "LATENT",
+                    "link": 21
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "output",
+                    "type": "LATENT",
+                    "slot_index": 0,
+                    "links": [
+                      22,
+                      24
+                    ]
+                  },
+                  {
+                    "name": "denoised_output",
+                    "type": "LATENT",
+                    "slot_index": 1,
+                    "links": []
+                  }
+                ],
+                "title": "SamplerCustomAdvanced",
+                "properties": {
+                  "Node name for S&R": "SamplerCustomAdvanced"
+                }
+              },
+              {
+                "id": 124,
+                "type": "VAEDecodeTiled",
+                "pos": [
+                  2610,
+                  60
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 21,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "samples",
+                    "type": "LATENT",
+                    "link": 22
+                  },
+                  {
+                    "name": "vae",
+                    "type": "VAE",
+                    "link": 23
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "IMAGE",
+                    "type": "IMAGE",
+                    "slot_index": 0,
+                    "links": [
+                      26
+                    ]
+                  }
+                ],
+                "title": "GPU 分块解码 · 控制显存峰值",
+                "properties": {
+                  "Node name for S&R": "VAEDecodeTiled"
+                },
+                "widgets_values": [
+                  512,
+                  64,
+                  64,
+                  8
+                ],
+                "widgets_values_named": {
+                  "tile_size": 512,
+                  "overlap": 64,
+                  "temporal_size": 64,
+                  "temporal_overlap": 8
+                }
+              },
+              {
+                "id": 168,
+                "type": "VAEDecodeAudio",
+                "pos": [
+                  2610,
+                  370
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 22,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "samples",
+                    "type": "LATENT",
+                    "link": 24
+                  },
+                  {
+                    "name": "vae",
+                    "type": "VAE",
+                    "link": 25
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "AUDIO",
+                    "type": "AUDIO",
+                    "slot_index": 0,
+                    "links": [
+                      28
+                    ]
+                  }
+                ],
+                "title": "VAE Decode Audio",
+                "properties": {
+                  "Node name for S&R": "VAEDecodeAudio"
+                }
+              },
+              {
+                "id": 224,
+                "type": "CreateVideo",
+                "pos": [
+                  2610,
+                  610
+                ],
+                "size": [
+                  345,
+                  200
+                ],
+                "flags": {},
+                "order": 23,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "images",
+                    "type": "IMAGE",
+                    "link": 26
+                  },
+                  {
+                    "name": "audio",
+                    "shape": 7,
+                    "type": "AUDIO",
+                    "link": 28
+                  },
+                  {
+                    "name": "fps",
+                    "type": "FLOAT",
+                    "widget": {
+                      "name": "fps"
+                    },
+                    "link": 27
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "VIDEO",
+                    "type": "VIDEO",
+                    "slot_index": 0,
+                    "links": [
+                      29
+                    ]
+                  }
+                ],
+                "title": "Create Video",
+                "properties": {
+                  "Node name for S&R": "CreateVideo"
+                },
+                "widgets_values": [
+                  30,
+                  8
+                ],
+                "widgets_values_named": {
+                  "fps": 30,
+                  "bit_depth": 8
+                }
+              },
+              {
+                "id": 167,
+                "type": "SaveVideo",
+                "pos": [
+                  2610,
+                  850
+                ],
+                "size": [
+                  530,
+                  154
+                ],
+                "flags": {},
+                "order": 24,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "video",
+                    "type": "VIDEO",
+                    "link": 29
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "video",
+                    "type": "VIDEO",
+                    "slot_index": 0,
+                    "links": []
+                  }
+                ],
+                "title": "保存 15 秒卡点 PV",
+                "properties": {
+                  "Node name for S&R": "SaveVideo"
+                },
+                "widgets_values": [
+                  "video/Pixel_Fantasy_5060Ti_15s",
+                  "mp4",
+                  "h264",
+                  "auto"
+                ],
+                "widgets_values_named": {
+                  "filename_prefix": "video/Pixel_Fantasy_5060Ti_15s",
+                  "format": "mp4",
+                  "codec": "h264",
+                  "codec.encoding": "auto"
+                }
+              },
+              {
+                "id": 209,
+                "type": "XB_llamaModelLoader",
+                "pos": [
+                  820,
+                  60
+                ],
+                "size": [
+                  345,
+                  300
+                ],
+                "flags": {},
+                "order": 10,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "llama_model",
+                    "type": "LLAMACPPMODEL",
+                    "slot_index": 0,
+                    "links": [
+                      30
+                    ]
+                  }
+                ],
+                "properties": {
+                  "Node name for S&R": "XB_llamaModelLoader"
+                },
+                "widgets_values": [
+                  "Qwen3.5-9B-Q4_K_M.gguf",
+                  "Qwen3.5-9B-mmproj-F16.gguf",
+                  "Qwen3.5",
+                  8192,
+                  -1,
+                  0,
+                  1024
+                ],
+                "widgets_values_named": {
+                  "model": "Qwen3.5-9B-Q4_K_M.gguf",
+                  "mmproj": "Qwen3.5-9B-mmproj-F16.gguf",
+                  "chat_handler": "Qwen3.5",
+                  "n_ctx": 8192,
+                  "vram_limit": -1,
+                  "image_min_tokens": 0,
+                  "image_max_tokens": 1024
+                },
+                "color": "#16727c",
+                "bgcolor": "#4F0074"
+              },
+              {
+                "id": 208,
+                "type": "XB_llamaParameters",
+                "pos": [
+                  820,
+                  420
+                ],
+                "size": [
+                  345,
+                  460
+                ],
+                "flags": {},
+                "order": 11,
+                "mode": 0,
+                "inputs": [],
+                "outputs": [
+                  {
+                    "name": "parameters",
+                    "type": "LLAMACPPARAMS",
+                    "slot_index": 0,
+                    "links": [
+                      31
+                    ]
+                  }
+                ],
+                "properties": {
+                  "Node name for S&R": "XB_llamaParameters"
+                },
+                "widgets_values": [
+                  3072,
+                  30,
+                  0.9,
+                  0.05,
+                  1,
+                  0.6,
+                  1.05,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  5,
+                  -1
+                ],
+                "widgets_values_named": {
+                  "max_tokens": 3072,
+                  "top_k": 30,
+                  "top_p": 0.9,
+                  "min_p": 0.05,
+                  "typical_p": 1,
+                  "temperature": 0.6,
+                  "repeat_penalty": 1.05,
+                  "frequency_penalty": 0,
+                  "present_penalty": 0,
+                  "mirostat_mode": 0,
+                  "mirostat_eta": 0.1,
+                  "mirostat_tau": 5,
+                  "state_uid": -1
+                },
+                "color": "#16727c",
+                "bgcolor": "#4F0074"
+              },
+              {
+                "id": 210,
+                "type": "XB_llamaInstruct",
+                "pos": [
+                  1210,
+                  60
+                ],
+                "size": [
+                  550,
+                  600
+                ],
+                "flags": {},
+                "order": 14,
+                "mode": 0,
+                "inputs": [
+                  {
+                    "name": "llama_model",
+                    "type": "LLAMACPPMODEL",
+                    "link": 30
+                  },
+                  {
+                    "name": "parameters",
+                    "shape": 7,
+                    "type": "LLAMACPPARAMS",
+                    "link": 31
+                  },
+                  {
+                    "name": "images",
+                    "shape": 7,
+                    "type": "IMAGE",
+                    "link": 32
+                  },
+                  {
+                    "name": "queue_handler",
+                    "shape": 7,
+                    "type": "*",
+                    "link": null
+                  }
+                ],
+                "outputs": [
+                  {
+                    "name": "output",
+                    "type": "STRING",
+                    "slot_index": 0,
+                    "links": [
+                      5
+                    ]
+                  },
+                  {
+                    "name": "output_list",
+                    "shape": 6,
+                    "type": "STRING",
+                    "slot_index": 1,
+                    "links": []
+                  },
+                  {
+                    "name": "state_uid",
+                    "type": "INT",
+                    "slot_index": 2,
+                    "links": []
+                  }
+                ],
+                "properties": {
+                  "Node name for S&R": "XB_llamaInstruct"
+                },
+                "widgets_values": [
+                  "Empty - Nothing",
+                  "制作15秒高冲击人物PV卡点混剪，15个分镜。保持参考图中的人物、脸、发型、服装、配饰和配色。标题为“Pixel Fantasy”。\n\nFill the following production template. COPY EVERY FIELD NAME AND TIMESTAMP EXACTLY. Replace each parenthesized instruction with a concise English description. Do not remove timestamps. Use only deliberate edits, never body morphing. Do not invent glove clasps or extra garments.\nsubject_definitions: (describe the visible reference character accurately)\nsummary: [reference generation] (15-second anime character PV)\nretention_analysis: <Subject 1>: fully_preserved.\ndetailed_description:\n[Shot 1] (eye close-up; one action)\n[Shot 2] At 00:01.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 3] At 00:02.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 4] At 00:03.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 5] At 00:04.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 6] At 00:05.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 7] At 00:06.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 8] At 00:07.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 9] At 00:08.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\n[Shot 10] At 00:09.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 11] At 00:10.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 12] At 00:11.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 13] At 00:12.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 14] At 00:13.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 15] At 00:14.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\noverall_soundscape: (sparse whooshes, impacts below music; no speech)\nnon_diegetic_music: (132 BPM 4/4 instrumental electronic pop; musical rise and final resolution, no intelligible lyrics)",
+                  "You write MiniMax H3 reference-to-video prompts. Inspect the supplied image and expand the user's concept into ONE English production prompt, without reasoning or code fences. Use these six fields in order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.\nDefine the sole pictured character as <Subject 1>; use only visibly supported appearance facts. Preserve their face, hair, eye color, horns or ornaments, clothing, gloves, footwear, accessories and original palette throughout. Do not invent or copy characters or change clothing. The image is an identity reference, not necessarily the opening composition. The original background may be replaced by graphic stages in the character's palette. Do not write dimensions or aspect ratio.\nThe summary starts [reference generation]. Plan exactly 15 seconds with 15 distinct, readable shots. Use [Shot 1] without timestamp, then [Shot N] At MM:SS.mmm at increasing one-second intervals 00:01.000 through 00:14.000. Give each shot a concise concrete composition, character action and camera or graphic response. Use cel-shaded anime fashion editorial styling, ice-blue/navy/white graphic shapes with restrained gold/red accents when supported by the image. Maintain stable anatomy and clear hands. Use action-match cuts, occlusion cuts, ink wipes and comic panels without body morphing. Increase intensity toward a heroic final pose. Use the exact title \"Pixel Fantasy\" only twice; no other text or logos. Do not merely describe the reference or reuse an unrelated example character.\nretention_analysis explicitly says <Subject 1>: fully_preserved. The subject never speaks or sings. Use an energetic 132 BPM 4/4 instrumental electronic pop beat, melodic synth, punchy drums and bass, sparse whooshes and impacts below the music; align cuts and gestures with strong beats. No intelligible lyrics, dialogue or voiceover. Stay under 6500 English characters; finish all six fields.",
+                  "images",
+                  2,
+                  768,
+                  2609080715,
+                  "fixed",
+                  true,
+                  false
+                ],
+                "widgets_values_named": {
+                  "preset_prompt": "Empty - Nothing",
+                  "custom_prompt": "制作15秒高冲击人物PV卡点混剪，15个分镜。保持参考图中的人物、脸、发型、服装、配饰和配色。标题为“Pixel Fantasy”。\n\nFill the following production template. COPY EVERY FIELD NAME AND TIMESTAMP EXACTLY. Replace each parenthesized instruction with a concise English description. Do not remove timestamps. Use only deliberate edits, never body morphing. Do not invent glove clasps or extra garments.\nsubject_definitions: (describe the visible reference character accurately)\nsummary: [reference generation] (15-second anime character PV)\nretention_analysis: <Subject 1>: fully_preserved.\ndetailed_description:\n[Shot 1] (eye close-up; one action)\n[Shot 2] At 00:01.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 3] At 00:02.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 4] At 00:03.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 5] At 00:04.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 6] At 00:05.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 7] At 00:06.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 8] At 00:07.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 9] At 00:08.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\n[Shot 10] At 00:09.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 11] At 00:10.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 12] At 00:11.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 13] At 00:12.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 14] At 00:13.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 15] At 00:14.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\noverall_soundscape: (sparse whooshes, impacts below music; no speech)\nnon_diegetic_music: (132 BPM 4/4 instrumental electronic pop; musical rise and final resolution, no intelligible lyrics)",
+                  "system_prompt": "You write MiniMax H3 reference-to-video prompts. Inspect the supplied image and expand the user's concept into ONE English production prompt, without reasoning or code fences. Use these six fields in order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.\nDefine the sole pictured character as <Subject 1>; use only visibly supported appearance facts. Preserve their face, hair, eye color, horns or ornaments, clothing, gloves, footwear, accessories and original palette throughout. Do not invent or copy characters or change clothing. The image is an identity reference, not necessarily the opening composition. The original background may be replaced by graphic stages in the character's palette. Do not write dimensions or aspect ratio.\nThe summary starts [reference generation]. Plan exactly 15 seconds with 15 distinct, readable shots. Use [Shot 1] without timestamp, then [Shot N] At MM:SS.mmm at increasing one-second intervals 00:01.000 through 00:14.000. Give each shot a concise concrete composition, character action and camera or graphic response. Use cel-shaded anime fashion editorial styling, ice-blue/navy/white graphic shapes with restrained gold/red accents when supported by the image. Maintain stable anatomy and clear hands. Use action-match cuts, occlusion cuts, ink wipes and comic panels without body morphing. Increase intensity toward a heroic final pose. Use the exact title \"Pixel Fantasy\" only twice; no other text or logos. Do not merely describe the reference or reuse an unrelated example character.\nretention_analysis explicitly says <Subject 1>: fully_preserved. The subject never speaks or sings. Use an energetic 132 BPM 4/4 instrumental electronic pop beat, melodic synth, punchy drums and bass, sparse whooshes and impacts below the music; align cuts and gestures with strong beats. No intelligible lyrics, dialogue or voiceover. Stay under 6500 English characters; finish all six fields.",
+                  "inference_mode": "images",
+                  "max_frames": 2,
+                  "max_size": 768,
+                  "seed": 2609080715,
+                  "control_after_generate": "fixed",
+                  "force_offload": true,
+                  "save_states": false
+                },
+                "color": "#16727c",
+                "bgcolor": "#4F0074"
+              }
+            ],
+            "links": [
+              [
+                1,
+                180,
+                0,
+                200,
+                0,
+                "MODEL"
+              ],
+              [
+                2,
+                200,
+                0,
+                203,
+                0,
+                "MODEL"
+              ],
+              [
+                3,
+                135,
+                0,
+                134,
+                0,
+                "FLOAT"
+              ],
+              [
+                4,
+                194,
+                0,
+                134,
+                1,
+                "FLOAT"
+              ],
+              [
+                5,
+                210,
+                0,
+                211,
+                0,
+                "STRING"
+              ],
+              [
+                6,
+                174,
+                0,
+                212,
+                0,
+                "CLIP"
+              ],
+              [
+                7,
+                175,
+                0,
+                212,
+                1,
+                "VAE"
+              ],
+              [
+                8,
+                176,
+                0,
+                212,
+                2,
+                "VAE"
+              ],
+              [
+                9,
+                211,
+                0,
+                212,
+                8,
+                "STRING"
+              ],
+              [
+                10,
+                115,
+                0,
+                212,
+                9,
+                "INT"
+              ],
+              [
+                11,
+                115,
+                1,
+                212,
+                10,
+                "INT"
+              ],
+              [
+                12,
+                134,
+                1,
+                212,
+                11,
+                "INT"
+              ],
+              [
+                13,
+                114,
+                0,
+                212,
+                3,
+                "IMAGE"
+              ],
+              [
+                14,
+                203,
+                0,
+                183,
+                0,
+                "MODEL"
+              ],
+              [
+                15,
+                212,
+                0,
+                183,
+                1,
+                "CONDITIONING"
+              ],
+              [
+                16,
+                203,
+                0,
+                199,
+                0,
+                "MODEL"
+              ],
+              [
+                17,
+                184,
+                0,
+                186,
+                0,
+                "NOISE"
+              ],
+              [
+                18,
+                183,
+                0,
+                186,
+                1,
+                "GUIDER"
+              ],
+              [
+                19,
+                198,
+                0,
+                186,
+                2,
+                "SAMPLER"
+              ],
+              [
+                20,
+                199,
+                0,
+                186,
+                3,
+                "SIGMAS"
+              ],
+              [
+                21,
+                212,
+                1,
+                186,
+                4,
+                "LATENT"
+              ],
+              [
+                22,
+                186,
+                0,
+                124,
+                0,
+                "LATENT"
+              ],
+              [
+                23,
+                175,
+                0,
+                124,
+                1,
+                "VAE"
+              ],
+              [
+                24,
+                186,
+                0,
+                168,
+                0,
+                "LATENT"
+              ],
+              [
+                25,
+                176,
+                0,
+                168,
+                1,
+                "VAE"
+              ],
+              [
+                26,
+                124,
+                0,
+                224,
+                0,
+                "IMAGE"
+              ],
+              [
+                27,
+                194,
+                0,
+                224,
+                2,
+                "FLOAT"
+              ],
+              [
+                28,
+                168,
+                0,
+                224,
+                1,
+                "AUDIO"
+              ],
+              [
+                29,
+                224,
+                0,
+                167,
+                0,
+                "VIDEO"
+              ],
+              [
+                30,
+                209,
+                0,
+                210,
+                0,
+                "LLAMACPPMODEL"
+              ],
+              [
+                31,
+                208,
+                0,
+                210,
+                1,
+                "LLAMACPPARAMS"
+              ],
+              [
+                32,
+                114,
+                0,
+                210,
+                2,
+                "IMAGE"
+              ]
+            ],
+            "groups": [
+              {
+                "id": 1,
+                "title": "模型 · GPU 与量化",
+                "bounding": [
+                  -20,
+                  0,
+                  395,
+                  1250
+                ],
+                "color": "#3f789e",
+                "flags": {}
+              },
+              {
+                "id": 2,
+                "title": "参考图 / 输出尺寸 / 时长",
+                "bounding": [
+                  390,
+                  0,
+                  395,
+                  1510
+                ],
+                "color": "#3f789e",
+                "flags": {}
+              },
+              {
+                "id": 3,
+                "title": "本地 Qwen 视觉扩写 / 提示词",
+                "bounding": [
+                  800,
+                  0,
+                  995,
+                  1390
+                ],
+                "color": "#3f789e",
+                "flags": {}
+              },
+              {
+                "id": 4,
+                "title": "参考条件",
+                "bounding": [
+                  1810,
+                  0,
+                  395,
+                  1120
+                ],
+                "color": "#3f789e",
+                "flags": {}
+              },
+              {
+                "id": 5,
+                "title": "4 步 Turbo 采样",
+                "bounding": [
+                  2200,
+                  0,
+                  395,
+                  1060
+                ],
+                "color": "#3f789e",
+                "flags": {}
+              },
+              {
+                "id": 6,
+                "title": "GPU 解码 / 音视频输出",
+                "bounding": [
+                  2590,
+                  0,
+                  580,
+                  1470
+                ],
+                "color": "#3f789e",
+                "flags": {}
+              }
+            ],
+            "config": {},
+            "extra": {
+              "ds": {
+                "scale": 0.38,
+                "offset": [
+                  40,
+                  60
+                ]
+              },
+              "frontendVersion": "1.49.6"
+            },
+            "version": 0.4,
+            "seed_widgets": {
+              "184": 0,
+              "210": 6
+            }
+          }
+        },
+        "client_id": "601a0e63a1854ac797f0f83145091fa8",
+        "create_time": 1788824618770
+      },
+      [
+        "211",
+        "167"
+      ]
+    ],
+    "outputs": {
+      "211": {
+        "text": [
+          "subject_definitions: <Subject 1> is a female character with wavy blue hair, red eyes, and two red curved horns. She wears a black halter top with a gold bell at the neck, a white and blue high-collared open coat with flowing sleeves, dark leggings, and black gloves. Accessories include a golden key belt buckle, a hanging tassel, and red ribbon bows on her shoes. The palette is ice-blue, navy, white, gold, and red against a starry deep blue void.\n\nsummary: [reference generation] A 15-second high-impact character PV montage featuring <Subject 1> in cel-shaded anime fashion editorial style. The sequence maintains stable anatomy and clear hands, using action-match cuts, ink wipes, and graphic transitions. The visual theme employs ice-blue, navy, white, gold, and red accents. The exact title \"Pixel Fantasy\" appears only twice, once at Shot 9 and again at the final Shot 15.\n\nretention_analysis: <Subject 1>: fully_preserved.\n\ndetailed_description:\n[Shot 1] Full body standing pose; <Subject 1> stands center frame with arms relaxed at sides, facing forward in a neutral stance.\n[Shot 2] At 00:01.000, Medium close-up of the upper torso; <Subject 1> begins to lift her right arm slightly as a sharp ink wipe transition occurs across the screen.\n[Shot 3] At 00:02.000, Side profile three-quarter view; <Subject 1> steps forward with her left leg while tilting her head to the right, matched by a hard cut.\n[Shot 4] At 00:03.000, Dynamic low-angle shot from below; <Subject 1> lunges forward with a determined expression, utilizing an occlusion cut where a graphic shape briefly covers the frame.\n[Shot 5] At 00:04.000, Extreme close-up on the face and eyes; <Subject 1> gazes intensely at the camera, synchronized with a comic panel style flash effect.\n[Shot 6] At 00:05.000, High-angle shot looking down from above; <Subject 1> raises both hands in a defensive or casting gesture, matched by an ink wipe transition.\n[Shot 7] At 00:06.000, Mid-shot from the front; <Subject 1> brings her hands together in front of her chest, palms open, with a sharp action-match cut.\n[Shot 8] At 00:07.000, Low-angle hero shot emphasizing height; <Subject 1> strikes a powerful pose with one hand on hip and the other extended, utilizing a graphic shape overlay.\n[Shot 9] At 00:08.000, Full body shot with dramatic lighting; <Subject 1> stands confidently as the exact title \"Pixel Fantasy\" appears in bold letters behind her silhouette.\n[Shot 10] At 00:09.000, Close-up on the flowing coat details; <Subject 1> spins slightly to show the movement of the white and blue fabric, matched by a quick ink wipe.\n[Shot 11] At 00:10.000, Dynamic side view in motion; <Subject 1> dashes forward with legs blurred, utilizing an action-match cut to maintain momentum.\n[Shot 12] At 00:11.000, Over-the-shoulder shot; <Subject 1> looks back over her left shoulder with a slight smile, synchronized with a comic panel flash effect.\n[Shot 13] At 00:12.000, Extreme close-up on the gold bell and neck area; <Subject 1> tilts her head down slightly, matched by a graphic shape transition.\n[Shot 14] At 00:13.000, Full body shot with arms wide open; <Subject 1} stands tall in a welcoming or commanding posture, utilizing an occlusion cut for emphasis.\n[Shot 15] At 00:14.000, Final heroic pose from a low angle; <Subject 1> stands triumphantly as the exact title \"Pixel Fantasy\" reappears behind her for the second time to conclude the sequence.\n\noverall_soundscape: Sparse whooshes and impacts below the music align with visual transitions; no intelligible speech or dialogue is present.\n\nnon_diegetic_music: Energetic 132 BPM 4/4 instrumental electronic pop beat with melodic synth leads, punchy drums, and bass; the track features a musical rise and final resolution with no lyrics."
+        ]
+      },
+      "167": {
+        "images": [
+          {
+            "filename": "Pixel_Fantasy_5060Ti_15s_00002_.mp4",
+            "subfolder": "video",
+            "type": "output"
+          }
+        ],
+        "animated": [
+          true
+        ]
+      }
+    },
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "da2816de-5b36-44bb-9aec-99dc8242c93c",
+            "timestamp": 1788824618775
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "114",
+              "208",
+              "209",
+              "210",
+              "211"
+            ],
+            "prompt_id": "da2816de-5b36-44bb-9aec-99dc8242c93c",
+            "timestamp": 1788824618798
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "da2816de-5b36-44bb-9aec-99dc8242c93c",
+            "timestamp": 1788824948515
+          }
+        ]
+      ]
+    },
+    "meta": {
+      "211": {
+        "node_id": "211",
+        "display_node": "211",
+        "parent_node": null,
+        "real_node_id": "211"
+      },
+      "167": {
+        "node_id": "167",
+        "display_node": "167",
+        "parent_node": null,
+        "real_node_id": "167"
+      }
+    }
+  }
+}

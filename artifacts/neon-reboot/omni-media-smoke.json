@@ -1,0 +1,17 @@
+{
+  "video": {
+    "name": "Sky_Reboot-24fps.mp4",
+    "subfolder": "",
+    "type": "input"
+  },
+  "audio": {
+    "name": "reference-audio.wav",
+    "subfolder": "",
+    "type": "input"
+  },
+  "image": {
+    "name": "reference-1.png",
+    "subfolder": "",
+    "type": "input"
+  }
+}

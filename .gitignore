@@ -40,3 +40,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# local validation/runtime dependencies
+*.whl
+**/__pycache__/
+*.pyc
+artifacts/carrot-skill-validation/python/

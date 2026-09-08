@@ -1,4 +1,5 @@
 /** C6 结果节点：通过连线读取上游运行态与平台资产，不冗余持久化引用。 */
+import ReferenceInputNode from './ReferenceInputNode';
 import { useContext, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Alert, Button, Empty, Popconfirm, Progress, Space, Spin } from 'antd';
@@ -8,6 +9,10 @@ import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview'
 import { ResultNodeData, resultSourceHandle, resultTargetHandle } from './types';
 
 export default function ResultNode(props: NodeProps) {
+  return props.data.inputMode ? <ReferenceInputNode {...props} /> : <ResultPreviewNode {...props} />;
+}
+
+function ResultPreviewNode(props: NodeProps) {
   const { readOnly, deleteNode, getResultState } = useContext(CanvasNodeDataContext);
   const { run, assets } = getResultState(props.id);
   const kind = ((props.data as ResultNodeData).kind === 'video' ? 'video' : 'image') as 'image' | 'video';

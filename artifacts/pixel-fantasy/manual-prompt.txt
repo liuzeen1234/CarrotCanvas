@@ -1,0 +1,27 @@
+subject_definitions:
+<Subject 1>: The sole anime woman in <Picture 1>, with pale blue layered hair, a curved top strand, long blue side locks, violet-pink eyes, and paired black horns with red interiors. She wears a black high-neck sleeveless bodice, a gold bell at her chest, a white and pale-blue embroidered front panel, detached white sleeves with deep-blue angular cuffs, black gloves, dark tights, gold and red ornaments, red ankle ribbons and black-and-white shoes.
+summary:
+[reference generation] A fifteen-second high-impact anime character fashion PV. One consistent character performs rhythmic poses across ice-blue, navy and white graphic stages, accented with her existing gold and red details. Fifteen crisp shots build from intimate recognition to a bold full-body finale. The exact title "Pixel Fantasy" appears twice.
+retention_analysis:
+<Subject 1> (appears throughout [Shot 1]-[Shot 15]): fully_preserved - retain her face, eyes, hair, horns, outfit, ornaments, gloves, tights and shoes in every shot.
+detailed_description:
+Premium cel-shaded anime illustration with clean line art, graphic shadows, comic framing and restrained halftone. Every edit is a deliberate cut or opaque graphic wipe; the character retains stable anatomy and a single outfit.
+[Shot 1] Extreme close-up of her violet-pink eyes. She looks into the lens; a thin ice-blue graphic line strikes on the first downbeat.
+[Shot 2] At 00:01.000, head-and-shoulders view. She turns her chin right, pale-blue locks following; a short rightward whip-pan exits with a whoosh.
+[Shot 3] At 00:02.000, medium frontal view. Her right gloved hand rises beside her cheek then opens outward. A white comic panel tracks the gesture.
+[Shot 4] At 00:03.000, close-up of the gold chest bell and white collar as her shoulders rotate. Gold graphic rings pulse behind the bell on the kick.
+[Shot 5] At 00:04.000, three-quarter full-body view. She steps left and settles into a balanced stance, sleeves trailing naturally; camera tracks left.
+[Shot 6] At 00:05.000, a low-angle medium view catches her crossed wrists opening into a confident pose. Navy panels split apart behind her.
+[Shot 7] At 00:06.000, a close-up side profile shows her small smile as she glances back. Her horns and hair stay unchanged; cut on the snare.
+[Shot 8] At 00:07.000, a gloved palm moves toward the lens, fully occluding it; an opaque ice-blue ink wipe finishes the motion with a low impact.
+[Shot 9] At 00:08.000, the wipe reveals a wide graphic stage. She stands in a strong three-quarter pose; "Pixel Fantasy" lands behind her in large clean lettering.
+[Shot 10] At 00:09.000, close view of her shoes taking one precise forward step. Red ankle bows remain visible; a white geometric line follows the footfall.
+[Shot 11] At 00:10.000, medium view rises to her face while she lifts both forearms into a clear symmetrical pose. Sleeves snap on a musical accent.
+[Shot 12] At 00:11.000, an overhead three-quarter view tracks a small turn, revealing the embroidered panel and long blue garment tails, with restrained radial graphics.
+[Shot 13] At 00:12.000, eye-level close-up. She tilts her chin upward then meets the lens with a confident smile; the camera pushes in slightly.
+[Shot 14] At 00:13.000, full-body low-angle view. She plants her feet and sweeps one arm outward, triggering crisp white and ice-blue panels that hard-cut to the final stage.
+[Shot 15] At 00:14.000, stable full-body hero composition. She holds a graceful confident pose, face clearly visible. "Pixel Fantasy" returns behind her, identical spelling. Camera settles and the last frame remains readable.
+overall_soundscape:
+Sparse short whooshes at whip-pan and palm wipe, one low impact for the title, restrained cloth snaps. Effects remain below the music. No dialogue or voiceover; the character remains silent.
+non_diegetic_music:
+132 BPM, 4/4 instrumental Japanese electronic pop club track with bright melodic synth, punchy bass, crisp snare and hi-hats. Establish a clear beat immediately, add rhythmic layers across the middle shots, peak during the final poses, and resolve with a short clean final accent. Cuts and strongest gestures synchronize to downbeats or clear musical accents. No intelligible lyrics.

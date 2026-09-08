@@ -1,0 +1,391 @@
+{
+  "114": {
+    "inputs": {
+      "image": "Pixel_Fantasy_reference.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "参考人物图片"
+    }
+  },
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.4,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "分辨率 · 5060 Ti 16GB"
+    }
+  },
+  "124": {
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 8,
+      "samples": [
+        "186",
+        0
+      ],
+      "vae": [
+        "175",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "GPU 分块解码 · 控制显存峰值"
+    }
+  },
+  "134": {
+    "inputs": {
+      "expression": "max(5, round(a * b)) + (5 - (max(5, round(a * b)) % 17)) % 17",
+      "values.a": [
+        "135",
+        0
+      ],
+      "values.b": [
+        "194",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "135": {
+    "inputs": {
+      "value": 15.0
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "时长（秒）"
+    }
+  },
+  "167": {
+    "inputs": {
+      "filename_prefix": "video/Pixel_Fantasy_5060Ti_15s",
+      "format": "mp4",
+      "codec": "h264",
+      "codec.encoding": "auto",
+      "video": [
+        "224",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "保存 15 秒卡点 PV"
+    }
+  },
+  "168": {
+    "inputs": {
+      "samples": [
+        "186",
+        0
+      ],
+      "vae": [
+        "176",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE Decode Audio"
+    }
+  },
+  "174": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Qwen3-VL NVFP4 · GPU 编码"
+    }
+  },
+  "175": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "176": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "180": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "H3 Ref2VA INT8"
+    }
+  },
+  "183": {
+    "inputs": {
+      "model": [
+        "203",
+        0
+      ],
+      "conditioning": [
+        "212",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "184": {
+    "inputs": {
+      "noise_seed": 2609080715
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "186": {
+    "inputs": {
+      "noise": [
+        "184",
+        0
+      ],
+      "guider": [
+        "183",
+        0
+      ],
+      "sampler": [
+        "198",
+        0
+      ],
+      "sigmas": [
+        "199",
+        0
+      ],
+      "latent_image": [
+        "212",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "194": {
+    "inputs": {
+      "value": 24.0
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "帧率 · H3 固定 24"
+    }
+  },
+  "198": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "199": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 4,
+      "denoise": 1.0,
+      "model": [
+        "203",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "200": {
+    "inputs": {
+      "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "strength_model": 1.0,
+      "model": [
+        "180",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Ref2V Turbo · 4 步"
+    }
+  },
+  "203": {
+    "inputs": {
+      "attention": "comfy kitchen attention",
+      "model": [
+        "200",
+        0
+      ]
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "ModelAttentionBackend"
+    }
+  },
+  "208": {
+    "inputs": {
+      "max_tokens": 3072,
+      "top_k": 30,
+      "top_p": 0.9,
+      "min_p": 0.05,
+      "typical_p": 1.0,
+      "temperature": 0.6,
+      "repeat_penalty": 1.05,
+      "frequency_penalty": 0.0,
+      "present_penalty": 0.0,
+      "mirostat_mode": 0,
+      "mirostat_eta": 0.1,
+      "mirostat_tau": 5.0,
+      "state_uid": -1
+    },
+    "class_type": "XB_llamaParameters",
+    "_meta": {
+      "title": "XB-llama - ⚙️ 推理参数"
+    }
+  },
+  "209": {
+    "inputs": {
+      "model": "Qwen3.5-9B-Q4_K_M.gguf",
+      "mmproj": "Qwen3.5-9B-mmproj-F16.gguf",
+      "chat_handler": "Qwen3.5",
+      "n_ctx": 8192,
+      "vram_limit": -1,
+      "image_min_tokens": 0,
+      "image_max_tokens": 1024
+    },
+    "class_type": "XB_llamaModelLoader",
+    "_meta": {
+      "title": "XB-llama - 📦 模型加载器"
+    }
+  },
+  "210": {
+    "inputs": {
+      "preset_prompt": "Empty - Nothing",
+      "custom_prompt": "制作15秒高冲击人物PV卡点混剪，15个分镜。保持参考图中的人物、脸、发型、服装、配饰和配色。标题为“Pixel Fantasy”。\n\nFill the following production template. COPY EVERY FIELD NAME AND TIMESTAMP EXACTLY. Replace each parenthesized instruction with a concise English description. Do not remove timestamps. Use only deliberate edits, never body morphing. Do not invent glove clasps or extra garments.\nsubject_definitions: (describe the visible reference character accurately)\nsummary: [reference generation] (15-second anime character PV)\nretention_analysis: <Subject 1>: fully_preserved.\ndetailed_description:\n[Shot 1] (eye close-up; one action)\n[Shot 2] At 00:01.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 3] At 00:02.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 4] At 00:03.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 5] At 00:04.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 6] At 00:05.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 7] At 00:06.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 8] At 00:07.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 9] At 00:08.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\n[Shot 10] At 00:09.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 11] At 00:10.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 12] At 00:11.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 13] At 00:12.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 14] At 00:13.000, (one clear composition and gesture; action-matched hard cut or graphic wipe)\n[Shot 15] At 00:14.000, (one clear composition and gesture; the exact title \"Pixel Fantasy\" appears behind the character)\noverall_soundscape: (sparse whooshes, impacts below music; no speech)\nnon_diegetic_music: (132 BPM 4/4 instrumental electronic pop; musical rise and final resolution, no intelligible lyrics)",
+      "system_prompt": "You write MiniMax H3 reference-to-video prompts. Inspect the supplied image and expand the user's concept into ONE English production prompt, without reasoning or code fences. Use these six fields in order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.\nDefine the sole pictured character as <Subject 1>; use only visibly supported appearance facts. Preserve their face, hair, eye color, horns or ornaments, clothing, gloves, footwear, accessories and original palette throughout. Do not invent or copy characters or change clothing. The image is an identity reference, not necessarily the opening composition. The original background may be replaced by graphic stages in the character's palette. Do not write dimensions or aspect ratio.\nThe summary starts [reference generation]. Plan exactly 15 seconds with 15 distinct, readable shots. Use [Shot 1] without timestamp, then [Shot N] At MM:SS.mmm at increasing one-second intervals 00:01.000 through 00:14.000. Give each shot a concise concrete composition, character action and camera or graphic response. Use cel-shaded anime fashion editorial styling, ice-blue/navy/white graphic shapes with restrained gold/red accents when supported by the image. Maintain stable anatomy and clear hands. Use action-match cuts, occlusion cuts, ink wipes and comic panels without body morphing. Increase intensity toward a heroic final pose. Use the exact title \"Pixel Fantasy\" only twice; no other text or logos. Do not merely describe the reference or reuse an unrelated example character.\nretention_analysis explicitly says <Subject 1>: fully_preserved. The subject never speaks or sings. Use an energetic 132 BPM 4/4 instrumental electronic pop beat, melodic synth, punchy drums and bass, sparse whooshes and impacts below the music; align cuts and gestures with strong beats. No intelligible lyrics, dialogue or voiceover. Stay under 6500 English characters; finish all six fields.",
+      "inference_mode": "images",
+      "max_frames": 2,
+      "max_size": 768,
+      "seed": 2609080715,
+      "force_offload": true,
+      "save_states": false,
+      "llama_model": [
+        "209",
+        0
+      ],
+      "parameters": [
+        "208",
+        0
+      ],
+      "images": [
+        "114",
+        0
+      ]
+    },
+    "class_type": "XB_llamaInstruct",
+    "_meta": {
+      "title": "XB-llama - 💬 指令推理"
+    }
+  },
+  "211": {
+    "inputs": {
+      "text": [
+        "210",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "视频提示词 · 可手动修改"
+    }
+  },
+  "212": {
+    "inputs": {
+      "prompt": [
+        "211",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "134",
+        1
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "174",
+        0
+      ],
+      "vae": [
+        "175",
+        0
+      ],
+      "audio_vae": [
+        "176",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "114",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video"
+    }
+  },
+  "224": {
+    "inputs": {
+      "fps": [
+        "194",
+        0
+      ],
+      "bit_depth": 8,
+      "images": [
+        "124",
+        0
+      ],
+      "audio": [
+        "168",
+        0
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Create Video"
+    }
+  }
+}

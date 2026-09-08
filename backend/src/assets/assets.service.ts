@@ -34,6 +34,7 @@ export interface SaveGeneratedInput {
 
 /** 用户上传入参图的写入入参（二期图生图，端点另行提供） */
 export interface SaveUploadInput {
+  kind?: AssetKind;
   canvasId: string;
   nodeId?: string | null;
   buffer: Buffer;
@@ -107,7 +108,7 @@ export class AssetsService {
       id,
       canvasId: input.canvasId,
       nodeId: input.nodeId ?? null,
-      kind: 'image',
+      kind: input.kind ?? 'image',
       source: 'upload',
       runPromptId: null,
       workflowId: null,

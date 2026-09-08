@@ -8,7 +8,12 @@ import {
   Res,
   HttpException,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { prepareComfyInputs } from './comfyui-reference';
+import { prepareMediaUpload } from './comfyui-media';
 import { Readable } from 'stream';
 import { ComfyUIClientService } from './comfyui-client';
 import { ComfyUIGraphConverter } from './comfyui-graph-converter';
@@ -197,6 +202,7 @@ export class ComfyUIController {
       apiJson = workflow.apiJson as Record<string, unknown>;
     }
 
+    apiJson = prepareComfyInputs(apiJson, this.schemaService.analyze(apiJson, await this.client.getObjectInfo()));
     const begun = await this.persistentRuns.begin({
       provider: 'comfyui', canvasId: body.canvasId ?? null, nodeId: body.nodeId ?? null,
       shotId: body.shotId ?? null, parentRunId: body.parentRunId ?? null,
@@ -287,6 +293,21 @@ export class ComfyUIController {
 
   // ---------- 步骤⑥：图片上传 ----------
 
+  @Post('upload/media')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 200 * 1024 * 1024 } }))
+  async uploadMedia(@UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string } | undefined, @Body() body: { kind?: string; canvasId?: string; nodeId?: string; leaseToken?: string; leaseEpoch?: string; expectedRevision?: string }) {
+    if (!file) throw new HttpException('缺少媒体文件', HttpStatus.BAD_REQUEST);
+    const proof = { ...body, leaseEpoch: Number(body.leaseEpoch), expectedRevision: Number(body.expectedRevision) };
+    if (body.canvasId) await this.canvas.assertWriteAccess(body.canvasId, proof);
+    const prepared = await prepareMediaUpload(file.buffer, file.originalname, body.kind);
+    if (body.canvasId) {
+      await this.canvas.assertWriteAccess(body.canvasId, proof);
+      const asset = await this.assets.saveUpload({ canvasId: body.canvasId, nodeId: body.nodeId, kind: (body.kind ?? 'image') as 'image' | 'video' | 'audio', buffer: prepared.buffer, originName: prepared.name, mime: body.kind === 'video' ? 'video/mp4' : file.mimetype });
+      return { asset: { assetId: asset.id, kind: asset.kind, url: `/api/assets/${asset.id}`, filename: asset.originName } };
+    }
+    return { file: await this.client.uploadImage(prepared.buffer, prepared.name) };
+  }
+
   /** 上传图片到 ComfyUI input 目录（base64 JSON 转发，避免引入 multer） */
   @Post('upload/image')
   async uploadImage(@Body() body: { filename?: string; dataBase64?: string }) {
@@ -343,8 +364,8 @@ export class ComfyUIController {
     if (!body.canvasId || !body.assetId) throw new HttpException('缺少 canvasId 或 assetId', HttpStatus.BAD_REQUEST);
     const { asset, absPath } = await this.assets.read(body.assetId);
     if (asset.canvasId !== body.canvasId) throw new HttpException('资产不属于当前画布', HttpStatus.BAD_REQUEST);
-    if (asset.kind !== 'image') throw new HttpException(`暂不支持回灌 ${asset.kind} 类型资产`, HttpStatus.BAD_REQUEST);
-    const file = await this.client.uploadImage(await fs.readFile(absPath), asset.originName || `${asset.id}.png`);
+    const prepared = await prepareMediaUpload(await fs.readFile(absPath), asset.originName || `${asset.id}.${asset.kind === 'video' ? 'mp4' : asset.kind === 'audio' ? 'wav' : 'png'}`, asset.kind);
+    const file = await this.client.uploadImage(prepared.buffer, prepared.name);
     return { file, assetId: asset.id, kind: asset.kind };
   }
 

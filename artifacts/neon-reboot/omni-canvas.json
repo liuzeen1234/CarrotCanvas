@@ -1,0 +1,198 @@
+{
+  "id": "73b899eb-e086-4d54-a309-bc36c5b3c56d",
+  "name": "全能参考 · 入参连线示例",
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "omni",
+        "type": "txt2img",
+        "position": {
+          "x": 470,
+          "y": 30
+        },
+        "data": {
+          "workflowId": "35c2f155-78f6-4762-9ce1-93b90c78856e",
+          "workflowName": "MiniMax H3 全能参考 · 重启天际",
+          "formValues": {
+            "92::filename_prefix": "video/Sky_Reboot_R2V",
+            "92::format": "auto",
+            "92::codec": "auto",
+            "115::aspect_ratio": "16:9 (Widescreen)",
+            "115::megapixels": 0.98,
+            "115::multiple": 32,
+            "119::vae_name": "minimax_h3_video_vae_fp16.safetensors",
+            "120::vae_name": "minimax_h3_audio_vae_fp32.safetensors",
+            "123::sampler_name": "res_multistep",
+            "124::scheduler": "simple",
+            "124::denoise": 1,
+            "127::unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+            "127::weight_dtype": "default",
+            "128::clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "128::type": "minimax",
+            "128::device": "default",
+            "129::noise_seed": 2609071842,
+            "130::fps": 24,
+            "130::bit_depth": 8,
+            "131::expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+            "132::value": 6,
+            "136::ref_image_size": "match",
+            "136::ref_images.ref_image_2": "",
+            "136::ref_images.ref_image_3": "",
+            "136::ref_images.ref_image_4": "",
+            "136::ref_images.ref_image_5": "",
+            "136::ref_images.ref_image_6": "",
+            "136::ref_images.ref_image_7": "",
+            "136::ref_images.ref_image_8": "",
+            "136::ref_videos.ref_video_0": "",
+            "136::ref_videos.ref_video_1": "",
+            "136::ref_videos.ref_video_2": "",
+            "136::ref_video_audios.ref_video_audio_0": "",
+            "136::ref_video_audios.ref_video_audio_1": "",
+            "136::ref_video_audios.ref_video_audio_2": "",
+            "136::ref_audios.ref_audio_0": "",
+            "136::ref_audios.ref_audio_1": "",
+            "136::ref_audios.ref_audio_2": "",
+            "137::image": "sky-reboot-reference-1.png",
+            "138::value": "Create one continuous six-second cinematic shot for Sky Reboot. Use <Picture 1> for the adult female courier, her face, short black bob, pearl-white and graphite armor, and cyan core. Use <Picture 2> for the platform, skyline, architecture, and dormant blue-hour lighting. Start waist-up at a three-quarter frontal angle, with the skyline visible beside her. Perform a smooth, modest dolly backward throughout; keep a level horizon and consistent perspective, with no cuts. 0–2 seconds: she stands grounded, calmly holding the core above her right palm; her fingers gently open while her left arm remains relaxed. 2–4 seconds: the sphere rises twenty centimeters, maintaining its shape, then unfolds a thin horizontal geometric halo around itself. Her eyes follow it with minimal head movement. 4–6 seconds: the halo releases one broad cyan pulse that sweeps outward across the skyline, sequentially activating architectural light strips and windows. Keep the pulse translucent so buildings remain readable. Finish with the courier steady and the illuminated city revealed behind her. Preserve facial identity, stable anatomy, five natural fingers per hand, detailed armor surfaces, and sharp architectural edges. Restrained glow; no fog, blur, text, or watermarks. Native electronic sound effects: soft core hum, delicate ascending shimmer, then a clean resonant activation pulse. No dialogue or music.",
+            "139::image": "sky-reboot-reference-2.png",
+            "143::value": 20,
+            "144::value": 4,
+            "145::lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+            "145::strength_model": 1,
+            "146::value": true
+          },
+          "autoRandomSeedKeys": []
+        },
+        "style": {
+          "width": 350
+        }
+      },
+      {
+        "id": "duration",
+        "type": "result",
+        "position": {
+          "x": 40,
+          "y": 30
+        },
+        "data": {
+          "kind": "text",
+          "inputMode": true,
+          "lastText": "6"
+        },
+        "style": {
+          "width": 300
+        }
+      },
+      {
+        "id": "image",
+        "type": "result",
+        "position": {
+          "x": 40,
+          "y": 240
+        },
+        "data": {
+          "kind": "image",
+          "inputMode": true,
+          "lastAssets": [
+            {
+              "assetId": "e5f40219-aa54-4266-829b-a141c10588a2",
+              "kind": "image",
+              "url": "/api/assets/e5f40219-aa54-4266-829b-a141c10588a2",
+              "filename": "reference-1.png"
+            }
+          ]
+        },
+        "style": {
+          "width": 300
+        }
+      },
+      {
+        "id": "video",
+        "type": "result",
+        "position": {
+          "x": 40,
+          "y": 620
+        },
+        "data": {
+          "kind": "video",
+          "inputMode": true,
+          "lastAssets": [
+            {
+              "assetId": "003a7ff7-4015-479e-babc-d34dd1c85f97",
+              "kind": "video",
+              "url": "/api/assets/003a7ff7-4015-479e-babc-d34dd1c85f97",
+              "filename": "Sky_Reboot-24fps.mp4"
+            }
+          ]
+        },
+        "style": {
+          "width": 300
+        }
+      },
+      {
+        "id": "audio",
+        "type": "result",
+        "position": {
+          "x": 40,
+          "y": 980
+        },
+        "data": {
+          "kind": "audio",
+          "inputMode": true,
+          "lastAssets": [
+            {
+              "assetId": "806b1941-ee6d-41c3-af22-2355a0cb1d3d",
+              "kind": "audio",
+              "url": "/api/assets/806b1941-ee6d-41c3-af22-2355a0cb1d3d",
+              "filename": "reference-audio.wav"
+            }
+          ]
+        },
+        "style": {
+          "width": 300
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "wire-duration",
+        "source": "duration",
+        "sourceHandle": "text-source",
+        "target": "omni",
+        "targetHandle": "input:text:132:value"
+      },
+      {
+        "id": "wire-image",
+        "source": "image",
+        "sourceHandle": "image-source",
+        "target": "omni",
+        "targetHandle": "input:137:image"
+      },
+      {
+        "id": "wire-video",
+        "source": "video",
+        "sourceHandle": "video-source",
+        "target": "omni",
+        "targetHandle": "input:video:136:ref_videos.ref_video_0"
+      },
+      {
+        "id": "wire-audio",
+        "source": "audio",
+        "sourceHandle": "audio-source",
+        "target": "omni",
+        "targetHandle": "input:audio:136:ref_audios.ref_audio_0"
+      }
+    ],
+    "viewport": null
+  },
+  "revision": 6,
+  "schemaVersion": 1,
+  "brief": null,
+  "activeCheckpointId": null,
+  "lastHandoffId": null,
+  "updatedByType": "human",
+  "updatedById": "human-077160fd-542c-478b-9ee3-4fc9b80e83c4",
+  "createdAt": "2026-09-07T22:40:02.000Z",
+  "updatedAt": "2026-09-07T22:46:00.000Z"
+}

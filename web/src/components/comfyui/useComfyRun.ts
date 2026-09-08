@@ -187,12 +187,14 @@ export function useComfyRun(args: UseComfyRunArgs) {
   /** 上传图片到 ComfyUI input 目录，成功后写回字段值并加入下拉选项，返回上传后的文件名 */
   const uploadImage = useCallback(
     async (f: SchemaField, file: File): Promise<string> => {
-      const dataBase64 = await fileToBase64(file);
+      const payload = new FormData();
+      payload.append('file', file);
+      payload.append('kind', f.mediaKind ?? 'image');
       setUploading(true);
       try {
-        const res = await request<{ file: { name: string } }>('/api/comfyui/upload/image', {
+        const res = await request<{ file: { name: string } }>('/api/comfyui/upload/media', {
           method: 'POST',
-          data: { filename: file.name, dataBase64 },
+          data: payload, requestType: 'form',
         });
         setFieldValue(f, res.file.name);
         appendUploadOption(f, res.file.name);
@@ -236,7 +238,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
    * - 否则按当前模式（form 值级写回 / JSON 文本）组装。
    * 返回 false 表示参数解析失败（formError 已设置），否则提交成功（异常时 throw）。
    */
-  const submit = async (apiJsonOverride?: unknown): Promise<boolean> => {
+  const submit = async (apiJsonOverride?: unknown, connectedKeys: ReadonlySet<string> = new Set(), inputAssetIds: string[] = []): Promise<boolean> => {
     const w = workflowRef.current;
     if (!w) return false;
     let apiJson: unknown;
@@ -251,7 +253,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
       const generatedSeeds: Record<string, unknown> = {};
       for (const group of schema?.groups ?? []) for (const field of group.fields) {
         const key = fileKey(field);
-        if (field.isSeed && autoRandomSeedKeys.has(key)) generatedSeeds[key] = randomSeedValue(field);
+        if (field.isSeed && autoRandomSeedKeys.has(key) && !connectedKeys.has(key)) generatedSeeds[key] = randomSeedValue(field);
       }
       if (Object.keys(generatedSeeds).length) {
         apiJson = applyFormValues(apiJson, generatedSeeds);
@@ -270,6 +272,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
         data: {
           workflowId: w.id,
           apiJson,
+          inputAssetIds,
           canvasId: canvasRef.current?.canvasId,
           nodeId: canvasRef.current?.nodeId,
           leaseToken: canvasRef.current?.leaseToken,

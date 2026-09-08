@@ -1,0 +1,100 @@
+{
+  "run": {
+    "promptId": "46a542de-5b7b-4fa6-8925-7d3cf0db125a",
+    "workflowId": "35c2f155-78f6-4762-9ce1-93b90c78856e",
+    "title": "MiniMax H3 全能参考 · 重启天际",
+    "status": "success",
+    "queuedAt": 1788820741130,
+    "nodes": {
+      "carrot_ref_136_ref_audios_ref_audio_0": {
+        "value": 1,
+        "max": 1,
+        "state": "finished"
+      },
+      "smoke_audio": {
+        "value": 1,
+        "max": 1,
+        "state": "finished"
+      },
+      "carrot_ref_136_ref_videos_ref_video_0": {
+        "value": 1,
+        "max": 1,
+        "state": "finished"
+      },
+      "carrot_ref_136_ref_videos_ref_video_0_components": {
+        "value": 1,
+        "max": 1,
+        "state": "finished"
+      },
+      "smoke_frame": {
+        "value": 1,
+        "max": 1,
+        "state": "finished"
+      },
+      "smoke_save": {
+        "value": 1,
+        "max": 1,
+        "state": "finished"
+      }
+    },
+    "nodeTitles": {
+      "115": "Resolution Selector (Size)",
+      "119": "VAELoader",
+      "120": "VAELoader",
+      "121": "VAEDecodeAudio",
+      "122": "VAEDecode",
+      "123": "KSamplerSelect",
+      "124": "BasicScheduler",
+      "125": "SamplerCustomAdvanced",
+      "126": "BasicGuider",
+      "127": "UNETLoader",
+      "128": "CLIPLoader",
+      "129": "RandomNoise",
+      "130": "CreateVideo",
+      "131": "ComfyMathExpression",
+      "132": "Float (Duration)",
+      "136": "MiniMaxH3ReferenceToVideo",
+      "137": "LoadImage",
+      "138": "Input Text (Prompt)",
+      "139": "LoadImage",
+      "141": "If/Else Switch (model)",
+      "142": "If/Else Switch (Steps)",
+      "143": "Int (Full)",
+      "144": "Int (Lightning LoRA)",
+      "145": "LoraLoaderModelOnly",
+      "146": "Boolean (Enable Lightning LoRA)",
+      "carrot_ref_136_ref_videos_ref_video_0": "carrot_ref_136_ref_videos_ref_video_0",
+      "carrot_ref_136_ref_videos_ref_video_0_components": "carrot_ref_136_ref_videos_ref_video_0_components",
+      "carrot_ref_136_ref_audios_ref_audio_0": "carrot_ref_136_ref_audios_ref_audio_0",
+      "smoke_frame": "smoke_frame",
+      "smoke_save": "smoke_save",
+      "smoke_audio": "smoke_audio"
+    },
+    "outputs": [
+      {
+        "filename": "Omni_Input_Smoke_00001.flac",
+        "subfolder": "audio",
+        "type": "output",
+        "kind": "audio",
+        "url": "/api/comfyui/view?filename=Omni_Input_Smoke_00001.flac&type=output&subfolder=audio"
+      },
+      {
+        "filename": "Omni_Input_Smoke_00001_.png",
+        "subfolder": "",
+        "type": "output",
+        "kind": "image",
+        "url": "/api/comfyui/view?filename=Omni_Input_Smoke_00001_.png&type=output"
+      }
+    ],
+    "nodeErrors": {},
+    "nodeId": null,
+    "startedAt": 1788820741147,
+    "progress": {
+      "value": 6,
+      "max": 6
+    },
+    "currentNode": null,
+    "finishedAt": 1788820745387,
+    "runId": "176711ae-7e33-4f25-ad5f-a77f8ba41ee0"
+  }
+}

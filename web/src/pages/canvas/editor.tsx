@@ -31,6 +31,7 @@ import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TX
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { RunDuration } from '@/components/canvas/RunTiming';
 import { ComfyUIAPI, extractSeedValues, type RunStateData } from '@/components/comfyui/types';
+import SystemResourceMonitor from '@/components/canvas/SystemResourceMonitor';
 import './editor.css';
 
 const { Text } = Typography;
@@ -824,7 +825,7 @@ function CanvasEditorInner() {
     const edge = edges.find((item) => item.target === resultNodeId && item.targetHandle === targetHandle);
     if (!edge) return { run: null, assets: [] };
     let source = nodes.find((item) => item.id === edge.source);
-    if (source?.type === NODE_TYPE_RESULT) {
+    if (source?.type === NODE_TYPE_RESULT && !source.data.inputMode) {
       const upstreamKind = (source.data as any)?.kind === 'video' ? 'video' : 'image';
       const resultInput = edges.find((item) => item.target === source!.id && item.targetHandle === resultTargetHandle(upstreamKind));
       source = resultInput ? nodes.find((item) => item.id === resultInput.source) : undefined;
@@ -837,7 +838,7 @@ function CanvasEditorInner() {
     const edge = edges.find((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
     if (!edge) return null;
     let source = nodes.find((item) => item.id === edge.source);
-    if (source?.type === NODE_TYPE_RESULT) {
+    if (source?.type === NODE_TYPE_RESULT && !source.data.inputMode) {
       const upstreamKind = (source.data as any)?.kind === 'video' ? 'video' : 'image';
       const resultInput = edges.find((item) => item.target === source!.id && item.targetHandle === resultTargetHandle(upstreamKind));
       source = resultInput ? nodes.find((item) => item.id === resultInput.source) : undefined;
@@ -1213,6 +1214,9 @@ function CanvasEditorInner() {
                   {isNarrow ? null : '生成历史'}
                 </Button>
               </Panel>
+              <Panel position="top-right" className="canvas-resource-monitor nodrag">
+                <SystemResourceMonitor />
+              </Panel>
               {selectedEdge ? (
                 <Panel position="top-right" className="canvas-edge-actions">
                   <Button
@@ -1237,7 +1241,10 @@ function CanvasEditorInner() {
               <Controls />
             </ReactFlow>
 
-            {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} /> : null}
+            {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} onPickInput={(kind) => {
+              const position = menu ? screenToFlowPosition({x:menu.screenX,y:menu.screenY}) : {x:0,y:0};
+              setNodes(nds => [...nds, {id: crypto.randomUUID(), type: NODE_TYPE_RESULT, position, data:{kind,inputMode:true,lastText:'',lastAssets:[]},style:{width:300}}]);
+            }} /> : null}
 
             {/* 空白画布提示 */}
             {nodeCount === 0 ? (

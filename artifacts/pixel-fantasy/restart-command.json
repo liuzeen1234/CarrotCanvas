@@ -1,0 +1,20 @@
+{
+  "pid": 13948,
+  "cmd": [
+    "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI\\ComfyUI\\.venv\\Scripts\\python.exe",
+    "-s",
+    "ComfyUI\\main.py",
+    "--feature-flag",
+    "show_signin_button=true",
+    "--feature-flag",
+    "enable_telemetry=true",
+    "--enable-manager",
+    "--extra-model-paths-config",
+    "C:\\Users\\liu\\AppData\\Roaming\\Comfy Desktop\\instance-model-paths\\inst-1787671588105.yaml",
+    "--input-directory",
+    "D:\\Comfy-Desktop\\ComfyUI-Shared\\input",
+    "--output-directory",
+    "D:\\Comfy-Desktop\\ComfyUI-Shared\\output"
+  ],
+  "cwd": "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI"
+}

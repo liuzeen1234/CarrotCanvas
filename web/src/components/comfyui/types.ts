@@ -91,6 +91,7 @@ export interface SchemaField {
   options?: (string | number)[];
   multiline?: boolean;
   imageUpload?: boolean;
+  mediaKind?: 'image' | 'video' | 'audio';
   required: boolean;
   description?: string;
   isSeed?: boolean;

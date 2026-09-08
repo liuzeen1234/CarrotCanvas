@@ -169,9 +169,9 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
                     onUploadImage={onUploadImage}
                     uploading={uploading}
                     connectedImage={f.control === 'upload' ? getConnectedImage?.(f) ?? null : null}
-                    connectedText={f.control === 'textarea' || f.control === 'input' ? getConnectedText?.(f) ?? null : null}
+                    connectedText={getConnectedText?.(f) ?? null}
                   />
-                  {f.isSeed ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                  {f.isSeed && !getConnectedText?.(f) ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
                     <Button size="small" icon={<ReloadOutlined />} disabled={disabled} onClick={() => onRandomizeSeed?.(f)}>随机</Button>
                     <Switch size="small" checked={autoRandomSeedKeys?.has(fileKey(f))} disabled={disabled} onChange={(checked) => onAutoRandomSeedChange?.(fileKey(f), checked)} />
                     <span style={{ color: '#8c8c8c', fontSize: 11 }}>每次运行自动随机</span>
@@ -200,6 +200,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({ field: f, value, onChange, disabled, onUploadImage, uploading, connectedImage, connectedText }: FieldControlProps) {
+  if (connectedText && f.control !== 'upload') return <ImeSafeTextArea value={connectedText.text} onChange={() => {}} disabled autoSize={{ minRows: 1, maxRows: 5 }} placeholder="等待上游输出文本" />;
   switch (f.control) {
     case 'input_number':
       return (
@@ -305,13 +306,13 @@ function UploadField({ field: f, value, onChange, disabled, onUploadImage, uploa
             textAlign: 'center',
           }}
         >
-          <Image
+          {f.mediaKind === 'video' ? <video src={previewUrl} controls preload="metadata" style={{ width: '100%', maxHeight: 180 }} /> : f.mediaKind === 'audio' ? <audio src={previewUrl} controls preload="metadata" style={{ width: '100%' }} /> : <Image
             src={previewUrl}
             alt={connectedImage?.label || String(value)}
             width="100%"
             style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 4, display: 'block' }}
             fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='160' viewBox='0 0 320 160'%3E%3Crect width='320' height='160' fill='%23f5f5f5'/%3E%3Ctext x='160' y='84' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23999'%3E%E5%9B%BE%E7%89%87%E6%97%A0%E6%B3%95%E9%A2%84%E8%A7%88%3C/text%3E%3C/svg%3E"
-          />
+          />}
         </div>
       ) : null}
       {connectedImage ? (
@@ -326,13 +327,14 @@ function UploadField({ field: f, value, onChange, disabled, onUploadImage, uploa
           value={(value as string | number) ?? undefined}
           showSearch
           disabled={disabled}
-          placeholder="选择已有图片"
+          placeholder="选择已有文件或上传"
+          allowClear
           options={(f.options ?? []).map((o) => ({ value: o, label: String(o) }))}
-          onChange={(v) => onChange(v)}
+          onChange={(v) => onChange(v ?? '')}
         />
         {onUploadImage && (
           <Upload
-            accept="image/*"
+            accept={f.mediaKind === 'video' ? 'video/*' : f.mediaKind === 'audio' ? 'audio/*' : 'image/*'}
             showUploadList={false}
             disabled={disabled}
             customRequest={async ({ file, onSuccess, onError }) => {
