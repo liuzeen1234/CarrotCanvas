@@ -20,12 +20,14 @@ export interface NodeHistoryRun {
   candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null;
 }
 
-export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeContext, readOnly, refreshKey, control, onSelectAsset, onSelectText }: {
+export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeContext, readOnly, refreshKey, control, onSelectAsset, onSelectText, onObserveAsset, onObserveText, onRestoreSeeds }: {
   canvasId?: string; nodeId: string; kind: 'image' | 'video' | 'text'; readOnly: boolean; refreshKey?: unknown;
   promptModeContext?: 'text' | 'image' | 'edit' | 'analyze';
   control?: { leaseToken: string; leaseEpoch: number; expectedRevision: number };
   onSelectAsset?: (asset: { assetId: string; url: string; kind: string }) => void;
   onSelectText?: (text: string, parts?: { positive: string; negative: string } | null) => void;
+  onObserveAsset?: (asset: { assetId: string; url: string; kind: string }) => void;
+  onObserveText?: (text: string, parts?: { positive: string; negative: string } | null) => void;
   onRestoreSeeds?: (values: Record<string, number>) => void;
 }) {
   const [runs, setRuns] = useState<NodeHistoryRun[]>([]);
@@ -33,10 +35,23 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeCo
   const mediaItems = useMemo<CanvasMediaItem[]>(() => kind === 'text' ? [] : runs.flatMap((run) => run.outputAssetIds.map((assetId) => ({ assetId, url: `/api/assets/${assetId}`, kind }))), [kind, runs]);
   const load = async () => {
     if (!canvasId) return;
-    try { const result = await request<{ items: NodeHistoryRun[] }>(`/api/runs?canvasId=${encodeURIComponent(canvasId)}&nodeId=${encodeURIComponent(nodeId)}&status=succeeded&pageSize=20`); setRuns(result.items.filter((run) => run.outputAssetIds.length || run.outputText)); }
+    try {
+      const result = await request<{ items: NodeHistoryRun[] }>(`/api/runs?canvasId=${encodeURIComponent(canvasId)}&nodeId=${encodeURIComponent(nodeId)}&status=succeeded&pageSize=20`);
+      const visibleRuns = result.items.filter((run) => run.outputAssetIds.length || run.outputText);
+      setRuns(visibleRuns);
+      if (readOnly) {
+        if (kind === 'text') {
+          const selected = visibleRuns.find((run) => run.candidateGroup?.selectedRunId === run.id && run.outputText);
+          if (selected?.outputText) onObserveText?.(selected.outputText, selected.outputParts);
+        } else {
+          const selectedAssetId = visibleRuns.find((run) => run.candidateGroup?.selectedAssetId)?.candidateGroup?.selectedAssetId;
+          if (selectedAssetId) onObserveAsset?.({ assetId: selectedAssetId, url: `/api/assets/${selectedAssetId}`, kind });
+        }
+      }
+    }
     catch { /* 历史不可用不影响节点运行 */ }
   };
-  useEffect(() => { void load(); }, [canvasId, nodeId, refreshKey]);
+  useEffect(() => { void load(); }, [canvasId, nodeId, readOnly, refreshKey]);
 
   const chooseAsset = async (run: NodeHistoryRun, assetId: string) => {
     if (!canvasId || readOnly) return;

@@ -56,7 +56,7 @@ interface CanvasControlHolder { holderType: 'human' | 'agent'; holderId: string;
 interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: string | null; }
 interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
 interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
-interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
+interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
 
 const sourceHandleKind = (handle: string) => handle === 'text-positive-source' || handle === 'text-negative-source'
   ? 'text'
@@ -168,6 +168,8 @@ function CanvasEditorInner() {
   const [generationHistoryOpen, setGenerationHistoryOpen] = useState(false);
   const [generationHistoryLoading, setGenerationHistoryLoading] = useState(false);
   const [generationRuns, setGenerationRuns] = useState<GenerationRunItem[]>([]);
+  const [generationHistoryVersion, setGenerationHistoryVersion] = useState(0);
+  const generationHistorySignatureRef = useRef('');
   /** 运行态只驻留内存，不进入 graph；结果节点通过 Context 读取上游状态。 */
   const [nodeRuns, setNodeRuns] = useState<Record<string, RunStateData | null>>({});
   const nodesRef = useRef(nodes);
@@ -291,6 +293,7 @@ function CanvasEditorInner() {
         const activeHolder = !acquired && ['active', 'handoff_pending'].includes(status?.status) && status?.lease
           ? { holderType: status.lease.holderType, holderId: status.lease.holderId, status: status.status }
           : null;
+        leaseRef.current = acquired;
         setDoc(data); revisionRef.current = data.revision ?? 0; setLease(acquired); setObservedHolder(activeHolder); setHandoffRequested(false);
         setControlMessage(acquired ? '' : activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
         setSaveStatus('saved'); setLastSavedAt(new Date(data.updatedAt)); setSaveError('');
@@ -504,11 +507,12 @@ function CanvasEditorInner() {
           } else {
             await request(`/api/canvas/${id}/control/release`, { method: 'POST', data: { leaseToken: renewed.leaseToken, leaseEpoch: renewed.epoch } });
           }
+          leaseRef.current = null;
           setLease(null);
           setObservedHolder(null);
           setControlMessage('编辑权已交接，当前为只读');
         }
-      } catch (e: any) { setLease(null); setControlMessage(e?.response?.data?.message || '编辑权已失效，当前为只读'); }
+      } catch (e: any) { leaseRef.current = null; setLease(null); setControlMessage(e?.response?.data?.message || '编辑权已失效，当前为只读'); }
     }, 15000);
     return () => window.clearInterval(timer);
   }, [drainSaves, id, lease?.epoch]);
@@ -548,6 +552,7 @@ function CanvasEditorInner() {
           leaseToken: acquired.leaseToken, leaseEpoch: acquired.epoch, expectedRevision: latest.revision,
           actorType: 'human', actorId: humanHolderId(),
         } });
+        leaseRef.current = acquired;
         revisionRef.current = latest.revision; setDoc(latest); setLease(acquired); setObservedHolder(null); setHandoffRequested(false); setControlMessage('');
         setSaveStatus('saved'); setLastSavedAt(new Date(latest.updatedAt)); setSaveError('');
       } catch { /* 竞争失败或尚未释放，继续等待 */ }
@@ -581,6 +586,15 @@ function CanvasEditorInner() {
           request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=100`),
         ]);
         if (cancelled) return;
+        const historySignature = JSON.stringify((persistent.items ?? []).map((run) => [
+          run.id, run.status, run.finishedAt, run.outputAssetIds, run.outputText,
+          run.candidateGroup?.selectedAssetId, run.candidateGroup?.selectedRunId,
+        ]));
+        if (historySignature !== generationHistorySignatureRef.current) {
+          generationHistorySignatureRef.current = historySignature;
+          setGenerationRuns(persistent.items ?? []);
+          setGenerationHistoryVersion((value) => value + 1);
+        }
         const latestByNode = new Map<string, CanvasRunState>();
         for (const run of payload.runs ?? []) {
           if (run.canvasId === id && run.nodeId && !latestByNode.has(run.nodeId)) latestByNode.set(run.nodeId, run);
@@ -772,6 +786,16 @@ function CanvasEditorInner() {
       nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)),
     );
   }, [canWrite]);
+
+  /** 旁观者把服务端权威历史投影到本地节点；不进入保存队列，也不要求 lease。 */
+  const handleObserveNodeData = useCallback((nodeId: string, patch: Record<string, unknown>) => {
+    if (leaseRef.current) return;
+    setNodes((nds) => nds.map((node) => {
+      if (node.id !== nodeId) return node;
+      const unchanged = Object.entries(patch).every(([key, value]) => JSON.stringify((node.data as any)?.[key]) === JSON.stringify(value));
+      return unchanged ? node : { ...node, data: { ...node.data, ...patch } };
+    }));
+  }, []);
 
   /** 删除节点 + 其相连边（自定义节点经 Context 调用，二次确认在节点内） */
   const handleDeleteNode = useCallback(async (nodeId: string) => {
@@ -1085,6 +1109,7 @@ function CanvasEditorInner() {
             readOnly: !canWrite,
             control: lease ? { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: revisionRef.current } : undefined,
             updateNodeData: handleUpdateNodeData,
+            observeNodeData: handleObserveNodeData,
             deleteNode: handleDeleteNode,
             ensureResultNode,
             setNodeRunState,
@@ -1092,6 +1117,7 @@ function CanvasEditorInner() {
             getResultState,
             getUpstreamAsset,
             getUpstreamText,
+            generationHistoryVersion,
           }}>
             <ReactFlow
               nodes={nodes}

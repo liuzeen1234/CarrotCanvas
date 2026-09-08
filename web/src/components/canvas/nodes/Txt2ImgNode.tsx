@@ -17,7 +17,7 @@ const isEmpty = (value: unknown) => value === undefined || value === null || (ty
 
 export default function Txt2ImgNode(props: NodeProps) {
   const data = props.data as Txt2ImgNodeData;
-  const { canvasId, control, readOnly, updateNodeData, deleteNode, setNodeRunState, getNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
+  const { canvasId, control, readOnly, updateNodeData, observeNodeData, deleteNode, setNodeRunState, getNodeRunState, getUpstreamAsset, getUpstreamText, generationHistoryVersion } = useContext(CanvasNodeDataContext);
   const [workflow, setWorkflow] = useState<ComfyUIAPI | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -191,7 +191,7 @@ export default function Txt2ImgNode(props: NodeProps) {
         {visibleRunState.error ? <div style={{ color: '#ff4d4f', marginTop: 4, wordBreak: 'break-word' }}>{visibleRunState.error}</div> : null}
       </div>}
       {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset, assetIndex) => <div key={asset.assetId}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
-      <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={historyVersion} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} onRestoreSeeds={(values) => run.setFormValues((previous) => ({ ...previous, ...values }))} />
+      <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} onObserveAsset={(asset) => observeNodeData(nodeId, { lastAssets: [asset] })} onRestoreSeeds={(values) => run.setFormValues((previous) => ({ ...previous, ...values }))} />
     </div>
     <CanvasMediaPreview open={previewIndex !== null} items={(data.lastAssets ?? []).filter((asset): asset is CanvasMediaItem => asset.kind === 'image' || asset.kind === 'video')} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
     <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={`${outputKind === 'video' ? '视频' : '图片'}输出`} />

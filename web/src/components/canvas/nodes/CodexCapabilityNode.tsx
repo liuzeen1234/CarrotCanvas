@@ -15,7 +15,7 @@ const LABELS = { text: '文生文', image: '文生图', edit: '图生图', analy
 
 export default function CodexCapabilityNode(props: NodeProps) {
   const data = props.data as CodexCapabilityNodeData;
-  const { canvasId, control, readOnly, updateNodeData, deleteNode, getNodeRunState, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
+  const { canvasId, control, readOnly, updateNodeData, observeNodeData, deleteNode, getNodeRunState, getUpstreamAsset, getUpstreamText, generationHistoryVersion } = useContext(CanvasNodeDataContext);
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [liveText, setLiveText] = useState('');
@@ -109,7 +109,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
       {busy ? <div><Progress percent={70} status="active" showInfo={false} /><Tag color="processing">{data.capability === 'text' ? '正在生成文字' : reversePromptMode ? '正在反推图片提示词' : data.capability === 'analyze' ? '正在理解图片' : data.capability === 'edit' ? '正在编辑图片' : '正在生成图片'}</Tag></div> : null}{error ? <Alert type="error" showIcon message={error} /> : null}
       {displayedText ? <div className="canvas-codex-text">{displayedText}</div> : null}
       {images.map((item, index) => <div key={`${item.url}-${index}`}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(index)} aria-label="放大预览图片"><img src={item.url} alt="生成图片" /></button><Button size="small" block icon={<DownloadOutlined />} href={item.assetId ? `/api/assets/${item.assetId}/download` : item.url} download>下载</Button></div>)}
-      <NodeOutputHistory canvasId={canvasId} nodeId={props.id} kind={outputKind} promptModeContext={data.capability} readOnly={readOnly} control={control} refreshKey={historyVersion} onSelectAsset={(asset) => update({ lastAssets: [asset] })} onSelectText={(text, parts) => { setLiveText(''); update({ lastText: text, lastTextParts: parts || undefined }); }} />
+      <NodeOutputHistory canvasId={canvasId} nodeId={props.id} kind={outputKind} promptModeContext={data.capability} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => update({ lastAssets: [asset] })} onSelectText={(text, parts) => { setLiveText(''); update({ lastText: text, lastTextParts: parts || undefined }); }} onObserveAsset={(asset) => observeNodeData(props.id, { lastAssets: [asset] })} onObserveText={(text, parts) => { setLiveText(''); observeNodeData(props.id, { lastText: text, lastTextParts: parts || undefined }); }} />
     </Space></div>
     <CanvasMediaPreview open={previewIndex !== null} items={images.map((item): CanvasMediaItem => ({ assetId: item.assetId || '', url: item.url, kind: 'image' }))} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
     <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={promptPairMode ? '合并提示词输出' : `${outputKind === 'image' ? '图片' : '文本'}输出`} style={promptPairMode ? { top: '62%' } : undefined} />

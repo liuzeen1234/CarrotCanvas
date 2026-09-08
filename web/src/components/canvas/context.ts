@@ -24,6 +24,8 @@ export interface CanvasNodeDataApi {
   control?: { leaseToken: string; leaseEpoch: number; expectedRevision: number };
   /** 局部更新某节点 data（浅合并） */
   updateNodeData: (nodeId: string, patch: Record<string, unknown>) => void;
+  /** 只把服务端已持久化的数据同步到本地展示，不产生画布写入。 */
+  observeNodeData: (nodeId: string, patch: Record<string, unknown>) => void;
   /** 删除某节点（同时移除其相连边）。二次确认由节点自身 UI 负责。 */
   deleteNode: (nodeId: string) => void | Promise<void>;
   canvasId?: string;
@@ -35,11 +37,14 @@ export interface CanvasNodeDataApi {
   getUpstreamAsset: (targetNodeId: string, targetHandle: string, kind: string) => CanvasResultState['assets'][number] | null;
   /** 读取文本输入端口连接的上游节点最后一次完整输出。 */
   getUpstreamText: (targetNodeId: string, targetHandle: string) => CanvasUpstreamTextState;
+  /** 持久 Run/候选发生变化时递增，供节点刷新只读历史。 */
+  generationHistoryVersion: number;
 }
 
 export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
   readOnly: true,
   updateNodeData: () => {},
+  observeNodeData: () => {},
   deleteNode: () => {},
   ensureResultNode: () => {},
   setNodeRunState: () => {},
@@ -47,4 +52,5 @@ export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
   getResultState: () => ({ run: null, assets: [] }),
   getUpstreamAsset: () => null,
   getUpstreamText: () => ({ connected: false, text: '' }),
+  generationHistoryVersion: 0,
 });
