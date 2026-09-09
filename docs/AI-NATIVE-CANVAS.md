@@ -533,6 +533,8 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-09：启动 Issue #14 的语音评价纵向实现。调度领域概念升级为“本机重型计算租约”，新 `local_compute_leases` 表兼容迁移旧历史并保留旧状态入口；新增统一 `speech-evaluator` Provider、持久化评价项目和严格“工具优先/逐音频串行”执行器。首版提供真实 WAV 基础声学测量，并对尚未配置的转写、音色和 MOS 模型明确返回不可用，不用启发式结果冒充模型评分；详见 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。
+
 - 2026-09-09：Issue #12 支持在 AI 对话内确认 ComfyUI 托管。新增绑定当前进程快照的 5 分钟一次性令牌；Agent 可先展示快照并在收到本次明确确认后执行接管，无需用户回画布点击。执行前进程变化以及令牌缺失、伪造、过期或重放都会安全拒绝；Action Registry 标注 high-impact/human-confirmation。真实外部 Desktop 上完成令牌签发和伪造令牌不杀进程验证，16 suites / 101 tests 与前后端构建通过。
 
 - 2026-09-09：Issue #11 GPU 调度升级为进程级 fail-closed。CosyVoice/IndexTTS 按需启动并在切出时验证端口与 PID 消失；ComfyUI 只结束调度器可证明所有权的进程，外部 Desktop 触发包含 PID/路径/内存的人工确认。任何 Provider 连续 3 次释放失败会记录 RAM/VRAM 观测、锁住后续队列并中断任务。真实 Desktop 冲突与取消不杀进程、重启清理两 TTS worker、16 suites / 100 tests 和前后端构建均通过，详见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。

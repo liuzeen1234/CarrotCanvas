@@ -1,11 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { GpuSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
+import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
 import { ComfyUIClientService } from './comfyui-client';
 import { ComfyUIProcessManagerService } from './comfyui-process-manager.service';
 
 @Injectable()
 export class ComfyUIGpuProviderService implements OnModuleInit {
-  constructor(private readonly scheduler: GpuSchedulerService, private readonly client: ComfyUIClientService, private readonly processes: ComfyUIProcessManagerService) {}
+  constructor(private readonly scheduler: LocalComputeSchedulerService, private readonly client: ComfyUIClientService, private readonly processes: ComfyUIProcessManagerService) {}
 
   onModuleInit() {
     this.scheduler.registerProvider('comfyui', {
@@ -25,7 +25,7 @@ export class ComfyUIGpuProviderService implements OnModuleInit {
     }
     const queue = await this.client.getQueue();
     if ((queue.queue_running as unknown[])?.length || (queue.queue_pending as unknown[])?.length) {
-      throw new Error('ComfyUI 队列在 120 秒内未空闲，拒绝切换 GPU Provider');
+      throw new Error('ComfyUI 队列在 120 秒内未空闲，拒绝切换本机重型计算 Provider');
     }
     await this.processes.releaseManaged();
   }

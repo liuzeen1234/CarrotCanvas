@@ -1,12 +1,12 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { GpuSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
+import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
 import { TtsClientService } from './tts-client.service';
 import { TtsProcessManagerService } from './tts-process-manager.service';
 import { ComfyUIProcessManagerService } from '../comfyui/comfyui-process-manager.service';
 
 @Injectable()
 export class TtsGpuProviderService implements OnModuleInit {
-  constructor(private readonly scheduler: GpuSchedulerService, private readonly client: TtsClientService, private readonly processes: TtsProcessManagerService, private readonly comfyProcesses: ComfyUIProcessManagerService) {}
+  constructor(private readonly scheduler: LocalComputeSchedulerService, private readonly client: TtsClientService, private readonly processes: TtsProcessManagerService, private readonly comfyProcesses: ComfyUIProcessManagerService) {}
   async onModuleInit() {
     for (const provider of ['cosyvoice3', 'indextts2'] as const) {
       this.scheduler.registerProvider(provider, {

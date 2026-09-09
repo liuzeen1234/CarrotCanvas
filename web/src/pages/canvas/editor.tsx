@@ -27,7 +27,7 @@ import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, DragOutlined, Envi
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
-import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
+import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, createSpeechEvaluatorNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { RunDuration } from '@/components/canvas/RunTiming';
 import { ComfyUIAPI, extractSeedValues, type RunStateData } from '@/components/comfyui/types';
@@ -1045,6 +1045,14 @@ function CanvasEditorInner() {
     setMenu(null);
   }, [canWrite, menu, screenToFlowPosition]);
 
+  const handlePickSpeechEvaluator = useCallback(() => {
+    if (!canWrite) return; let pos = { x: 0, y: 0 };
+    try { pos = menu ? screenToFlowPosition({ x: menu.screenX, y: menu.screenY }) : pos; } catch { /* fall back */ }
+    const node = createSpeechEvaluatorNode(pos); setNodes((items) => [...items, node]);
+    if (menu?.connection) { const targetHandle = resultTargetHandle(menu.connection.kind); setEdges((items) => [...items, { id: `edge-${menu.connection!.sourceNodeId}-${node.id}-${targetHandle}`, source: menu.connection!.sourceNodeId, sourceHandle: menu.connection!.sourceHandle, target: node.id, targetHandle }]); }
+    setMenu(null);
+  }, [canWrite, menu, screenToFlowPosition]);
+
   const nodeCount = nodes.length;
   const selectedEdge = edges.find((edge) => edge.selected);
   const saveTag = useMemo(() => {
@@ -1283,7 +1291,7 @@ function CanvasEditorInner() {
               <Controls />
             </ReactFlow>
 
-            {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} onPickTts={handlePickTts} onPickInput={(kind) => {
+            {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} onPickTts={handlePickTts} onPickSpeechEvaluator={handlePickSpeechEvaluator} onPickInput={(kind) => {
               const position = menu ? screenToFlowPosition({x:menu.screenX,y:menu.screenY}) : {x:0,y:0};
               setNodes(nds => [...nds, {id: crypto.randomUUID(), type: NODE_TYPE_RESULT, position, data:{kind,inputMode:true,lastText:'',lastAssets:[]},style:{width:300}}]);
             }} /> : null}

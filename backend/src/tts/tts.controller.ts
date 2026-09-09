@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common
 import { promises as fs } from 'fs';
 import { AssetsService } from '../assets/assets.service';
 import { CanvasService } from '../canvas/canvas.service';
-import { GpuSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
+import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
 import { RunsService } from '../runs/runs.service';
 import { TtsClientService, TtsProvider } from './tts-client.service';
 import { TtsProcessManagerService } from './tts-process-manager.service';
@@ -30,7 +30,7 @@ interface TtsRunBody {
 export class TtsController {
   constructor(
     private readonly client: TtsClientService,
-    private readonly scheduler: GpuSchedulerService,
+    private readonly scheduler: LocalComputeSchedulerService,
     private readonly runs: RunsService,
     private readonly assets: AssetsService,
     private readonly canvas: CanvasService,

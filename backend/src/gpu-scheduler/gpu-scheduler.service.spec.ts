@@ -67,4 +67,14 @@ describe('GpuSchedulerService', () => {
     expect(lease.lease.status).toBe('active');
     await lease.release();
   });
+
+  it('cleans up a non-resident heavy provider before granting the next lease', async () => {
+    const events: string[] = [];
+    service.registerProvider('speech-evaluator', { retainAfterLease: false, prepare: async () => { events.push('prepare-eval'); }, release: async () => { events.push('release-eval'); } });
+    service.registerProvider('comfyui', { prepare: async () => { events.push('prepare-comfy'); }, release: async () => { events.push('release-comfy'); } });
+    const evaluation = await service.acquire('speech-evaluator', 'eval'); await evaluation.release();
+    expect(service.getState().residentProvider).toBeNull();
+    const comfy = await service.acquire('comfyui', 'comfy'); await comfy.release();
+    expect(events).toEqual(['prepare-eval', 'release-eval', 'prepare-comfy']);
+  });
 });

@@ -10,8 +10,9 @@ import { AssetsModule } from './assets/assets.module';
 import { Codex2ApiModule } from './codex2api/codex2api.module';
 import { RunsModule } from './runs/runs.module';
 import { SystemResourcesModule } from './system-resources/system-resources.module';
-import { GpuSchedulerModule } from './gpu-scheduler/gpu-scheduler.module';
+import { LocalComputeSchedulerModule } from './gpu-scheduler/gpu-scheduler.module';
 import { TtsModule } from './tts/tts.module';
+import { SpeechEvaluatorModule } from './speech-evaluator/speech-evaluator.module';
 
 @Module({
   imports: [
@@ -24,8 +25,9 @@ import { TtsModule } from './tts/tts.module';
     Codex2ApiModule,
     RunsModule,
     SystemResourcesModule,
-    GpuSchedulerModule,
+    LocalComputeSchedulerModule,
     TtsModule,
+    SpeechEvaluatorModule,
   ],
   controllers: [AppController],
   providers: [AppService],

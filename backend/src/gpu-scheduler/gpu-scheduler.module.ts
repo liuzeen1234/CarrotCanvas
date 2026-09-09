@@ -1,14 +1,17 @@
 import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { GpuResourceLease } from './gpu-resource-lease.entity';
-import { GpuSchedulerController } from './gpu-scheduler.controller';
-import { GpuSchedulerService } from './gpu-scheduler.service';
+import { LocalComputeLease } from './gpu-resource-lease.entity';
+import { LocalComputeSchedulerController } from './gpu-scheduler.controller';
+import { LocalComputeSchedulerService } from './gpu-scheduler.service';
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([GpuResourceLease])],
-  controllers: [GpuSchedulerController],
-  providers: [GpuSchedulerService],
-  exports: [GpuSchedulerService],
+  imports: [TypeOrmModule.forFeature([LocalComputeLease])],
+  controllers: [LocalComputeSchedulerController],
+  providers: [LocalComputeSchedulerService],
+  exports: [LocalComputeSchedulerService],
 })
-export class GpuSchedulerModule {}
+export class LocalComputeSchedulerModule {}
+
+/** @deprecated Compatibility alias for existing imports. */
+export { LocalComputeSchedulerModule as GpuSchedulerModule };

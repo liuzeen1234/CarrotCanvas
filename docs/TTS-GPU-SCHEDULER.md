@@ -1,8 +1,8 @@
-# 本地 TTS 与 ComfyUI 统一 GPU 调度
+# 本地 TTS、ComfyUI 与语音评价的本机重型计算调度
 
 ## 目标
 
-在同一张 NVIDIA GPU 上统一调度 `comfyui`、`cosyvoice3`、`indextts2` 三个 Provider。画布仍是唯一运行入口；任一时刻只允许一个 Provider 进程在线并持有 GPU 模型，避免已卸载模型仍以 Python 进程、RAM 或页面文件形式残留。
+统一调度 `comfyui`、`cosyvoice3`、`indextts2`、`speech-evaluator` 四个 Provider。领域概念已从“GPU 租约”升级为“本机重型计算租约”：任一时刻只允许一个 Provider 占用 GPU、CPU、内存、页面文件、磁盘与重型模型进程的排他执行窗口。
 
 对应需求：[GitHub Issue #11](https://github.com/liuzeen1234/CarrotCanvas/issues/11)。
 
@@ -13,7 +13,7 @@
 - ComfyUI 运行也必须先取得相同的持久化 FIFO 租约。调度器托管的 ComfyUI 切出时等待队列清空，再按进程树退出，并在每次尝试前后记录端口所有者、working set/private bytes、Comfy allocator 与 `nvidia-smi` 整卡显存。
 - 8188 若属于非调度器 PID，或检测到 ComfyUI Desktop，返回 `COMFYUI_TAKEOVER_REQUIRED` 并锁住后续队列。页面必须由用户确认后才关闭 Desktop/相关进程、保存启动参数并改由调度器启动纯后端；未知外部进程以后仍会再次询问。
 - 连续运行同一 Provider 时允许模型驻留，避免重复加载；切换 Provider 时严格串行执行 `release(old) → prepare(new)`。
-- 租约写入 SQLite `gpu_resource_leases`。后端重启时把未完成租约标记为 `abandoned`，不把陈旧状态当作仍在占用。
+- 租约写入 SQLite `local_compute_leases`。启动时旧 `gpu_resource_leases` 历史单向兼容迁移；后端重启时把未完成租约标记为 `abandoned`，不把陈旧状态当作仍在占用。
 - 两个 TTS worker 内部对 load、infer、unload 加互斥锁，平台之外的误调用也不会在同一 worker 内并发改动模型。
 - 任一旧 Provider 连续 3 次仍未完全退出，调度器进入 fail-closed 锁定态，持久化原因与三次观测，拒绝继续启动下一个 Provider。
 
@@ -32,7 +32,7 @@
 
 ## 接口与画布节点
 
-- `GET /api/gpu-scheduler/status`：当前租约、驻留 Provider 与等待队列。
+- `GET /api/local-compute-scheduler/status`：当前租约、驻留 Provider 与等待队列；旧 `/api/gpu-scheduler/status` 暂作兼容入口。
 - `GET /api/tts/providers`：两个 worker 的在线及模型加载状态。
 - `GET /api/comfyui/process-status`：8188 所有者、Desktop 进程、进程内存及显存观测。
 - `POST /api/comfyui/takeover/confirmation`：针对当前端口所有者和 Desktop 进程集合签发 5 分钟有效、一次性使用的确认令牌，并返回供页面或 AI 对话展示的快照。
@@ -48,7 +48,11 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 - Provider 进程连续 3 次未退出时中断切换，不继续处理排队任务；错误记录包含各次 PID/端口/RAM/VRAM 证据。
 - 调度器无法证明 8188 进程是自己启动时绝不自动结束；只有确认接管接口能关闭 Desktop。
 - 接管令牌缺失、伪造、过期、重复使用或绑定的 PID/路径/进程集合发生变化时，在结束任何进程前拒绝；AI 对话中的一般功能确认不等于对某一快照的接管确认。
-- 保存资产或写 Run 记录失败时，GPU 租约仍在 `finally` 中释放。
+- 保存资产或写 Run 记录失败时，本机重型计算租约仍在 `finally` 中释放。
+
+## speech-evaluator 合同
+
+`speech-evaluator` 在整个评价批次内持续持有外层租约，包括 CPU-only 阶段。内部按工具顺序执行，每个工具逐条处理全部目标语音并保存中间结果，释放当前工具后才进入下一工具；最终评价持久化且内部资源清理完成后才释放外层租约。详情见 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。
 - TTS 推理失败会记录 failed Run，并卸载失败 Provider，后续队列仍可继续。
 
 ## 验收

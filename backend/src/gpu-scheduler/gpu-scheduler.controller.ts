@@ -1,9 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
-import { GpuSchedulerService } from './gpu-scheduler.service';
+import { LocalComputeSchedulerService } from './gpu-scheduler.service';
 
-@Controller('gpu-scheduler')
-export class GpuSchedulerController {
-  constructor(private readonly scheduler: GpuSchedulerService) {}
+@Controller(['local-compute-scheduler', 'gpu-scheduler'])
+export class LocalComputeSchedulerController {
+  constructor(private readonly scheduler: LocalComputeSchedulerService) {}
 
   @Get('status')
   status() { return this.scheduler.getState(); }

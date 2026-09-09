@@ -1,37 +1,39 @@
 import { ConflictException, HttpException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { GpuProvider, GpuResourceLease } from './gpu-resource-lease.entity';
+import { LocalComputeLease, LocalComputeProvider } from './gpu-resource-lease.entity';
 
-export interface GpuProviderLifecycle {
+export interface LocalComputeProviderLifecycle {
   prepare(): Promise<void>;
   release(): Promise<void>;
+  retainAfterLease?: boolean;
 }
 
-export interface GpuLeaseHandle {
-  lease: GpuResourceLease;
+export interface LocalComputeLeaseHandle {
+  lease: LocalComputeLease;
   release(error?: unknown): Promise<void>;
 }
 
 type Waiter = {
-  lease: GpuResourceLease;
-  resolve: (handle: GpuLeaseHandle) => void;
+  lease: LocalComputeLease;
+  resolve: (handle: LocalComputeLeaseHandle) => void;
   reject: (error: unknown) => void;
 };
 
 @Injectable()
-export class GpuSchedulerService implements OnModuleInit {
-  private readonly logger = new Logger(GpuSchedulerService.name);
-  private readonly providers = new Map<GpuProvider, GpuProviderLifecycle>();
+export class LocalComputeSchedulerService implements OnModuleInit {
+  private readonly logger = new Logger(LocalComputeSchedulerService.name);
+  private readonly providers = new Map<LocalComputeProvider, LocalComputeProviderLifecycle>();
   private readonly queue: Waiter[] = [];
-  private current: GpuResourceLease | null = null;
-  private residentProvider: GpuProvider | null = null;
+  private current: LocalComputeLease | null = null;
+  private residentProvider: LocalComputeProvider | null = null;
   private advancing = false;
   private blocked: Record<string, unknown> | null = null;
 
-  constructor(@InjectRepository(GpuResourceLease) private readonly leases: Repository<GpuResourceLease>) {}
+  constructor(@InjectRepository(LocalComputeLease) private readonly leases: Repository<LocalComputeLease>) {}
 
   async onModuleInit() {
+    await this.migrateLegacyGpuLeases();
     await this.leases.createQueryBuilder().update().set({
       status: 'abandoned',
       releasedAt: Date.now(),
@@ -39,17 +41,17 @@ export class GpuSchedulerService implements OnModuleInit {
     }).where('status IN (:...statuses)', { statuses: ['waiting', 'preparing', 'active', 'releasing'] }).execute();
   }
 
-  registerProvider(name: GpuProvider, lifecycle: GpuProviderLifecycle) {
+  registerProvider(name: LocalComputeProvider, lifecycle: LocalComputeProviderLifecycle) {
     this.providers.set(name, lifecycle);
   }
 
-  async acquire(provider: GpuProvider, runId: string): Promise<GpuLeaseHandle> {
+  async acquire(provider: LocalComputeProvider, runId: string): Promise<LocalComputeLeaseHandle> {
     if (this.blocked) throw new ConflictException(this.blocked);
     const lease = await this.leases.save(this.leases.create({
       deviceKey: 'cuda:0', runId, provider, status: 'waiting', queuedAt: Date.now(),
       acquiredAt: null, releasedAt: null, error: null,
     }));
-    return new Promise<GpuLeaseHandle>((resolve, reject) => {
+    return new Promise<LocalComputeLeaseHandle>((resolve, reject) => {
       this.queue.push({ lease, resolve, reject });
       void this.advance();
     });
@@ -57,6 +59,7 @@ export class GpuSchedulerService implements OnModuleInit {
 
   getState() {
     return {
+      resourceKey: 'local-heavy-compute:0',
       deviceKey: 'cuda:0',
       active: this.current,
       residentProvider: this.residentProvider,
@@ -91,12 +94,21 @@ export class GpuSchedulerService implements OnModuleInit {
           released = true;
           const active = this.current;
           if (!active || active.id !== waiter.lease.id) return;
-          active.status = error ? 'failed' : 'released';
-          active.error = error ? serializeError(error) : null;
+          let releaseError = error;
+          const lifecycle = this.providers.get(active.provider);
+          if (lifecycle?.retainAfterLease === false) {
+            active.status = 'releasing';
+            await this.leases.save(active);
+            try { await lifecycle.release(); this.residentProvider = null; }
+            catch (cleanupError) { releaseError ??= cleanupError; }
+          }
+          active.status = releaseError ? 'failed' : 'released';
+          active.error = releaseError ? serializeError(releaseError) : null;
           active.releasedAt = Date.now();
           await this.leases.save(active);
           this.current = null;
-          void this.advance();
+          if (releaseError && isFailClosed(serializeError(releaseError))) await this.failClosed(serializeError(releaseError));
+          else void this.advance();
         },
       });
     } catch (error) {
@@ -104,7 +116,7 @@ export class GpuSchedulerService implements OnModuleInit {
       waiter.lease.error = serializeError(error);
       waiter.lease.releasedAt = Date.now();
       await this.leases.save(waiter.lease);
-      this.logger.error(`GPU Provider ${waiter.lease.provider} 准备失败：${(error as Error).message}`);
+      this.logger.error(`本机重型计算 Provider ${waiter.lease.provider} 准备失败：${(error as Error).message}`);
       waiter.reject(error);
       const serialized = serializeError(error);
       if (isFailClosed(serialized)) await this.failClosed(serialized);
@@ -125,7 +137,21 @@ export class GpuSchedulerService implements OnModuleInit {
       waiter.reject(new ConflictException(reason));
     }));
   }
+
+  private async migrateLegacyGpuLeases() {
+    const rows = await this.leases.query("SELECT name FROM sqlite_master WHERE type='table' AND name='gpu_resource_leases'") as unknown[];
+    if (!rows.length) return;
+    await this.leases.query(`INSERT OR IGNORE INTO local_compute_leases
+      (id, device_key, run_id, provider, status, queued_at, acquired_at, released_at, error, created_at, updated_at)
+      SELECT id, device_key, run_id, provider, status, queued_at, acquired_at, released_at, error, created_at, updated_at
+      FROM gpu_resource_leases`);
+  }
 }
+
+/** @deprecated Use LocalComputeSchedulerService. */
+export { LocalComputeSchedulerService as GpuSchedulerService };
+export type GpuProviderLifecycle = LocalComputeProviderLifecycle;
+export type GpuLeaseHandle = LocalComputeLeaseHandle;
 
 function serializeError(error: unknown) {
   if (error instanceof HttpException) {

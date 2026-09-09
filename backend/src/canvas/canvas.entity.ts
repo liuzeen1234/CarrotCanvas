@@ -23,7 +23,7 @@ export interface CanvasGraph {
 
 export interface CanvasNode {
   id: string;
-  type: 'txt2img' | 'result' | 'codex-capability' | 'tts';
+  type: 'txt2img' | 'result' | 'codex-capability' | 'tts' | 'speech-evaluator';
   position: { x: number; y: number };
   data: Record<string, unknown>;
   style?: Record<string, unknown>;

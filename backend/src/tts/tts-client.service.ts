@@ -1,7 +1,7 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
-import { GpuProvider } from '../gpu-scheduler/gpu-resource-lease.entity';
+import { LocalComputeProvider } from '../gpu-scheduler/gpu-resource-lease.entity';
 
-export type TtsProvider = Extract<GpuProvider, 'cosyvoice3' | 'indextts2'>;
+export type TtsProvider = Extract<LocalComputeProvider, 'cosyvoice3' | 'indextts2'>;
 
 @Injectable()
 export class TtsClientService {

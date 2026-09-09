@@ -64,7 +64,7 @@ export default function TtsNode(props: NodeProps) {
       {data.provider === 'cosyvoice3' ? <ImeSafeTextArea value={data.referenceText} onChange={(referenceText) => update({ referenceText })} disabled={readOnly} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="参考音频对应的准确文字（必填）" /> : null}
       <ImeSafeInput value={data.instruction} onChange={(instruction) => update({ instruction })} disabled={readOnly} placeholder={data.provider === 'cosyvoice3' ? '风格指令（可选）' : '情绪描述（可选）'} />
       {data.provider === 'cosyvoice3' ? <InputNumber value={data.speed} min={0.5} max={2} step={0.05} disabled={readOnly} onChange={(speed) => update({ speed: speed || 1 })} addonBefore="语速" style={{ width: '100%' }} /> : null}
-      {busy ? <Tag color="processing">正在等待 GPU 或生成配音</Tag> : null}
+      {busy ? <Tag color="processing">正在等待本机重型计算资源或生成配音</Tag> : null}
       {error ? <Alert type="error" showIcon message={error} /> : null}
       {(data.lastAssets || []).map((asset) => <audio key={asset.assetId} controls src={asset.url} style={{ width: '100%' }} />)}
       <NodeOutputHistory canvasId={canvasId} nodeId={props.id} kind="audio" readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => update({ lastAssets: [asset] })} onObserveAsset={(asset) => observeNodeData(props.id, { lastAssets: [asset] })} />

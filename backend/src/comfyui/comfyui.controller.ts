@@ -27,7 +27,7 @@ import { CanvasService } from '../canvas/canvas.service';
 import { AssetsService } from '../assets/assets.service';
 import { promises as fs } from 'fs';
 import { RunsService } from '../runs/runs.service';
-import { GpuSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
+import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
 import { ComfyUIProcessManagerService } from './comfyui-process-manager.service';
 
 interface PreviewBody {
@@ -75,7 +75,7 @@ export class ComfyUIController {
     private readonly canvas: CanvasService,
     private readonly assets: AssetsService,
     private readonly persistentRuns: RunsService,
-    private readonly gpuScheduler: GpuSchedulerService,
+    private readonly gpuScheduler: LocalComputeSchedulerService,
     private readonly comfyProcesses: ComfyUIProcessManagerService,
   ) {}
 
