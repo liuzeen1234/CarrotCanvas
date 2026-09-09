@@ -7,7 +7,6 @@ import { CanvasAssetGcJob, CanvasCheckpoint, CanvasControlLease, CanvasDoc, Canv
 import { Asset } from '../assets/asset.entity';
 import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff } from '../runs/generation-run.entity';
 import { LocalComputeLease } from '../gpu-scheduler/gpu-resource-lease.entity';
-import { SpeechEvaluationItem } from '../speech-evaluator/speech-evaluation.entity';
 
 @Global()
 @Module({
@@ -15,7 +14,7 @@ import { SpeechEvaluationItem } from '../speech-evaluator/speech-evaluation.enti
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: join(__dirname, '..', '..', 'data', 'carrot-canvas.sqlite'),
-      entities: [Workflow, Setting, CanvasDoc, CanvasControlLease, CanvasOperationReceipt, CanvasOperationLog, CanvasCheckpoint, CanvasAssetGcJob, Asset, GenerationRun, GenerationRunHandoff, GenerationCandidateGroup, LocalComputeLease, SpeechEvaluationItem],
+      entities: [Workflow, Setting, CanvasDoc, CanvasControlLease, CanvasOperationReceipt, CanvasOperationLog, CanvasCheckpoint, CanvasAssetGcJob, Asset, GenerationRun, GenerationRunHandoff, GenerationCandidateGroup, LocalComputeLease],
       synchronize: true,
     }),
   ],

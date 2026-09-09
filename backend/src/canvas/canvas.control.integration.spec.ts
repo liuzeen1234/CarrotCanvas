@@ -209,19 +209,4 @@ describe('Phase 0A canvas control (SQLite integration)', () => {
     expect(result.canvas.graph.edges).toHaveLength(4);
   });
 
-  it('语音评价节点接受目标音频、参考音频与文本并输出评价文本', async () => {
-    const created = await service.create({ name: 'speech-evaluator-graph' });
-    const lease = await service.acquire(created.id, { holderType: 'agent', holderId: 'test' });
-    const result = await service.applyOperations(created.id, { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: 0, idempotencyKey: 'speech-evaluator-graph', operations: [
-      { type: 'create_node', node: { id: 'audio', type: 'result', position: { x: 0, y: 0 }, data: { kind: 'audio' } } },
-      { type: 'create_node', node: { id: 'text', type: 'result', position: { x: 0, y: 100 }, data: { kind: 'text' } } },
-      { type: 'create_node', node: { id: 'eval', type: 'speech-evaluator', position: { x: 300, y: 0 }, data: { targetText: '' } } },
-      { type: 'create_node', node: { id: 'out', type: 'result', position: { x: 600, y: 0 }, data: { kind: 'text' } } },
-      { type: 'connect', edge: { id: 'target', source: 'audio', sourceHandle: 'audio-source', target: 'eval', targetHandle: 'audio-target' } },
-      { type: 'connect', edge: { id: 'reference', source: 'audio', sourceHandle: 'audio-source', target: 'eval', targetHandle: 'reference-audio-target' } },
-      { type: 'connect', edge: { id: 'script', source: 'text', sourceHandle: 'text-source', target: 'eval', targetHandle: 'text-target' } },
-      { type: 'connect', edge: { id: 'evaluation', source: 'eval', sourceHandle: 'text-source', target: 'out', targetHandle: 'text-target' } },
-    ] });
-    expect(result.canvas.graph.edges).toHaveLength(4);
-  });
 });

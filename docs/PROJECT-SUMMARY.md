@@ -190,11 +190,9 @@ pnpm start     # 生产运行后端（需先 build）
 ## 8. 2026-09-09 本地配音与本机重型计算调度增量
 
 - ✅ 新增 CosyVoice 3 / IndexTTS2 独立 Python worker 和画布 `tts` 节点；worker 按需启动、同 Provider 可驻留、跨 Provider 必须退出旧进程后再启动新进程。
-- ✅ ComfyUI、CosyVoice 3、IndexTTS2、speech-evaluator 共用 SQLite FIFO 本机重型计算租约；提供 `/api/local-compute-scheduler/status`（旧 GPU 路径兼容）与各 Provider 可观测状态。
-- ✅ speech-evaluator 已提供持久化、工具优先/逐音频严格串行流程；独立 Python 虚拟环境中已部署 FunASR（转写/CER/时间戳）、WeSpeaker CAMPPlus（音色相似度）和 UTMOSv2（自然度 MOS），并输出 WAV 基础声学、停顿和 F0 指标。模型优先使用 ModelScope；UTMOSv2 最终检查点因无官方镜像使用官方 Hugging Face 权重回退，中文阈值仍明确标记未校准且不自动触发重生成。
+- ✅ ComfyUI、CosyVoice 3、IndexTTS2 共用 SQLite FIFO 本机重型计算租约；提供 `/api/local-compute-scheduler/status`（旧 GPU 路径兼容）与各 Provider 可观测状态。
 - ✅ 主模型与绝大部分辅助权重从 ModelScope 下载；只有 ModelScope 不存在的 Index BigVGAN 449 MB 辅助文件由官方加载器回退 hf-mirror。
 - ✅ 真实 CosyVoice、IndexTTS2、TTS→Z-Image 三段运行全部成功；画布音频结果支持播放、下载和历史候选。
 - ✅ ComfyUI 纳入进程托管：外部 Desktop/PID 必须弹窗确认，托管进程最多 3 次退出并核验 PID、端口、RAM/VRAM；失败时锁住队列而非继续加载下一 Provider。
 - ✅ 页面与 AI 对话均可使用 5 分钟一次性确认令牌接管 ComfyUI；令牌绑定进程快照，缺失、伪造、过期、重放或 PID/路径变化均在杀进程前拒绝。
-- ✅ speech-evaluator 真实三音频批次完成严格工具优先/逐音频串行、即时落库、归一化比较、问题定位和最终排名；真实安全边界取消保留首项结果，来源 TTS 音频仍可用。重启残留状态无法证明时会 fail-closed。
-- ✅ 完整后端测试、后端 TypeScript 构建、前端生产构建通过；真实 Desktop 冲突、TTS 遗留进程清理、UI/对话确认和语音评价安全分支通过。设计与验收证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md) 与 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。
+- ✅ 完整后端测试、后端 TypeScript 构建、前端生产构建通过；真实 Desktop 冲突、TTS 遗留进程清理和 UI/对话确认分支通过。设计与验收证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。

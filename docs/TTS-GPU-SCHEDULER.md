@@ -1,8 +1,8 @@
-# 本地 TTS、ComfyUI 与语音评价的本机重型计算调度
+# 本地 TTS 与 ComfyUI 的本机重型计算调度
 
 ## 目标
 
-统一调度 `comfyui`、`cosyvoice3`、`indextts2`、`speech-evaluator` 四个 Provider。领域概念已从“GPU 租约”升级为“本机重型计算租约”：任一时刻只允许一个 Provider 占用 GPU、CPU、内存、页面文件、磁盘与重型模型进程的排他执行窗口。
+统一调度 `comfyui`、`cosyvoice3`、`indextts2` 三个 Provider。领域概念已从“GPU 租约”升级为“本机重型计算租约”：任一时刻只允许一个 Provider 占用 GPU、CPU、内存、页面文件、磁盘与重型模型进程的排他执行窗口。
 
 对应需求：[GitHub Issue #11](https://github.com/liuzeen1234/CarrotCanvas/issues/11)。
 
@@ -58,9 +58,6 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 - 接管令牌缺失、伪造、过期、重复使用或绑定的 PID/路径/进程集合发生变化时，在结束任何进程前拒绝；AI 对话中的一般功能确认不等于对某一快照的接管确认。
 - 保存资产或写 Run 记录失败时，本机重型计算租约仍在 `finally` 中释放。
 
-## speech-evaluator 合同
-
-`speech-evaluator` 在整个评价批次内持续持有外层租约，包括 CPU-only 阶段。内部按工具顺序执行，每个工具逐条处理全部目标语音并保存中间结果，释放当前工具后才进入下一工具；最终评价持久化且内部资源清理完成后才释放外层租约。详情见 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。
 - TTS 推理失败会记录 failed Run，并卸载失败 Provider，后续队列仍可继续。
 
 ## 验收
@@ -76,8 +73,6 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 - [x] 后端重启清理遗留 TTS worker，确认 50000/50001 端口及原 PID 均消失。
 - [x] 真实 ComfyUI Desktop 冲突返回 409、持久 Run 失败原因和调度器锁定状态；浏览器显示 PID/路径/内存及显式接管按钮，取消后 Desktop 保持运行。
 - [x] 页面与 AI 对话共用一次性确认协议；无令牌、伪造、过期、重放和进程快照变化测试均确认不会结束进程。
-- [x] speech-evaluator 真实三音频批次严格按工具优先、逐音频串行执行并即时落库；最终比较/排名/建议持久化后才释放外层租约。
-- [x] speech-evaluator 真实安全边界取消保留已完成 FunASR 项、停止后续项并释放租约；来源 TTS 音频仍可下载。
 - [x] CPU-only 阶段阻塞 ComfyUI/TTS、重启残留状态无法证明时 fail-closed、连续三次清理失败观测均有自动测试。
 - [x] Issue #17 的严格 pause 语法、首尾/连续/多标签/中文/边界/非法输入、采样点级拼接、串行/取消/失败安全自动测试。
 - [x] CosyVoice 3 与 IndexTTS2 各完成三段中文、800ms + 1500ms 两处停顿真实生成，最终各仅一条正式音频，插入静音误差均为 0ms。
@@ -87,7 +82,5 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 进程级升级验收：3100 重启后原 CosyVoice PID `21196`、IndexTTS PID `5428` 与 50000/50001 监听全部消失。对仍由 Desktop 启动的 ComfyUI PID `16968` 提交 Z-Image 时返回 `409 COMFYUI_TAKEOVER_REQUIRED`，平台 Run `c058b04d-a92f-400e-956f-53c123502333` 为 `failed` 且保存端口、PID、约 38.99 GB private bytes、allocator 和整卡显存快照；调度器 `blocked` 同步锁定。浏览器确认弹窗正确展示 PID、路径、内存、取消和“关闭 Desktop 并交由调度器托管”，验收选择取消，确认未越权关闭用户 Desktop。完整自动测试为 16 suites / 100 tests，前后端生产构建通过。
 
 对话确认升级验收：真实 Desktop 运行时成功签发绑定当前进程集合的 5 分钟一次性令牌及公开快照指纹；使用伪造令牌调用执行接口返回 `TAKEOVER_CONFIRMATION_INVALID`，8188 所有者与全部 Desktop 进程保持不变。自动测试覆盖缺失、伪造、过期、重放、快照变化和有效令牌路径，共 16 suites / 101 tests；Action Registry 将执行动作声明为 `high-impact + human confirmation`，前后端生产构建通过。本轮未把“确认升级功能”解释成“立即关闭当前 Desktop”。
-
-Issue #14 语音评价验收：真实三音频批次 Run `945d2f9a-6a9c-435d-b317-ed44701f6630` 完成六工具串行、逐项落库、批次排名与租约后释放；真实取消 Run `62892420-35cf-4fd0-a9ba-e59e23f28a0b` 在 FunASR 项边界停止并保留首项结果。详情与指标见 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。
 
 Issue #17 精确停顿验收：CosyVoice 3 Run `2da5fa14-35b4-4f9e-86e9-e73def3d7f06` 输出 24 kHz 单声道 float32 WAV（11.380 秒），IndexTTS2 Run `d21d5a24-0d3b-4f2e-97ae-5eab26f140b4` 输出 22.05 kHz 单声道 PCM16 WAV（11.5532 秒）。两者均将 3 个 speech 段严格串行生成后插入 800ms 与 1500ms 静音；按最终采样率分别为 19200/36000 与 17640/33075 帧，目标与实际误差均为 0ms。每条 Run 只产生一个正式资产，Run 快照保留完整计划和拼接审计。

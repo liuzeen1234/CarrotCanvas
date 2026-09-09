@@ -160,14 +160,13 @@ function bad(code: string, message: string, details?: unknown): never { throw ne
 function validId(value: unknown) { return typeof value === 'string' && value.length > 0 && value.length <= 200; }
 function validateNode(node: CanvasNode) {
   if (!node || !validId(node.id)) bad('INVALID_NODE', '节点 id 不合法');
-  if (!['txt2img', 'result', 'codex-capability', 'tts', 'speech-evaluator'].includes(node.type)) bad('UNSUPPORTED_NODE_TYPE', `不支持节点类型 ${node.type}`);
+  if (!['txt2img', 'result', 'codex-capability', 'tts'].includes(node.type)) bad('UNSUPPORTED_NODE_TYPE', `不支持节点类型 ${node.type}`);
   if (!node.position || !Number.isFinite(node.position.x) || !Number.isFinite(node.position.y)) bad('INVALID_NODE_POSITION', `节点 ${node.id} 坐标不合法`);
   if (!node.data || typeof node.data !== 'object' || Array.isArray(node.data)) bad('INVALID_NODE_DATA', `节点 ${node.id} data 不合法`);
   if (node.type === 'txt2img' && (!validId(node.data.workflowId) || (node.data.formValues != null && (typeof node.data.formValues !== 'object' || Array.isArray(node.data.formValues))))) bad('INVALID_NODE_DATA', 'txt2img 节点需要 workflowId，formValues 必须为对象');
   if (node.type === 'result' && node.data.kind != null && !['image', 'video', 'audio', 'text'].includes(String(node.data.kind))) bad('INVALID_NODE_DATA', 'result.kind 不合法');
   if (node.type === 'codex-capability' && (!['text', 'image', 'edit', 'analyze'].includes(String(node.data.capability)) || typeof node.data.prompt !== 'string' || typeof node.data.model !== 'string')) bad('INVALID_NODE_DATA', 'AI 能力节点字段不合法');
   if (node.type === 'tts' && (!['cosyvoice3', 'indextts2'].includes(String(node.data.provider)) || typeof node.data.text !== 'string' || typeof node.data.referenceText !== 'string')) bad('INVALID_NODE_DATA', 'AI 配音节点字段不合法');
-  if (node.type === 'speech-evaluator' && typeof node.data.targetText !== 'string') bad('INVALID_NODE_DATA', '语音评价节点字段不合法');
 }
 function handleKind(handle: string, source: boolean): string | null {
   if (source && (handle === 'text-positive-source' || handle === 'text-negative-source')) return 'text';
@@ -190,7 +189,7 @@ function validateGraph(graph: CanvasGraph) {
     const sourceKind = handleKind(edge.sourceHandle, true), targetKind = handleKind(edge.targetHandle, false);
     if (!sourceKind || !targetKind) bad('HANDLE_NOT_FOUND', `连线 ${edge.id} 句柄不合法`);
     const sourceNode = nodes.get(edge.source)!, targetNode = nodes.get(edge.target)!;
-    const allowedSource = sourceNode.type === 'txt2img' ? ['image', 'video'] : sourceNode.type === 'result' ? [String(sourceNode.data.kind ?? 'image')] : sourceNode.type === 'tts' ? ['audio'] : sourceNode.type === 'speech-evaluator' ? ['text'] : ['text', 'analyze'].includes(String(sourceNode.data.capability)) ? ['text'] : ['image'];
+    const allowedSource = sourceNode.type === 'txt2img' ? ['image', 'video'] : sourceNode.type === 'result' ? [String(sourceNode.data.kind ?? 'image')] : sourceNode.type === 'tts' ? ['audio'] : ['text', 'analyze'].includes(String(sourceNode.data.capability)) ? ['text'] : ['image'];
     if (!allowedSource.includes(sourceKind)) bad('HANDLE_NOT_FOUND', `源节点 ${edge.source} 不存在 ${edge.sourceHandle}`);
     if (edge.targetHandle.endsWith('-target')) {
       const acceptsTarget = targetNode.type === 'result'
@@ -198,8 +197,6 @@ function validateGraph(graph: CanvasGraph) {
         : targetNode.type === 'codex-capability'
           ? targetKind === 'text' || (targetKind === 'image' && ['edit', 'analyze'].includes(String(targetNode.data.capability)))
           : targetNode.type === 'tts'
-            ? targetKind === 'text' || targetKind === 'audio'
-          : targetNode.type === 'speech-evaluator'
             ? targetKind === 'text' || targetKind === 'audio'
           : false;
       if (!acceptsTarget) bad('HANDLE_NOT_FOUND', `目标节点 ${edge.target} 不存在 ${edge.targetHandle}`);

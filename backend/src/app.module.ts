@@ -12,7 +12,6 @@ import { RunsModule } from './runs/runs.module';
 import { SystemResourcesModule } from './system-resources/system-resources.module';
 import { LocalComputeSchedulerModule } from './gpu-scheduler/gpu-scheduler.module';
 import { TtsModule } from './tts/tts.module';
-import { SpeechEvaluatorModule } from './speech-evaluator/speech-evaluator.module';
 
 @Module({
   imports: [
@@ -27,7 +26,6 @@ import { SpeechEvaluatorModule } from './speech-evaluator/speech-evaluator.modul
     SystemResourcesModule,
     LocalComputeSchedulerModule,
     TtsModule,
-    SpeechEvaluatorModule,
   ],
   controllers: [AppController],
   providers: [AppService],

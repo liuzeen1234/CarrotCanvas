@@ -34,25 +34,6 @@ describe('LocalComputeSchedulerService', () => {
     await second.release();
   });
 
-  it('keeps competing providers queued throughout a CPU-only stage', async () => {
-    const evaluation = await service.acquire('speech-evaluator', 'eval-cpu-stage');
-    let competingGranted = false;
-    const competing = service.acquire('comfyui', 'comfy-waiting').then((lease) => { competingGranted = true; return lease; });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(competingGranted).toBe(false);
-    expect(service.getState()).toMatchObject({ active: { provider: 'speech-evaluator' }, waiting: [{ provider: 'comfyui' }] });
-    await evaluation.release();
-    const comfy = await competing;
-    expect(competingGranted).toBe(true);
-    await comfy.release();
-  });
-
-  it('fails closed when a previous provider process cannot be proven absent', async () => {
-    service.registerProvider('speech-evaluator', { prepare: async () => { throw Object.assign(new Error('unconfirmed'), { details: { code: 'PROVIDER_STATE_UNCONFIRMED', pid: 4321 } }); }, release: async () => undefined });
-    await expect(service.acquire('speech-evaluator', 'eval-restart')).rejects.toThrow('unconfirmed');
-    expect(service.getState().blocked).toMatchObject({ code: 'PROVIDER_STATE_UNCONFIRMED', pid: 4321 });
-  });
-
   it('keeps the same provider resident and releases it once when switching', async () => {
     const events: string[] = [];
     service.registerProvider('comfyui', { prepare: async () => { events.push('prepare-comfy'); }, release: async () => { events.push('release-comfy'); } });
@@ -87,13 +68,4 @@ describe('LocalComputeSchedulerService', () => {
     await lease.release();
   });
 
-  it('cleans up a non-resident heavy provider before granting the next lease', async () => {
-    const events: string[] = [];
-    service.registerProvider('speech-evaluator', { retainAfterLease: false, prepare: async () => { events.push('prepare-eval'); }, release: async () => { events.push('release-eval'); } });
-    service.registerProvider('comfyui', { prepare: async () => { events.push('prepare-comfy'); }, release: async () => { events.push('release-comfy'); } });
-    const evaluation = await service.acquire('speech-evaluator', 'eval'); await evaluation.release();
-    expect(service.getState().residentProvider).toBeNull();
-    const comfy = await service.acquire('comfyui', 'comfy'); await comfy.release();
-    expect(events).toEqual(['prepare-eval', 'release-eval', 'prepare-comfy']);
-  });
 });

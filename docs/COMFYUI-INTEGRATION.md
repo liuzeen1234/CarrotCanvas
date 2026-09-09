@@ -129,7 +129,7 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 - 2026-09-09（进程级安全调度）：ComfyUI 不再只依赖 `/free` 释放模型。平台记录自己启动的 PID/可执行文件/启动参数，跨 Provider 切换最多 3 次结束托管进程树，并观测端口、PID、RAM、allocator 与整卡显存；无法证明所有权或检测到 ComfyUI Desktop 时返回结构化冲突、锁住 GPU 队列，并由画布/工具箱弹窗请求用户显式确认。确认后才关闭 Desktop 并按需启动托管后端；取消不会改变外部进程。详见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
 
-- 2026-09-09（本机重型计算调度）：原 GPU 租约领域概念升级为本机重型计算租约；ComfyUI、CosyVoice 3、IndexTTS2、speech-evaluator 接入同一持久化 FIFO。ComfyUI 切出时等待队列为空并验证进程释放；评价的 CPU-only 阶段也保持外层租约，避免重型任务资源争抢。详细设计与证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md) 与 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。
+- 2026-09-09（本机重型计算调度）：原 GPU 租约领域概念升级为本机重型计算租约；ComfyUI、CosyVoice 3、IndexTTS2 接入同一持久化 FIFO。ComfyUI 切出时等待队列为空并验证进程释放。详细设计与证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
 
 - 2026-09-08（Pixel Fantasy 本地适配）：按用户要求仅在 ComfyUI Desktop 保存 `Pixel_Fantasy_5060Ti_15s_Auto` / `Manual`，未导入平台。原工作流缺失节点、模型与动态连线迁移至本机 Ref2VA INT8、NVFP4 文本编码、4 步 Turbo、官方音视频输出和 XB llama 视觉扩写；补齐 CUDA llama.cpp 与 Qwen3.5-9B Q4，8192 上下文、全 GPU 层加载、扩写结束释放显存。指定人物图完成两条 864×480 / 24fps / 362 帧 / 15.083 秒音视频，人工提示词版 311.535 秒，自动版视频阶段 329.740 秒（复用约 40 秒扩写缓存）。媒体全量解码与逐秒抽帧通过；扩写存在眼睛颜色误判，人工版保留校准提示词。采样 GPU 平均约 99.3%，仍保留必要 RAM 暂存与 CPU 调度。证据与使用说明：`artifacts/pixel-fantasy/README.md`。本次不改平台业务代码、运行协议或阶段状态。
 

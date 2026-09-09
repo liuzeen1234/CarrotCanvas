@@ -13,7 +13,6 @@ export const NODE_TYPE_TXT2IMG = 'txt2img';
 export const NODE_TYPE_RESULT = 'result';
 export const NODE_TYPE_CODEX = 'codex-capability';
 export const NODE_TYPE_TTS = 'tts';
-export const NODE_TYPE_SPEECH_EVALUATOR = 'speech-evaluator';
 export type CodexCapability = 'text' | 'image' | 'edit' | 'analyze';
 
 /** 句柄标识：image 数据流（一期唯一连线类型，§4.4），用于连线校验 */
@@ -84,14 +83,6 @@ export interface TtsNodeData {
   [key: string]: unknown;
 }
 
-export interface SpeechEvaluatorNodeData {
-  targetText: string;
-  lastEvaluationRunId?: string;
-  lastResult?: Record<string, unknown>;
-  lastText?: string;
-  [key: string]: unknown;
-}
-
 export type CanvasNodeData = Txt2ImgNodeData | ResultNodeData;
 
 /** 节点类型 → 显示名 */
@@ -100,7 +91,6 @@ export const NODE_TYPE_LABEL: Record<string, string> = {
   [NODE_TYPE_RESULT]: '结果',
   [NODE_TYPE_CODEX]: 'AI 能力',
   [NODE_TYPE_TTS]: 'AI 配音',
-  [NODE_TYPE_SPEECH_EVALUATOR]: '语音评价',
 };
 
 let nodeSeq = 0;
@@ -137,10 +127,6 @@ export function createTtsNode(position: { x: number; y: number }): Node<TtsNodeD
     data: { provider: 'cosyvoice3', text: '', referenceText: '', instruction: '', speed: 1 },
     style: { width: NODE_W },
   };
-}
-
-export function createSpeechEvaluatorNode(position: { x: number; y: number }): Node<SpeechEvaluatorNodeData, typeof NODE_TYPE_SPEECH_EVALUATOR> {
-  return { id: newNodeId(NODE_TYPE_SPEECH_EVALUATOR), type: NODE_TYPE_SPEECH_EVALUATOR, position, data: { targetText: '' }, style: { width: NODE_W } };
 }
 
 /** 结果节点工厂（一般由运行动作自动创建并连线，§4.3.1；也可单独落点） */
