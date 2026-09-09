@@ -1293,7 +1293,7 @@ function CanvasEditorInner() {
 
             {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} onPickTts={handlePickTts} onPickSpeechEvaluator={handlePickSpeechEvaluator} onPickInput={(kind) => {
               const position = menu ? screenToFlowPosition({x:menu.screenX,y:menu.screenY}) : {x:0,y:0};
-              setNodes(nds => [...nds, {id: crypto.randomUUID(), type: NODE_TYPE_RESULT, position, data:{kind,inputMode:true,lastText:'',lastAssets:[]},style:{width:300}}]);
+              setNodes(nds => [...nds, {id: crypto.randomUUID(), type: NODE_TYPE_RESULT, position, data:{kind,inputMode:true,lastText:'',lastAssets:[],note:''},style:{width:300}}]);
             }} /> : null}
 
             {/* 空白画布提示 */}

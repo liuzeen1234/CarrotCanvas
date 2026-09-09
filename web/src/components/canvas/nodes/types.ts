@@ -53,7 +53,10 @@ export interface Txt2ImgNodeData {
 
 /** 结果节点 data：读上游生成节点 lastAssets 展示，自身不冗余存 */
 export interface ResultNodeData {
-  // C6：上游 lastAssets 通过连线解析，这里不需要持久化字段
+  /** 输入节点模式下，媒体文件的补充说明。 */
+  note?: string;
+  /** 输入节点模式下，上传媒体的持久化资产引用。 */
+  lastAssets?: { assetId: string; url: string; kind: string; filename?: string }[];
   [key: string]: unknown;
 }
 

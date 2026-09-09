@@ -1,7 +1,7 @@
 # AI 原生画布与人机接力
 
 > 状态：Phase 1B 已实现并通过行为级验收；当前需求范围已完成，Phase 2 及后续阶段暂不实施
-> 最后更新：2026-09-08
+> 最后更新：2026-09-09
 > GitHub Issue：[Issue #1](https://github.com/liuzeen1234/CarrotCanvas/issues/1)
 
 本文是 AI 原生画布控制、人机接力、生成历史与自主视频生产的仓库内唯一设计入口。Issue 用于讨论和追踪；本文记录已拍板决策、实施边界、阶段状态和后续 AI 会话必须遵守的约束。当前交付边界止于 Phase 1B；Phase 2、Phase 3 及其最终 Skill/成片闭环验收仅保留为未来参考，不属于当前需求、Issue #1 完成条件或 `v1.0.0` 发布范围。
@@ -590,3 +590,5 @@ Phase 0A 推荐的新会话指令：
 - 2026-09-07（配置）：画布图生视频菜单新增 `MiniMax H3 双图参考生视频 · 重启天际`（工作流 ID `35c2f155-78f6-4762-9ce1-93b90c78856e`），支持两路图片与一路文本动态输入；默认素材与提示词可直接使用。入库与 schema 校验通过，本次未修改 canonical canvas graph、运行引擎或阶段完成状态。当前工作流不包含视频/音频参考输入。
 
 - 2026-09-08（现有画布能力扩展，阶段状态不变）：MiniMax H3 全能参考在画布开放 46 个 typed 输入，包含完整 9 图 / 3 视频 / 3 对应配音 / 3 独立音频槽位以及可经文本连线输入的标量参数。新增 result.inputMode 输入节点（图片/视频/音频上传、文字字面量），沿用 create_node/update_node/connect 与 canonical revision/lease，未引入 Phase 2/3。带 canvasId 的媒体上传先后校验控制权，保存平台 upload 资产；多媒体回灌校验画布归属，运行提交冻结转换后的实际图与 inputAssetIds。真实示例画布 73b899eb-e086-4d54-a309-bc36c5b3c56d 经受控 operations 创建 5 节点 / 4 连线，随后正常释放 AI lease；Chrome 验证端点、媒体预览和文本同步，后端测试/构建及前端生产构建通过，详细证据见 COMFYUI-INTEGRATION.md。
+
+- 2026-09-09（输入节点易读性，阶段状态不变）：图片、视频和音频输入节点在媒体预览下展示上传文件的原始文件名，并新增可选备注输入；备注作为节点 data 随 canonical graph、revision 和既有语义化 update_node 流程持久化，文字输入节点行为不变。

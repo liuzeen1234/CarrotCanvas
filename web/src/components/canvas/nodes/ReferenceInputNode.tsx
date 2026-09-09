@@ -19,6 +19,7 @@ export default function ReferenceInputNode({ id, data }: NodeProps) {
     <div className="canvas-node__body nodrag">
       {kind === 'text' ? <ImeSafeTextArea value={String(data.lastText ?? '')} disabled={readOnly} onChange={lastText => updateNodeData(id,{lastText})} autoSize={{minRows:3}} placeholder="提示词、数字、true / false 或下拉选项值" /> : <>
         {asset ? kind === 'video' ? <video src={asset.url} controls style={{width:'100%'}} /> : kind === 'audio' ? <audio src={asset.url} controls style={{width:'100%'}} /> : <img src={asset.url} alt={asset.filename} style={{width:'100%'}} /> : null}
+        {asset?.filename ? <div className="canvas-reference-input__filename" title={asset.filename}>{asset.filename}</div> : null}
         <Upload accept={`${kind}/*`} showUploadList={false} disabled={readOnly || uploading} customRequest={async ({file,onSuccess,onError}) => {
           setUploading(true);
           try {
@@ -30,6 +31,7 @@ export default function ReferenceInputNode({ id, data }: NodeProps) {
           } catch(error:any) { message.error(error?.response?.data?.message || '上传失败'); onError?.(error); }
           finally { setUploading(false); }
         }}><Button icon={<UploadOutlined />} loading={uploading} disabled={readOnly}>上传{label}</Button></Upload>
+        <ImeSafeTextArea className="canvas-reference-input__note" value={String(data.note ?? '')} disabled={readOnly} onChange={note => updateNodeData(id,{note})} autoSize={{minRows:2,maxRows:5}} placeholder="添加备注或使用说明（可选）" />
       </>}
     </div>
   </div>;

@@ -175,3 +175,15 @@
   top: 50%;
   transform: translate(-50%, -50%);
 }
+
+.canvas-reference-input__filename {
+  color: rgba(0, 0, 0, 0.65);
+  margin: 6px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-reference-input__note {
+  margin-top: 8px;
+}
