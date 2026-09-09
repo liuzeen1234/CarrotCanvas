@@ -25,4 +25,5 @@ export class SpeechEvaluatorController {
   }
 
   @Get('runs/:id') async get(@Param('id') id: string) { return { run: await this.runs.get(id), items: await this.evaluator.list(id) }; }
+  @Post('runs/:id/cancel') cancel(@Param('id') id: string) { return this.evaluator.cancel(id); }
 }

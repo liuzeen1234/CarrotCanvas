@@ -6,6 +6,7 @@ import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff, Generati
 
 @Injectable()
 export class RunsService implements OnModuleInit {
+  private readonly cancelHandlers = new Map<string, (runId: string) => Promise<unknown>>();
   constructor(
     @InjectRepository(GenerationRun) private readonly runs: Repository<GenerationRun>,
     @InjectRepository(GenerationRunHandoff) private readonly handoffs: Repository<GenerationRunHandoff>,
@@ -16,6 +17,8 @@ export class RunsService implements OnModuleInit {
   async onModuleInit() {
     await this.runs.createQueryBuilder().update().set({ status: 'needs_attention', finishedAt: Date.now(), error: { code: 'PROVIDER_STATE_UNCONFIRMED', message: '服务重启后无法确认提供方任务状态' } }).where('status IN (:...statuses)', { statuses: ['queued', 'running'] }).execute();
   }
+
+  registerCancelHandler(provider: string, handler: (runId: string) => Promise<unknown>) { this.cancelHandlers.set(provider, handler); }
 
   async begin(input: Partial<GenerationRun> & Pick<GenerationRun, 'provider' | 'inputSnapshot'>) {
     if (input.idempotencyKey) {
@@ -84,7 +87,7 @@ export class RunsService implements OnModuleInit {
   capabilities(run: GenerationRun) {
     return {
       observe: true, adopt: !!run.canvasId, wait: true,
-      cancel: run.provider === 'comfyui' ? { precise: false, mode: 'global-if-sole-active', reasonCode: 'CANCEL_NOT_PRECISE' } : { precise: false, mode: 'unsupported', reasonCode: 'CANCEL_NOT_PRECISE' },
+      cancel: run.provider === 'speech-evaluator' ? { precise: true, mode: 'safe-unit-boundary', endpoint: `/api/speech-evaluator/runs/${run.id}/cancel` } : run.provider === 'comfyui' ? { precise: false, mode: 'global-if-sole-active', reasonCode: 'CANCEL_NOT_PRECISE' } : { precise: false, mode: 'unsupported', reasonCode: 'CANCEL_NOT_PRECISE' },
       statusUpdatesRequireLease: false,
     };
   }
@@ -154,6 +157,8 @@ export class RunsService implements OnModuleInit {
   async cancel(id: string) {
     const run = await this.get(id);
     if (['succeeded', 'failed', 'cancelled'].includes(run.status)) return run;
+    const handler = this.cancelHandlers.get(run.provider);
+    if (handler) return handler(id);
     throw new ConflictException({ code: 'CANCEL_NOT_PRECISE', message: run.provider === 'comfyui' ? 'ComfyUI 当前仅支持全局中断，不能通过统一接口伪装为精确取消' : '该提供方运行是同步请求，当前不能精确取消' });
   }
 }

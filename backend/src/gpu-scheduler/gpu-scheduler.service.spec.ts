@@ -1,25 +1,25 @@
 import { Test } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { GpuResourceLease } from './gpu-resource-lease.entity';
-import { GpuSchedulerService } from './gpu-scheduler.service';
+import { LocalComputeLease } from './gpu-resource-lease.entity';
+import { LocalComputeSchedulerService } from './gpu-scheduler.service';
 
-describe('GpuSchedulerService', () => {
-  let service: GpuSchedulerService;
+describe('LocalComputeSchedulerService', () => {
+  let service: LocalComputeSchedulerService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
       imports: [
-        TypeOrmModule.forRoot({ type: 'better-sqlite3', database: ':memory:', dropSchema: true, entities: [GpuResourceLease], synchronize: true }),
-        TypeOrmModule.forFeature([GpuResourceLease]),
+        TypeOrmModule.forRoot({ type: 'better-sqlite3', database: ':memory:', dropSchema: true, entities: [LocalComputeLease], synchronize: true }),
+        TypeOrmModule.forFeature([LocalComputeLease]),
       ],
-      providers: [GpuSchedulerService],
+      providers: [LocalComputeSchedulerService],
     }).compile();
-    service = module.get(GpuSchedulerService);
+    service = module.get(LocalComputeSchedulerService);
     await service.onModuleInit();
   });
 
-  it('never grants two GPU leases at the same time', async () => {
+  it('never grants two local heavy-compute leases at the same time', async () => {
     const first = await service.acquire('comfyui', 'run-1');
     let secondGranted = false;
     const secondPromise = service.acquire('cosyvoice3', 'run-2').then((lease) => {
@@ -32,6 +32,25 @@ describe('GpuSchedulerService', () => {
     const second = await secondPromise;
     expect(second.lease.runId).toBe('run-2');
     await second.release();
+  });
+
+  it('keeps competing providers queued throughout a CPU-only stage', async () => {
+    const evaluation = await service.acquire('speech-evaluator', 'eval-cpu-stage');
+    let competingGranted = false;
+    const competing = service.acquire('comfyui', 'comfy-waiting').then((lease) => { competingGranted = true; return lease; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(competingGranted).toBe(false);
+    expect(service.getState()).toMatchObject({ active: { provider: 'speech-evaluator' }, waiting: [{ provider: 'comfyui' }] });
+    await evaluation.release();
+    const comfy = await competing;
+    expect(competingGranted).toBe(true);
+    await comfy.release();
+  });
+
+  it('fails closed when a previous provider process cannot be proven absent', async () => {
+    service.registerProvider('speech-evaluator', { prepare: async () => { throw Object.assign(new Error('unconfirmed'), { details: { code: 'PROVIDER_STATE_UNCONFIRMED', pid: 4321 } }); }, release: async () => undefined });
+    await expect(service.acquire('speech-evaluator', 'eval-restart')).rejects.toThrow('unconfirmed');
+    expect(service.getState().blocked).toMatchObject({ code: 'PROVIDER_STATE_UNCONFIRMED', pid: 4321 });
   });
 
   it('keeps the same provider resident and releases it once when switching', async () => {

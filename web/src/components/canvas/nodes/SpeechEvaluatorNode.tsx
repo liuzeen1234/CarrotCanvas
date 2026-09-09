@@ -11,6 +11,7 @@ export default function SpeechEvaluatorNode(props: NodeProps) {
   const data = props.data as SpeechEvaluatorNodeData;
   const { canvasId, control, readOnly, updateNodeData, deleteNode, getUpstreamAsset, getUpstreamText } = useContext(CanvasNodeDataContext);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const target = getUpstreamAsset(props.id, resultTargetHandle('audio'), 'audio');
   const reference = getUpstreamAsset(props.id, 'reference-audio-target', 'audio');
   const upstreamText = getUpstreamText(props.id, resultTargetHandle('text'));
@@ -22,15 +23,18 @@ export default function SpeechEvaluatorNode(props: NodeProps) {
     try {
       const submitted = await request<any>('/api/speech-evaluator/runs', { method: 'POST', data: { canvasId, nodeId: props.id,
         targets: [{ assetId: target.assetId, referenceAssetId: reference?.assetId, targetText }], idempotencyKey: crypto.randomUUID(), ...control } });
+      setActiveRunId(submitted.run.id);
       let current = submitted;
-      for (let attempt = 0; attempt < 120 && ['queued', 'running'].includes(current.run.status); attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500)); current = await request<any>(`/api/speech-evaluator/runs/${submitted.run.id}`);
+      for (let attempt = 0; attempt < 600 && ['queued', 'running', 'needs_attention'].includes(current.run.status); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000)); current = await request<any>(`/api/speech-evaluator/runs/${submitted.run.id}`);
       }
       if (current.run.status !== 'succeeded') throw new Error(current.run.error?.message || '语音评价失败');
       updateNodeData(props.id, { lastEvaluationRunId: current.run.id, lastResult: current.items?.[0]?.finalResult, lastText: current.run.outputText });
     } catch (e: any) { setError(e?.response?.data?.message || e?.message || '语音评价失败'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setActiveRunId(null); }
   };
+
+  const cancel = async () => { if (activeRunId) await request(`/api/speech-evaluator/runs/${activeRunId}/cancel`, { method: 'POST' }); };
 
   return <div className={`canvas-node${props.selected ? ' selected' : ''}`}>
     <Handle type="target" position={Position.Left} id={resultTargetHandle('audio')} className="canvas-handle--audio" title="待评价语音" style={{ top: '28%' }} />
@@ -45,11 +49,17 @@ export default function SpeechEvaluatorNode(props: NodeProps) {
       {reference ? <Tag color="purple">已连接音色参考</Tag> : null}
       {!upstreamText.connected ? <ImeSafeTextArea value={data.targetText} onChange={(targetText) => updateNodeData(props.id, { targetText })} disabled={readOnly} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="目标台词（后续用于内容对齐）" /> : <Tag>目标文本来自上游</Tag>}
       {busy ? <Tag color="processing">持有本机重型计算租约并严格串行评价</Tag> : null}
+      {busy && activeRunId ? <Button size="small" danger onClick={() => void cancel()}>在安全边界取消</Button> : null}
       {result ? <Descriptions size="small" column={1} bordered items={[
-        { key: 'score', label: '基础技术分', children: result.technicalScore ?? '—' },
+        { key: 'score', label: '相对综合分', children: result.normalizedScores ? Object.values(result.normalizedScores).filter((value) => typeof value === 'number').reduce((sum: number, value: any) => sum + value, 0) / Object.values(result.normalizedScores).filter((value) => typeof value === 'number').length : result.technicalScore ?? '—' },
+        { key: 'content', label: '内容准确度', children: result.normalizedScores?.contentAccuracy != null ? `${result.normalizedScores.contentAccuracy}%` : '—' },
+        { key: 'speaker', label: '音色相似度', children: result.speakerSimilarity?.cosineSimilarity != null ? result.speakerSimilarity.cosineSimilarity : '—' },
+        { key: 'mos', label: '自然度（未校准）', children: result.naturalness?.predictedMos != null ? `${result.naturalness.predictedMos} / 5` : '—' },
+        { key: 'rate', label: '语速', children: result.pauseAndSpeechRate?.charactersPerSecond != null ? `${result.pauseAndSpeechRate.charactersPerSecond} 字/秒` : '—' },
         { key: 'pitch', label: '平均音高', children: result.measurements?.['pitch-energy']?.metrics?.meanF0Hz ? `${result.measurements['pitch-energy'].metrics.meanF0Hz} Hz` : '—' },
         { key: 'pause', label: '静音占比', children: result.measurements?.['pause-timing']?.metrics?.silenceRatio != null ? `${Math.round(result.measurements['pause-timing'].metrics.silenceRatio * 100)}%` : '—' },
-        { key: 'status', label: '综合结论', children: result.decision?.status === 'needs_model_evaluation' ? '等待模型评价' : result.decision?.status },
+        { key: 'issues', label: '定位问题', children: result.issues?.length ? result.issues.map((issue: any) => issue.code).join('、') : '未发现规则化异常' },
+        { key: 'status', label: '综合结论', children: result.decision?.recommendation || result.decision?.status },
       ]} /> : null}
       {error ? <Alert type="error" showIcon message={error} /> : null}
     </Space></div>

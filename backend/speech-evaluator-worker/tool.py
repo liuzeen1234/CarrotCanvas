@@ -14,6 +14,18 @@ import tempfile
 from pathlib import Path
 
 RESULT_PREFIX = "CARROT_SPEECH_EVALUATOR_RESULT="
+EVENT_PREFIX = "CARROT_SPEECH_EVALUATOR_EVENT="
+
+
+def emit_event(index: int, status: str, result: dict | None = None) -> None:
+    payload = {"index": index, "status": status}
+    if result is not None:
+        payload["result"] = result
+    print(EVENT_PREFIX + json.dumps(payload, ensure_ascii=False), flush=True)
+
+
+def cancelled(cancel_file: str | None) -> bool:
+    return bool(cancel_file and Path(cancel_file).exists())
 
 
 def normalized_text(value: str) -> str:
@@ -30,7 +42,7 @@ def edit_distance(left: str, right: str) -> int:
     return prior[-1]
 
 
-def run_funasr(items: list[dict], device: str) -> list[dict]:
+def run_funasr(items: list[dict], device: str, cancel_file: str | None) -> tuple[list[dict], bool]:
     from funasr import AutoModel
 
     model = AutoModel(
@@ -42,7 +54,12 @@ def run_funasr(items: list[dict], device: str) -> list[dict]:
         trust_remote_code=False,
     )
     results = []
-    for item in items:
+    was_cancelled = False
+    for index, item in enumerate(items):
+        if cancelled(cancel_file):
+            was_cancelled = True
+            break
+        emit_event(index, "started")
         generated = model.generate(
             input=item["path"], batch_size_s=60, batch_size_threshold_s=30,
             sentence_timestamp=True,
@@ -52,15 +69,17 @@ def run_funasr(items: list[dict], device: str) -> list[dict]:
         target = normalized_text(str(item.get("targetText") or ""))
         recognized = normalized_text(transcript)
         cer = edit_distance(target, recognized) / max(1, len(target)) if target else None
-        results.append({
+        result = {
             "transcript": transcript,
             "timestamps": first.get("timestamp") or [],
             "sentenceInfo": first.get("sentence_info") or [],
             "targetNormalized": target or None,
             "recognizedNormalized": recognized,
             "cer": round(cer, 6) if cer is not None else None,
-        })
-    return results
+        }
+        results.append(result)
+        emit_event(index, "completed", result)
+    return results, was_cancelled
 
 
 def readable_wav(path: str, temp_dir: str) -> str:
@@ -75,7 +94,7 @@ def readable_wav(path: str, temp_dir: str) -> str:
     return converted
 
 
-def run_wespeaker(items: list[dict], device: str) -> list[dict]:
+def run_wespeaker(items: list[dict], device: str, cancel_file: str | None) -> tuple[list[dict], bool]:
     from wespeaker.cli.hub import Hub
     from wespeaker.cli.speaker import Speaker
 
@@ -83,19 +102,28 @@ def run_wespeaker(items: list[dict], device: str) -> list[dict]:
     speaker.set_device(device)
     results = []
     with tempfile.TemporaryDirectory(prefix="carrot-speaker-") as temp_dir:
-        for item in items:
+        was_cancelled = False
+        for index, item in enumerate(items):
+            if cancelled(cancel_file):
+                was_cancelled = True
+                break
+            emit_event(index, "started")
             reference = item.get("referencePath")
             if not reference:
-                results.append({"status": "unavailable", "reason": "未提供参考音频"})
+                result = {"status": "unavailable", "reason": "未提供参考音频"}
+                results.append(result)
+                emit_event(index, "completed", result)
                 continue
             target_path = readable_wav(item["path"], temp_dir)
             reference_path = readable_wav(reference, temp_dir)
             similarity = float(speaker.compute_similarity(target_path, reference_path))
-            results.append({"status": "succeeded", "cosineSimilarity": round(similarity, 6)})
-    return results
+            result = {"status": "succeeded", "cosineSimilarity": round(similarity, 6)}
+            results.append(result)
+            emit_event(index, "completed", result)
+    return results, was_cancelled
 
 
-def run_utmosv2(items: list[dict], device: str) -> list[dict]:
+def run_utmosv2(items: list[dict], device: str, cancel_file: str | None) -> tuple[list[dict], bool]:
     import importlib
     import random
     import numpy as np
@@ -131,32 +159,43 @@ def run_utmosv2(items: list[dict], device: str) -> list[dict]:
         timm.create_model = original_timm_create
     results = []
     with tempfile.TemporaryDirectory(prefix="carrot-utmos-") as temp_dir:
-        for item in items:
+        was_cancelled = False
+        for index, item in enumerate(items):
+            if cancelled(cancel_file):
+                was_cancelled = True
+                break
+            emit_event(index, "started")
             path = readable_wav(item["path"], temp_dir)
             mos = float(model.predict(
                 input_path=path, device=device, num_workers=0,
                 num_repetitions=5, remove_silent_section=True, verbose=False,
             ))
-            results.append({"predictedMos": round(mos, 6), "scale": [1, 5], "numRepetitions": 5})
-    return results
+            result = {"predictedMos": round(mos, 6), "scale": [1, 5], "numRepetitions": 5}
+            results.append(result)
+            emit_event(index, "completed", result)
+    return results, was_cancelled
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tool", choices=["funasr", "wespeaker", "utmosv2"], required=True)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--cancel-file")
     args = parser.parse_args()
     payload = json.load(sys.stdin)
     items = payload.get("items") or []
     if not items:
         raise ValueError("items cannot be empty")
+    if cancelled(args.cancel_file):
+        print(RESULT_PREFIX + json.dumps({"tool": args.tool, "items": [], "cancelled": True}), flush=True)
+        return
     if args.tool == "funasr":
-        output = run_funasr(items, args.device)
+        output, was_cancelled = run_funasr(items, args.device, args.cancel_file)
     elif args.tool == "wespeaker":
-        output = run_wespeaker(items, args.device)
+        output, was_cancelled = run_wespeaker(items, args.device, args.cancel_file)
     else:
-        output = run_utmosv2(items, args.device)
-    print(RESULT_PREFIX + json.dumps({"tool": args.tool, "items": output}, ensure_ascii=False), flush=True)
+        output, was_cancelled = run_utmosv2(items, args.device, args.cancel_file)
+    print(RESULT_PREFIX + json.dumps({"tool": args.tool, "items": output, "cancelled": was_cancelled}, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":

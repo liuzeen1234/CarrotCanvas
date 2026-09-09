@@ -165,5 +165,5 @@ function serializeError(error: unknown) {
 }
 
 function isFailClosed(error: Record<string, unknown>) {
-  return ['PROVIDER_RELEASE_FAILED', 'COMFYUI_TAKEOVER_REQUIRED', 'COMFYUI_TAKEOVER_FAILED'].includes(String(error.code || ''));
+  return ['PROVIDER_RELEASE_FAILED', 'PROVIDER_STATE_UNCONFIRMED', 'COMFYUI_TAKEOVER_REQUIRED', 'COMFYUI_TAKEOVER_FAILED'].includes(String(error.code || ''));
 }

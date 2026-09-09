@@ -68,9 +68,14 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 - [x] 后端重启清理遗留 TTS worker，确认 50000/50001 端口及原 PID 均消失。
 - [x] 真实 ComfyUI Desktop 冲突返回 409、持久 Run 失败原因和调度器锁定状态；浏览器显示 PID/路径/内存及显式接管按钮，取消后 Desktop 保持运行。
 - [x] 页面与 AI 对话共用一次性确认协议；无令牌、伪造、过期、重放和进程快照变化测试均确认不会结束进程。
+- [x] speech-evaluator 真实三音频批次严格按工具优先、逐音频串行执行并即时落库；最终比较/排名/建议持久化后才释放外层租约。
+- [x] speech-evaluator 真实安全边界取消保留已完成 FunASR 项、停止后续项并释放租约；来源 TTS 音频仍可下载。
+- [x] CPU-only 阶段阻塞 ComfyUI/TTS、重启残留状态无法证明时 fail-closed、连续三次清理失败观测均有自动测试。
 
 2026-09-09 实机证据：CosyVoice Run `509ad963-42ee-4da3-a2e2-844bc9076ea5` 生成 24 kHz 单声道 4.160 秒 WAV；IndexTTS2 Run `0240d1a5-b6ae-4bdb-b33c-1539cb42afa0` 生成 22.05 kHz 单声道 3.727 秒 WAV。随后 Z-Image Run `10de6a46-ef2d-471c-83fc-d0646042a0ea` 成功输出 512×512 图片；提交时两个 TTS worker 均为 `loaded=false`，调度器唯一活动租约为 `comfyui`。验收画布 `55961864-3618-4923-bc88-49c5fb782332` 保留参考音频、配音节点、下游音频结果与生成流水；浏览器内三个 audio 元素均 `readyState=4`。
 
 进程级升级验收：3100 重启后原 CosyVoice PID `21196`、IndexTTS PID `5428` 与 50000/50001 监听全部消失。对仍由 Desktop 启动的 ComfyUI PID `16968` 提交 Z-Image 时返回 `409 COMFYUI_TAKEOVER_REQUIRED`，平台 Run `c058b04d-a92f-400e-956f-53c123502333` 为 `failed` 且保存端口、PID、约 38.99 GB private bytes、allocator 和整卡显存快照；调度器 `blocked` 同步锁定。浏览器确认弹窗正确展示 PID、路径、内存、取消和“关闭 Desktop 并交由调度器托管”，验收选择取消，确认未越权关闭用户 Desktop。完整自动测试为 16 suites / 100 tests，前后端生产构建通过。
 
 对话确认升级验收：真实 Desktop 运行时成功签发绑定当前进程集合的 5 分钟一次性令牌及公开快照指纹；使用伪造令牌调用执行接口返回 `TAKEOVER_CONFIRMATION_INVALID`，8188 所有者与全部 Desktop 进程保持不变。自动测试覆盖缺失、伪造、过期、重放、快照变化和有效令牌路径，共 16 suites / 101 tests；Action Registry 将执行动作声明为 `high-impact + human confirmation`，前后端生产构建通过。本轮未把“确认升级功能”解释成“立即关闭当前 Desktop”。
+
+Issue #14 语音评价验收：真实三音频批次 Run `945d2f9a-6a9c-435d-b317-ed44701f6630` 完成六工具串行、逐项落库、批次排名与租约后释放；真实取消 Run `62892420-35cf-4fd0-a9ba-e59e23f28a0b` 在 FunASR 项边界停止并保留首项结果。详情与指标见 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。

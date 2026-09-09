@@ -186,7 +186,7 @@ pnpm start     # 生产运行后端（需先 build）
 - [ ] 单文件 exe 打包（bun build --compile / pkg）
 - [ ] 一键启动脚本（start.bat 固化两端启动）
 
-## 8. 2026-09-09 本地配音与 GPU 调度增量
+## 8. 2026-09-09 本地配音与本机重型计算调度增量
 
 - ✅ 新增 CosyVoice 3 / IndexTTS2 独立 Python worker 和画布 `tts` 节点；worker 按需启动、同 Provider 可驻留、跨 Provider 必须退出旧进程后再启动新进程。
 - ✅ ComfyUI、CosyVoice 3、IndexTTS2、speech-evaluator 共用 SQLite FIFO 本机重型计算租约；提供 `/api/local-compute-scheduler/status`（旧 GPU 路径兼容）与各 Provider 可观测状态。
@@ -195,4 +195,5 @@ pnpm start     # 生产运行后端（需先 build）
 - ✅ 真实 CosyVoice、IndexTTS2、TTS→Z-Image 三段运行全部成功；画布音频结果支持播放、下载和历史候选。
 - ✅ ComfyUI 纳入进程托管：外部 Desktop/PID 必须弹窗确认，托管进程最多 3 次退出并核验 PID、端口、RAM/VRAM；失败时锁住队列而非继续加载下一 Provider。
 - ✅ 页面与 AI 对话均可使用 5 分钟一次性确认令牌接管 ComfyUI；令牌绑定进程快照，缺失、伪造、过期、重放或 PID/路径变化均在杀进程前拒绝。
-- ✅ 完整后端 16 suites / 101 tests、后端 TypeScript 构建、前端生产构建通过；真实 Desktop 冲突、TTS 遗留进程清理、UI/对话确认安全分支通过。设计与验收证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
+- ✅ speech-evaluator 真实三音频批次完成严格工具优先/逐音频串行、即时落库、归一化比较、问题定位和最终排名；真实安全边界取消保留首项结果，来源 TTS 音频仍可用。重启残留状态无法证明时会 fail-closed。
+- ✅ 完整后端测试、后端 TypeScript 构建、前端生产构建通过；真实 Desktop 冲突、TTS 遗留进程清理、UI/对话确认和语音评价安全分支通过。设计与验收证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md) 与 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。

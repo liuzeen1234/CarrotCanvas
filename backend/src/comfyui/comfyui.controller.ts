@@ -75,7 +75,7 @@ export class ComfyUIController {
     private readonly canvas: CanvasService,
     private readonly assets: AssetsService,
     private readonly persistentRuns: RunsService,
-    private readonly gpuScheduler: LocalComputeSchedulerService,
+    private readonly computeScheduler: LocalComputeSchedulerService,
     private readonly comfyProcesses: ComfyUIProcessManagerService,
   ) {}
 
@@ -89,7 +89,7 @@ export class ComfyUIController {
   async takeover(@Body() body: { confirm?: boolean; confirmationToken?: string; alwaysManage?: boolean }) {
     if (body.confirm !== true) throw new HttpException('接管 ComfyUI 必须显式确认', HttpStatus.BAD_REQUEST);
     const result = await this.comfyProcesses.takeover(String(body.confirmationToken || ''), body.alwaysManage !== false);
-    this.gpuScheduler.clearBlock();
+    this.computeScheduler.clearBlock();
     return result;
   }
 
@@ -233,8 +233,8 @@ export class ComfyUIController {
     if (begun.replay) begun.run = await this.persistentRuns.patch(begun.run.id, {
       status: 'queued', error: null, finishedAt: null, attemptCount: begun.run.attemptCount + 1,
     });
-    let gpuLease;
-    try { gpuLease = await this.gpuScheduler.acquire('comfyui', begun.run.id); }
+    let computeLease;
+    try { computeLease = await this.computeScheduler.acquire('comfyui', begun.run.id); }
     catch (error) {
       await this.persistentRuns.finish(begun.run.id, 'failed', [], schedulerError(error));
       throw error;
@@ -253,13 +253,13 @@ export class ComfyUIController {
           const status = finished.status === 'interrupted' ? 'cancelled' : finished.error ? 'failed' : 'succeeded';
           await this.persistentRuns.finish(begun.run.id, status, ids, finished.error ? { message: finished.error, nodeErrors: finished.nodeErrors } : null);
         } finally {
-          await gpuLease.release(finished.error ? new Error(finished.error) : undefined);
+          await computeLease.release(finished.error ? new Error(finished.error) : undefined);
         }
       },
       // 不再自动写回缩略图：改由前端在结果区点"作为封面"手动设置
     }); } catch (error) {
       try { await this.persistentRuns.finish(begun.run.id, 'failed', [], { message: (error as Error).message }); }
-      finally { await gpuLease.release(error); }
+      finally { await computeLease.release(error); }
       throw error;
     }
     await this.persistentRuns.patch(begun.run.id, { providerRunId: run.promptId });
