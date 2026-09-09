@@ -6,17 +6,19 @@ import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.ser
 import { RunsService } from '../runs/runs.service';
 import { SpeechEvaluationItem, SpeechEvaluationStageResult } from './speech-evaluation.entity';
 import { audioProfile, decodeWav, pauseTiming, pitchEnergy } from './wav-analysis';
+import { SpeechToolRunnerService } from './speech-tool-runner.service';
 
 export interface EvaluationTarget { assetId: string; sourceRunId?: string; referenceAssetId?: string; targetText?: string }
 
-const STAGES = ['audio-profile', 'pause-timing', 'pitch-energy'] as const;
+const STAGES = ['funasr', 'audio-profile', 'pause-timing', 'pitch-energy', 'wespeaker', 'utmosv2'] as const;
 
 @Injectable()
 export class SpeechEvaluatorService implements OnModuleInit {
   private readonly logger = new Logger(SpeechEvaluatorService.name);
   private readonly active = new Set<string>();
   constructor(@InjectRepository(SpeechEvaluationItem) private readonly items: Repository<SpeechEvaluationItem>,
-    private readonly scheduler: LocalComputeSchedulerService, private readonly assets: AssetsService, private readonly runs: RunsService) {}
+    private readonly scheduler: LocalComputeSchedulerService, private readonly assets: AssetsService, private readonly runs: RunsService,
+    private readonly toolRunner: SpeechToolRunnerService) {}
 
   onModuleInit() {
     this.scheduler.registerProvider('speech-evaluator', { retainAfterLease: false, prepare: async () => undefined, release: async () => undefined });
@@ -50,13 +52,14 @@ export class SpeechEvaluatorService implements OnModuleInit {
       const items = await this.list(runId);
       for (const item of items) { item.status = 'running'; item.startedAt = Date.now(); await this.items.save(item); }
       for (const stage of STAGES) {
-        for (const item of items) await this.runStage(item, stage);
+        if (stage === 'funasr' || stage === 'wespeaker' || stage === 'utmosv2') await this.runModelStage(items, stage);
+        else for (const item of items) await this.runStage(item, stage);
       }
       for (const item of items) {
         item.status = 'succeeded'; item.finishedAt = Date.now(); item.finalResult = this.summarize(item); await this.items.save(item);
       }
       const ranking = [...items].sort((a, b) => technicalScore(b) - technicalScore(a)).map((item, index) => ({ rank: index + 1, itemId: item.id, assetId: item.targetAssetId, technicalScore: technicalScore(item) }));
-      await this.runs.finish(runId, 'succeeded', [], null, JSON.stringify({ version: 1, conclusionStatus: 'needs_model_evaluation', ranking, items: items.map((item) => ({ itemId: item.id, assetId: item.targetAssetId, result: item.finalResult })) }));
+      await this.runs.finish(runId, 'succeeded', [], null, JSON.stringify({ version: 1, conclusionStatus: 'evaluation_complete_unthresholded', ranking, items: items.map((item) => ({ itemId: item.id, assetId: item.targetAssetId, result: item.finalResult })) }));
     } catch (error) {
       failure = error; this.logger.error(`语音评价 ${runId} 失败：${(error as Error).message}`);
       for (const item of await this.list(runId)) if (['queued', 'running'].includes(item.status)) {
@@ -77,12 +80,35 @@ export class SpeechEvaluatorService implements OnModuleInit {
     }
   }
 
+  private async runModelStage(items: SpeechEvaluationItem[], stage: 'funasr' | 'wespeaker' | 'utmosv2') {
+    const startedAt = Date.now();
+    for (const item of items) { item.stages[stage] = { status: 'running', startedAt, toolVersion: stage === 'funasr' ? 'funasr-1.4.1/paraformer-zh' : stage === 'wespeaker' ? 'wespeaker-campplus' : 'utmosv2-1.3.1.dev0' }; await this.items.save(item); }
+    try {
+      const inputs = [];
+      for (const item of items) {
+        const target = await this.assets.read(item.targetAssetId);
+        const reference = item.referenceAssetId ? await this.assets.read(item.referenceAssetId) : undefined;
+        inputs.push({ path: target.absPath, referencePath: reference?.absPath, targetText: item.targetText ?? undefined });
+      }
+      const outputs = await this.toolRunner.run(stage, inputs);
+      if (outputs.length !== items.length) throw new Error(`${stage} 返回 ${outputs.length} 项，预期 ${items.length} 项`);
+      for (const [index, item] of items.entries()) {
+        const output = outputs[index]; const unavailable = output.status === 'unavailable';
+        item.stages[stage] = { status: unavailable ? 'unavailable' : 'succeeded', startedAt, finishedAt: Date.now(),
+          toolVersion: item.stages[stage].toolVersion, metrics: output }; await this.items.save(item);
+      }
+    } catch (error) {
+      for (const item of items) { item.stages[stage] = { ...item.stages[stage], status: 'failed', finishedAt: Date.now(), error: serializeError(error) }; await this.items.save(item); }
+      throw error;
+    }
+  }
+
   private summarize(item: SpeechEvaluationItem) {
     return { version: 1, technicalScore: technicalScore(item), measurements: item.stages,
-      contentAccuracy: { status: 'unavailable', reason: 'FunASR/强制对齐尚未配置，未生成虚假转写分数' },
-      speakerSimilarity: { status: 'unavailable', reason: item.referenceAssetId ? 'WeSpeaker 尚未配置' : '未提供参考音频' },
-      naturalness: { status: 'unavailable', reason: '经许可证与中文数据域验证的 MOS 模型尚未配置' },
-      decision: { status: 'needs_model_evaluation', recommendation: '基础声学测量已完成；在内容、音色和自然度模型可用前不自动触发重生成' } };
+      contentAccuracy: item.stages.funasr?.status === 'succeeded' ? { status: 'succeeded', ...(item.stages.funasr.metrics ?? {}) } : { status: 'unavailable', reason: 'FunASR 未产生可用结果' },
+      speakerSimilarity: item.stages.wespeaker?.status === 'succeeded' ? { status: 'succeeded', ...(item.stages.wespeaker.metrics ?? {}) } : { status: 'unavailable', reason: item.referenceAssetId ? 'WeSpeaker 未产生可用结果' : '未提供参考音频' },
+      naturalness: item.stages.utmosv2?.status === 'succeeded' ? { status: 'succeeded', ...(item.stages.utmosv2.metrics ?? {}), calibration: 'uncalibrated-zh' } : { status: 'unavailable', reason: 'UTMOSv2 未产生可用结果' },
+      decision: { status: 'evaluation_complete_unthresholded', recommendation: '各维度已完成测量；中文项目阈值完成标定前，仅输出证据，不自动触发重生成' } };
   }
 }
 

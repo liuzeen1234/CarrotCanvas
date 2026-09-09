@@ -1,0 +1,15 @@
+# Runtime is isolated in backend/data/speech-evaluator-runtime/evaluator-env.
+# PyTorch/torchaudio must be installed from the official CUDA 12.8 index.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0+cu128
+torchaudio==2.8.0+cu128
+funasr==1.4.1
+modelscope==1.39.1
+librosa==0.11.0
+soundfile==0.14.0
+onnxruntime==1.23.2
+# UTMOSv2 has no official ModelScope weight mirror; its official loader falls
+# back to the project's Hugging Face release for the pretrained checkpoint.
+utmosv2 @ git+https://github.com/sarulab-speech/UTMOSv2.git@cc2700db57bb83ee13dc31ebe1b868c254e15d09
+# WeSpeaker has no registry package; install the pinned official commit:
+wespeaker @ git+https://github.com/wenet-e2e/wespeaker.git@4b840ac9cc82b69d58f00516bc5339a10625214c

@@ -190,7 +190,7 @@ pnpm start     # 生产运行后端（需先 build）
 
 - ✅ 新增 CosyVoice 3 / IndexTTS2 独立 Python worker 和画布 `tts` 节点；worker 按需启动、同 Provider 可驻留、跨 Provider 必须退出旧进程后再启动新进程。
 - ✅ ComfyUI、CosyVoice 3、IndexTTS2、speech-evaluator 共用 SQLite FIFO 本机重型计算租约；提供 `/api/local-compute-scheduler/status`（旧 GPU 路径兼容）与各 Provider 可观测状态。
-- ✅ speech-evaluator 已提供持久化、工具优先/逐音频严格串行的首个纵向版本，真实输出 WAV 基础声学、停顿和 F0 指标；未配置的转写、音色与 MOS 模型明确标记不可用。
+- ✅ speech-evaluator 已提供持久化、工具优先/逐音频严格串行流程；独立 Python 虚拟环境中已部署 FunASR（转写/CER/时间戳）、WeSpeaker CAMPPlus（音色相似度）和 UTMOSv2（自然度 MOS），并输出 WAV 基础声学、停顿和 F0 指标。模型优先使用 ModelScope；UTMOSv2 最终检查点因无官方镜像使用官方 Hugging Face 权重回退，中文阈值仍明确标记未校准且不自动触发重生成。
 - ✅ 主模型与绝大部分辅助权重从 ModelScope 下载；只有 ModelScope 不存在的 Index BigVGAN 449 MB 辅助文件由官方加载器回退 hf-mirror。
 - ✅ 真实 CosyVoice、IndexTTS2、TTS→Z-Image 三段运行全部成功；画布音频结果支持播放、下载和历史候选。
 - ✅ ComfyUI 纳入进程托管：外部 Desktop/PID 必须弹窗确认，托管进程最多 3 次退出并核验 PID、端口、RAM/VRAM；失败时锁住队列而非继续加载下一 Provider。

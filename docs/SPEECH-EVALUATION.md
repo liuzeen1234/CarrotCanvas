@@ -6,13 +6,16 @@
 
 平台新增统一 `speech-evaluator` Provider。它与 ComfyUI、CosyVoice 3、IndexTTS2 共用同一个持久化 FIFO“本机重型计算租约”，租约代表 GPU、CPU、内存、页面文件、磁盘与重型模型进程的排他执行窗口，不再只表示显存。
 
-首个纵向版本已实现三个不会伪造感知分数的内置 WAV 工具：
+当前版本已接入三个模型工具和三个客观 WAV 工具：
 
-1. `audio-profile`：时长、采样率、声道、峰值、RMS、dBFS、削波比例。
-2. `pause-timing`：基于自适应帧 RMS 的静音段、停顿数量、静音时长与占比。
-3. `pitch-energy`：基于归一化自相关的 F0 均值、P10/P90 和半音音域。
+1. `funasr`：中文转写、字级时间戳、分句和目标文本 CER，CUDA 推理；ASR、VAD、标点模型均从 ModelScope 缓存加载。
+2. `audio-profile`：时长、采样率、声道、峰值、RMS、dBFS、削波比例。
+3. `pause-timing`：基于自适应帧 RMS 的静音段、停顿数量、静音时长与占比。
+4. `pitch-energy`：基于归一化自相关的 F0 均值、P10/P90 和半音音域。
+5. `wespeaker`：CAMPPlus 说话人嵌入余弦相似度，模型从 ModelScope 下载；固定 CPU 串行推理。
+6. `utmosv2`：1–5 自然度预测，CUDA 推理；wav2vec2 骨干优先从 ModelScope 加载。最终检查点没有官方 ModelScope 镜像，使用项目官方 Hugging Face 发布权重。
 
-这些结果是客观基础测量，不冒充转写准确度、说话人相似度或 MOS 自然度。FunASR/强制对齐、WeSpeaker 和经过许可证及中文数据域验证的 MOS 模型尚未安装时，结果会明确返回 `unavailable`，综合结论为 `needs_model_evaluation`，不会自动触发重生成。
+模型与 Python 依赖部署在 `backend/data/speech-evaluator-runtime/evaluator-env` 独立虚拟环境，模型缓存、临时文件也位于同一忽略目录，不污染系统 Python 或其他 Provider。结果状态为 `evaluation_complete_unthresholded`：指标真实可用，但 UTMOSv2 的中文/本项目数据域阈值仍未标定，因此只提供证据，不自动触发重生成。
 
 ## 严格串行合同
 
@@ -20,9 +23,12 @@
 
 ```text
 取得本机重型计算租约
+  → FunASR 加载一次，处理音频 1、2、3……，进程退出
   → audio-profile 处理音频 1、2、3……
   → pause-timing 处理音频 1、2、3……
   → pitch-energy 处理音频 1、2、3……
+  → WeSpeaker 加载一次，处理音频 1、2、3……，进程退出
+  → UTMOSv2 加载一次，处理音频 1、2、3……，进程退出
   → 单条汇总与批次技术排序
   → 最终结果持久化
   → 清理 Provider
@@ -47,10 +53,13 @@
 - 每条评价项目保存在 `speech_evaluation_items`，包含批次 Run、输入资产、阶段状态、工具版本、中间指标、错误和最终结果。
 - 评价批次本身复用持久化 `generation_runs`，Provider 为 `speech-evaluator`；源 TTS Run 和音频资产不会因评价失败而被反向标失败。
 
-## 后续模型接入门槛
+## 模型与部署约束
 
-FunASR、WeSpeaker、VERSA/UTMOSv2 等适配器接入前必须验证：维护状态、许可证、Windows 与当前 CUDA/Python 环境、权重下载可靠性、中文/角色语音数据域表现以及实际 CPU/RAM/VRAM。适配器仍必须遵守同一工具级串行与中间结果持久化合同。
+- Python 3.10 虚拟环境；PyTorch/TorchAudio 2.8.0+cu128；FunASR 1.4.1；ModelScope 1.39.1；WeSpeaker 与 UTMOSv2 固定到 `requirements.in` 中的提交。
+- CUDA PyTorch 需从 PyTorch 官方 cu128 索引先安装，其余依赖由 `requirements.in` 记录。
+- ModelScope 是默认模型源。只有缺少官方镜像的 UTMOSv2 最终检查点允许回退；运行时启用 Hugging Face offline，避免隐式联网。
+- UTMOSv2 代码为 MIT；输出保留 `uncalibrated-zh`，完成中文人工 MOS 样本标定前不得配置自动淘汰阈值。
 
 ## 当前阶段边界
 
-本轮不实现跨工具并行、多文件并行、动态 batch、自动重生成或主观 MOS 替代品。内置“技术分”只用于同批候选的基础信号健康度排序，不代表自然度或人类偏好。
+本轮不实现跨工具并行、多文件并行、动态 batch 或自动重生成。内置“技术分”只用于同批候选的基础信号健康度排序；UTMOSv2 分数单独展示，不等同于本项目中文用户的主观偏好。
