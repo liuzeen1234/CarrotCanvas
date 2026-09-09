@@ -94,7 +94,8 @@ export class AssetsService {
       mime: input.mime ?? null,
       size: input.buffer.length,
     });
-    return this.repo.save(asset);
+    try { return await this.repo.save(asset); }
+    catch (error) { await fs.rm(absPath, { force: true }).catch(() => undefined); throw error; }
   }
 
   /** 存一份用户上传入参图副本到 <canvasId>/upload/（source=upload，二期图生图用） */

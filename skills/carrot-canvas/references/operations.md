@@ -55,6 +55,10 @@ export default async function (s) {
 
 ## 运行与媒体
 
+TTS 提交使用 `POST /tts/runs`，在 session 内传 `provider`、`text`、当前画布的 `referenceAssetId`、canvas/node/proof 和稳定幂等键。CosyVoice 3 还必须传参考音频准确逐字稿 `referenceText`；IndexTTS2 可传情绪参考资产或 `instruction`。
+
+精确停顿只接受 `<pause ms="N"/>`，整数范围 100–10000ms；连续标签累计且总计不得超过 10000ms，首尾标签允许，纯停顿拒绝。平台不会把标签发送给模型，而是在同一外层本机重型计算租约内严格串行生成 speech 段、按最终 WAV 采样率插入 PCM 静音并无损拼接。成功只产生一个正式 audio asset；`inputSnapshot.segments/execution.concat` 是计划、格式和实际静音帧的审计事实。取消前读 `capabilities.cancel`；TTS 的 `safe-segment-boundary` 表示当前 speech 片段结束后停止，不会发布已生成的中间片段。
+
 画布连线和 formValues 是创作状态；提交后端 Run 时仍需准备实际入参，后端不会自动执行整张画布 DAG。
 
 ComfyUI：读选定 `/workflows/<workflowId>` 的 `apiJson`、`inputConfig`，并读 `/comfyui/workflows/<workflowId>/schema`。复制 apiJson，在 `apiJson[comfyNodeId].inputs[param]` 写实际值；解析上游文字/资产并匹配 schema 类型。提交一次：

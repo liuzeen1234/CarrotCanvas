@@ -47,6 +47,8 @@
 
 提交目标包含目标音频 `assetId`，并可附带源 TTS `sourceRunId`、参考音频 `referenceAssetId` 和目标文本 `targetText`。输入快照固定记录 `tool-major-serial-v1` 执行策略。
 
+Issue #17 后，来源 TTS Run 的 `inputSnapshot` 还可提供 `pauseSyntaxVersion=1`、规范化 pause plan 与最终拼接审计。评价链路当前会保留来源 Run 引用，既有 `pause-timing` 可客观测量静音段；按目标位置/时长自动配对和阈值判定仍属后续校准任务，不阻塞精确拼接，也不得在未校准时伪造通过结论。
+
 ## 持久化与迁移
 
 - 新租约表为 `local_compute_leases`。

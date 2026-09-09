@@ -60,6 +60,14 @@ describe('AssetsService', () => {
       expect(readFileSync(abs, 'utf8')).toBe('hello');
       expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ source: 'generated' }));
     });
+
+    it('数据库保存失败时清理刚写入的文件，不留下半成品', async () => {
+      let created: any;
+      const repo = makeRepo({ create: jest.fn((value: any) => (created = value)), save: jest.fn(async () => { throw new Error('database unavailable'); }) });
+      const service = new AssetsService(repo);
+      await expect(service.saveGenerated({ canvasId: 'failure-canvas', kind: 'audio', buffer: Buffer.from('partial'), originName: 'final.wav' })).rejects.toThrow('database unavailable');
+      expect(existsSync(join(ASSETS_ROOT, 'failure-canvas', created.relPath))).toBe(false);
+    });
   });
 
   describe('saveUpload', () => {

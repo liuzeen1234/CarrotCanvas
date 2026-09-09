@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, OnModuleInit, Post } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { AssetsService } from '../assets/assets.service';
 import { CanvasService } from '../canvas/canvas.service';
@@ -6,6 +6,7 @@ import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.ser
 import { RunsService } from '../runs/runs.service';
 import { TtsClientService, TtsProvider } from './tts-client.service';
 import { TtsProcessManagerService } from './tts-process-manager.service';
+import { concatenatePcmWav, parsePausePlan, PAUSE_SYNTAX_VERSION, PausePlanSegment } from './pause-plan';
 
 interface TtsRunBody {
   provider: TtsProvider;
@@ -27,7 +28,8 @@ interface TtsRunBody {
 }
 
 @Controller('tts')
-export class TtsController {
+export class TtsController implements OnModuleInit {
+  private readonly cancelRequested = new Set<string>();
   constructor(
     private readonly client: TtsClientService,
     private readonly scheduler: LocalComputeSchedulerService,
@@ -36,6 +38,15 @@ export class TtsController {
     private readonly canvas: CanvasService,
     private readonly processes: TtsProcessManagerService,
   ) {}
+
+  onModuleInit() {
+    for (const provider of ['cosyvoice3', 'indextts2'] as const) this.runs.registerCancelHandler(provider, async (runId) => {
+      const run = await this.runs.get(runId);
+      if (!['queued', 'running'].includes(run.status)) return run;
+      this.cancelRequested.add(runId);
+      return this.runs.patch(runId, { error: { code: 'CANCEL_REQUESTED', message: '将在当前语音片段结束后取消' } });
+    });
+  }
 
   @Get('providers')
   async providers() {
@@ -49,7 +60,7 @@ export class TtsController {
   @Post('runs')
   async run(@Body() body: TtsRunBody) {
     if (!['cosyvoice3', 'indextts2'].includes(body.provider)) throw new BadRequestException('不支持的 TTS Provider');
-    if (!body.text?.trim()) throw new BadRequestException('配音文本不能为空');
+    const plan = parsePausePlan(body.text);
     if (!body.canvasId || !body.referenceAssetId) throw new BadRequestException('缺少画布或参考音频');
     if (body.provider === 'cosyvoice3' && !body.referenceText?.trim()) throw new BadRequestException('CosyVoice 3 需要参考音频对应文本');
     await this.canvas.assertWriteAccess(body.canvasId, body);
@@ -58,7 +69,8 @@ export class TtsController {
     const emotion = body.emotionReferenceAssetId ? await this.assets.read(body.emotionReferenceAssetId) : null;
     if (emotion && (emotion.asset.canvasId !== body.canvasId || emotion.asset.kind !== 'audio')) throw new BadRequestException('情绪参考音频必须属于当前画布');
     const inputAssetIds = [body.referenceAssetId, ...(body.emotionReferenceAssetId ? [body.emotionReferenceAssetId] : [])];
-    const snapshot = { provider: body.provider, text: body.text.trim(), referenceAssetId: body.referenceAssetId,
+    const snapshot = { provider: body.provider, text: body.text, pauseSyntaxVersion: PAUSE_SYNTAX_VERSION, segments: plan,
+      execution: initialExecution(plan), referenceAssetId: body.referenceAssetId,
       referenceText: body.referenceText?.trim() ?? null,
       emotionReferenceAssetId: body.emotionReferenceAssetId ?? null, instruction: body.instruction ?? null,
       speed: body.speed ?? 1, targetDurationMs: body.targetDurationMs ?? null };
@@ -78,24 +90,53 @@ export class TtsController {
     let failure: unknown;
     try {
       await this.runs.patch(begun.run.id, { status: 'running', startedAt: Date.now() });
-      const audio = await this.client.infer(body.provider, {
-        ...snapshot,
-        referenceAudioBase64: (await fs.readFile(reference.absPath)).toString('base64'),
-        emotionReferenceAudioBase64: emotion ? (await fs.readFile(emotion.absPath)).toString('base64') : null,
-      });
+      const common = { ...snapshot, referenceAudioBase64: (await fs.readFile(reference.absPath)).toString('base64'), emotionReferenceAudioBase64: emotion ? (await fs.readFile(emotion.absPath)).toString('base64') : null };
+      const wavParts: Array<{ type: 'speech'; wav: Buffer } | { type: 'silence'; durationMs: number }> = [];
+      const execution = initialExecution(plan); let speechPosition = 0;
+      for (let position = 0; position < plan.length; position += 1) {
+        const segment = plan[position];
+        if (segment.type === 'silence') { wavParts.push(segment); continue; }
+        this.throwIfCancelled(begun.run.id);
+        execution.stage = 'synthesis'; execution.currentSpeechSegment = ++speechPosition;
+        execution.segments[position] = { ...execution.segments[position], status: 'running', startedAt: Date.now() };
+        await this.runs.patch(begun.run.id, { inputSnapshot: { ...snapshot, execution } });
+        const audio = await this.client.infer(body.provider, { ...common, text: segment.text });
+        const decoded = concatenatePcmWav([{ type: 'speech', wav: audio.buffer }]);
+        execution.segments[position] = { ...execution.segments[position], status: 'succeeded', durationMs: decoded.durationMs, sampleRate: decoded.format.sampleRate, finishedAt: Date.now() };
+        wavParts.push({ type: 'speech', wav: audio.buffer });
+        await this.runs.patch(begun.run.id, { inputSnapshot: { ...snapshot, execution } });
+        this.throwIfCancelled(begun.run.id);
+      }
+      execution.stage = 'concatenating'; await this.runs.patch(begun.run.id, { inputSnapshot: { ...snapshot, execution } });
+      const audio = concatenatePcmWav(wavParts);
+      execution.stage = 'saving'; execution.concat = { toolVersion: audio.toolVersion, durationMs: audio.durationMs, format: audio.format, segments: audio.segments };
+      await this.runs.patch(begun.run.id, { inputSnapshot: { ...snapshot, execution } });
       const asset = await this.assets.saveGenerated({ canvasId: body.canvasId, nodeId: body.nodeId ?? null,
         runPromptId: begun.run.id, workflowId: body.provider, kind: 'audio', buffer: audio.buffer,
-        originName: `${body.provider}-${begun.run.id}.wav`, mime: audio.mime });
+        originName: `${body.provider}-${begun.run.id}.wav`, mime: 'audio/wav' });
+      execution.stage = 'succeeded'; execution.finalAssetId = asset.id;
+      await this.runs.patch(begun.run.id, { inputSnapshot: { ...snapshot, execution } });
       const run = await this.runs.finish(begun.run.id, 'succeeded', [asset.id]);
       return { run, asset: { assetId: asset.id, url: `/api/assets/${asset.id}`, kind: 'audio' } };
     } catch (error) {
       failure = error;
-      await this.runs.finish(begun.run.id, 'failed', [], { message: (error as Error).message });
+      const cancelled = error instanceof TtsCancelledError;
+      await this.runs.finish(begun.run.id, cancelled ? 'cancelled' : 'failed', [], { code: cancelled ? 'RUN_CANCELLED' : 'TTS_RUN_FAILED', message: (error as Error).message });
       throw error;
     } finally {
+      this.cancelRequested.delete(begun.run.id);
       await lease.release(failure);
     }
   }
+
+  private throwIfCancelled(runId: string) { if (this.cancelRequested.has(runId)) throw new TtsCancelledError(); }
+}
+
+class TtsCancelledError extends Error { constructor() { super('配音已在安全片段边界取消'); } }
+
+function initialExecution(plan: PausePlanSegment[]) {
+  return { policy: 'speech-segment-serial-v1', stage: 'queued', speechSegmentCount: plan.filter((item) => item.type === 'speech').length, currentSpeechSegment: 0,
+    segments: plan.map((item) => item.type === 'speech' ? { type: 'speech', text: item.text, status: 'pending' } : { type: 'silence', targetDurationMs: item.durationMs, status: 'planned' }) } as any;
 }
 
 function schedulerError(error: unknown) {

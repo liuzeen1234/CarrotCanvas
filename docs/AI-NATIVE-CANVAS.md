@@ -533,6 +533,7 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-09：完成 Issue #17 TTS 精确停顿闭环。两种 Provider 共用 `<pause ms="N"/>`，平台在模型调用前解析版本化 pause plan，speech 段严格串行生成，静音按最终 WAV 采样率直接创建并无损拼接；整个推理、CPU 拼接、正式资产及 Run 落库持续持有同一外层本机重型计算租约。中间片段不进入资产/候选，取消停在 speech 边界，失败不覆盖旧候选。真实 CosyVoice Run `2da5fa14-35b4-4f9e-86e9-e73def3d7f06` 与 IndexTTS2 Run `d21d5a24-0d3b-4f2e-97ae-5eab26f140b4` 的 800ms/1500ms 静音均实现 0ms 采样帧误差，每条仅一个最终资产。
 - 2026-09-09：启动 Issue #14 的语音评价纵向实现。调度领域概念升级为“本机重型计算租约”，新 `local_compute_leases` 表兼容迁移旧历史并保留旧状态入口；新增统一 `speech-evaluator` Provider、持久化评价项目和严格“工具优先/逐音频串行”执行器。首版提供真实 WAV 基础声学测量，并对尚未配置的转写、音色和 MOS 模型明确返回不可用，不用启发式结果冒充模型评分；详见 [SPEECH-EVALUATION.md](./SPEECH-EVALUATION.md)。
 - 2026-09-09：speech-evaluator 模型运行时完成隔离部署。FunASR、WeSpeaker CAMPPlus、UTMOSv2 分别按工具加载一次、逐音频串行、退出释放；整个批次继续持有同一“本机重型计算租约”直至最终汇总持久化。ASR/VAD/标点、说话人模型及 UTMOSv2 的 wav2vec2 骨干优先走 ModelScope；仅无官方 ModelScope 镜像的 UTMOSv2 最终检查点使用官方 Hugging Face 发布权重回退。中文自然度阈值尚未用项目数据标定，结果保留 `uncalibrated-zh`，不得自动触发重生成。
 - 2026-09-09：Issue #14 完成实现与验收。每个“工具 × 音频”的开始/完成事件即时持久化，取消停在安全项边界并保留已完成证据；启动时仅从版本兼容边界恢复，旧 worker 状态无法证明已释放则 fail-closed。真实三音频 Run `945d2f9a-6a9c-435d-b317-ed44701f6630` 完成六阶段串行、比较排名与租约后释放，取消 Run `62892420-35cf-4fd0-a9ba-e59e23f28a0b` 保留首项 FunASR 结果且不破坏来源 TTS 音频。中文 MOS 自动决策阈值仍按范围明确留待项目数据标定。
