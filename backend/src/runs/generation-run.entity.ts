@@ -6,7 +6,7 @@ export type GenerationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' 
 @Index(['canvasId', 'nodeId', 'createdAt'])
 export class GenerationRun {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Index() @Column({ type: 'text' }) provider: 'comfyui' | 'codex2api';
+  @Index() @Column({ type: 'text' }) provider: 'comfyui' | 'codex2api' | 'cosyvoice3' | 'indextts2';
   @Index() @Column({ type: 'text' }) status: GenerationRunStatus;
   @Index() @Column({ type: 'text', name: 'canvas_id', nullable: true }) canvasId: string | null;
   @Index() @Column({ type: 'text', name: 'node_id', nullable: true }) nodeId: string | null;

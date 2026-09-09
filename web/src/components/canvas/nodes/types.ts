@@ -12,6 +12,7 @@ import { Node } from '@xyflow/react';
 export const NODE_TYPE_TXT2IMG = 'txt2img';
 export const NODE_TYPE_RESULT = 'result';
 export const NODE_TYPE_CODEX = 'codex-capability';
+export const NODE_TYPE_TTS = 'tts';
 export type CodexCapability = 'text' | 'image' | 'edit' | 'analyze';
 
 /** 句柄标识：image 数据流（一期唯一连线类型，§4.4），用于连线校验 */
@@ -69,6 +70,16 @@ export interface CodexCapabilityNodeData {
   [key: string]: unknown;
 }
 
+export interface TtsNodeData {
+  provider: 'cosyvoice3' | 'indextts2';
+  text: string;
+  referenceText: string;
+  instruction: string;
+  speed: number;
+  lastAssets?: { assetId: string; url: string; kind: string; filename?: string }[];
+  [key: string]: unknown;
+}
+
 export type CanvasNodeData = Txt2ImgNodeData | ResultNodeData;
 
 /** 节点类型 → 显示名 */
@@ -76,6 +87,7 @@ export const NODE_TYPE_LABEL: Record<string, string> = {
   [NODE_TYPE_TXT2IMG]: '文生图',
   [NODE_TYPE_RESULT]: '结果',
   [NODE_TYPE_CODEX]: 'AI 能力',
+  [NODE_TYPE_TTS]: 'AI 配音',
 };
 
 let nodeSeq = 0;
@@ -102,6 +114,14 @@ export function createTxt2ImgNode(
     type: NODE_TYPE_TXT2IMG,
     position,
     data: { workflowId: workflow.id, workflowName: workflow.name, formValues: {} },
+    style: { width: NODE_W },
+  };
+}
+
+export function createTtsNode(position: { x: number; y: number }): Node<TtsNodeData, typeof NODE_TYPE_TTS> {
+  return {
+    id: newNodeId(NODE_TYPE_TTS), type: NODE_TYPE_TTS, position,
+    data: { provider: 'cosyvoice3', text: '', referenceText: '', instruction: '', speed: 1 },
     style: { width: NODE_W },
   };
 }

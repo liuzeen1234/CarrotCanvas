@@ -160,15 +160,17 @@ function bad(code: string, message: string, details?: unknown): never { throw ne
 function validId(value: unknown) { return typeof value === 'string' && value.length > 0 && value.length <= 200; }
 function validateNode(node: CanvasNode) {
   if (!node || !validId(node.id)) bad('INVALID_NODE', '节点 id 不合法');
-  if (!['txt2img', 'result', 'codex-capability'].includes(node.type)) bad('UNSUPPORTED_NODE_TYPE', `不支持节点类型 ${node.type}`);
+  if (!['txt2img', 'result', 'codex-capability', 'tts'].includes(node.type)) bad('UNSUPPORTED_NODE_TYPE', `不支持节点类型 ${node.type}`);
   if (!node.position || !Number.isFinite(node.position.x) || !Number.isFinite(node.position.y)) bad('INVALID_NODE_POSITION', `节点 ${node.id} 坐标不合法`);
   if (!node.data || typeof node.data !== 'object' || Array.isArray(node.data)) bad('INVALID_NODE_DATA', `节点 ${node.id} data 不合法`);
   if (node.type === 'txt2img' && (!validId(node.data.workflowId) || (node.data.formValues != null && (typeof node.data.formValues !== 'object' || Array.isArray(node.data.formValues))))) bad('INVALID_NODE_DATA', 'txt2img 节点需要 workflowId，formValues 必须为对象');
   if (node.type === 'result' && node.data.kind != null && !['image', 'video', 'audio', 'text'].includes(String(node.data.kind))) bad('INVALID_NODE_DATA', 'result.kind 不合法');
   if (node.type === 'codex-capability' && (!['text', 'image', 'edit', 'analyze'].includes(String(node.data.capability)) || typeof node.data.prompt !== 'string' || typeof node.data.model !== 'string')) bad('INVALID_NODE_DATA', 'AI 能力节点字段不合法');
+  if (node.type === 'tts' && (!['cosyvoice3', 'indextts2'].includes(String(node.data.provider)) || typeof node.data.text !== 'string' || typeof node.data.referenceText !== 'string')) bad('INVALID_NODE_DATA', 'AI 配音节点字段不合法');
 }
 function handleKind(handle: string, source: boolean): string | null {
   if (source && (handle === 'text-positive-source' || handle === 'text-negative-source')) return 'text';
+  if (!source && handle === 'emotion-audio-target') return 'audio';
   const suffix = source ? '-source' : '-target';
   if (handle.endsWith(suffix)) return handle.slice(0, -suffix.length);
   if (!source && handle.startsWith('input:')) return handle.startsWith('input:text:') ? 'text' : handle.startsWith('input:video:') ? 'video' : handle.startsWith('input:audio:') ? 'audio' : 'image';
@@ -187,13 +189,15 @@ function validateGraph(graph: CanvasGraph) {
     const sourceKind = handleKind(edge.sourceHandle, true), targetKind = handleKind(edge.targetHandle, false);
     if (!sourceKind || !targetKind) bad('HANDLE_NOT_FOUND', `连线 ${edge.id} 句柄不合法`);
     const sourceNode = nodes.get(edge.source)!, targetNode = nodes.get(edge.target)!;
-    const allowedSource = sourceNode.type === 'txt2img' ? ['image', 'video'] : sourceNode.type === 'result' ? [String(sourceNode.data.kind ?? 'image')] : ['text', 'analyze'].includes(String(sourceNode.data.capability)) ? ['text'] : ['image'];
+    const allowedSource = sourceNode.type === 'txt2img' ? ['image', 'video'] : sourceNode.type === 'result' ? [String(sourceNode.data.kind ?? 'image')] : sourceNode.type === 'tts' ? ['audio'] : ['text', 'analyze'].includes(String(sourceNode.data.capability)) ? ['text'] : ['image'];
     if (!allowedSource.includes(sourceKind)) bad('HANDLE_NOT_FOUND', `源节点 ${edge.source} 不存在 ${edge.sourceHandle}`);
     if (edge.targetHandle.endsWith('-target')) {
       const acceptsTarget = targetNode.type === 'result'
         ? String(targetNode.data.kind ?? 'image') === targetKind
         : targetNode.type === 'codex-capability'
           ? targetKind === 'text' || (targetKind === 'image' && ['edit', 'analyze'].includes(String(targetNode.data.capability)))
+          : targetNode.type === 'tts'
+            ? targetKind === 'text' || targetKind === 'audio'
           : false;
       if (!acceptsTarget) bad('HANDLE_NOT_FOUND', `目标节点 ${edge.target} 不存在 ${edge.targetHandle}`);
     }
@@ -220,7 +224,7 @@ function applyCanvasOperation(draft: Pick<CanvasDoc, 'name' | 'graph' | 'brief'>
   if (op.type === 'update_node') { const node = draft.graph.nodes[nodeIndex]; const prior = JSON.parse(JSON.stringify(node.data)); node.data = { ...node.data, ...op.dataPatch }; validateNode(node); inverse.push({ type: 'replace_node_data', nodeId: op.nodeId, data: prior }); return; }
   if (op.type === 'replace_node_data') { const node = draft.graph.nodes[nodeIndex]; const prior = JSON.parse(JSON.stringify(node.data)); node.data = JSON.parse(JSON.stringify(op.data)); validateNode(node); inverse.push({ type: 'replace_node_data', nodeId: op.nodeId, data: prior }); return; }
   if (op.type === 'move_nodes') { const prior = op.positions.map((item) => { const node = draft.graph.nodes.find((n) => n.id === item.nodeId); if (!node) bad('NODE_NOT_FOUND', `节点 ${item.nodeId} 不存在`); if (!Number.isFinite(item.position?.x) || !Number.isFinite(item.position?.y)) bad('INVALID_NODE_POSITION', '节点坐标不合法'); const before = { nodeId: item.nodeId, position: node.position }; node.position = item.position; return before; }); inverse.push({ type: 'move_nodes', positions: prior }); return; }
-  if (op.type === 'delete_node') { const node = draft.graph.nodes[nodeIndex]; const edges = draft.graph.edges.filter((e) => e.source === op.nodeId || e.target === op.nodeId); draft.graph.nodes.splice(nodeIndex, 1); draft.graph.edges = draft.graph.edges.filter((e) => e.source !== op.nodeId && e.target !== op.nodeId); inverse.push({ type: 'create_node', node }, ...edges.map((edge) => ({ type: 'connect', edge } as CanvasOperation))); if (node.type === 'txt2img' || node.type === 'codex-capability') deletedGeneratedNodeIds.push(node.id); return; }
+  if (op.type === 'delete_node') { const node = draft.graph.nodes[nodeIndex]; const edges = draft.graph.edges.filter((e) => e.source === op.nodeId || e.target === op.nodeId); draft.graph.nodes.splice(nodeIndex, 1); draft.graph.edges = draft.graph.edges.filter((e) => e.source !== op.nodeId && e.target !== op.nodeId); inverse.push({ type: 'create_node', node }, ...edges.map((edge) => ({ type: 'connect', edge } as CanvasOperation))); if (node.type === 'txt2img' || node.type === 'codex-capability' || node.type === 'tts') deletedGeneratedNodeIds.push(node.id); return; }
   if (op.type === 'connect') { if (draft.graph.edges.some((e) => e.id === op.edge.id)) bad('DUPLICATE_EDGE_ID', `连线 id 重复: ${op.edge.id}`); draft.graph.edges.push(JSON.parse(JSON.stringify(op.edge))); validateGraph(draft.graph); inverse.push({ type: 'disconnect', edgeId: op.edge.id }); return; }
   if (op.type === 'disconnect') { const index = draft.graph.edges.findIndex((e) => e.id === op.edgeId); if (index < 0) bad('EDGE_NOT_FOUND', `连线 ${op.edgeId} 不存在`); const [edge] = draft.graph.edges.splice(index, 1); inverse.push({ type: 'connect', edge }); return; }
   bad('UNKNOWN_OPERATION', `不支持的操作 ${(op as any).type}`);

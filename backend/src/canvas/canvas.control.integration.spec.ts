@@ -191,4 +191,21 @@ describe('Phase 0A canvas control (SQLite integration)', () => {
     const restored = await service.restoreCheckpoint(canvas.id, checkpoint.id, { ...proof(lease, 2, 'asset-restore') });
     expect((restored.canvas.graph.nodes[0].data.lastAssets as any[])[0].assetId).toBe('asset-1');
   });
+
+  it('AI 配音节点接受文本与双音频输入并输出音频', async () => {
+    const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'human', holderId: 'tts-graph' });
+    const result = await service.applyOperations(canvas.id, { ...proof(lease, 0, 'tts-graph'), operations: [
+      { type: 'create_node', node: { id: 'voice', type: 'result', position: { x: 0, y: 0 }, data: { kind: 'audio', inputMode: true } } },
+      { type: 'create_node', node: { id: 'emotion', type: 'result', position: { x: 0, y: 100 }, data: { kind: 'audio', inputMode: true } } },
+      { type: 'create_node', node: { id: 'text', type: 'result', position: { x: 0, y: 200 }, data: { kind: 'text', inputMode: true } } },
+      { type: 'create_node', node: { id: 'tts', type: 'tts', position: { x: 300, y: 0 }, data: { provider: 'indextts2', text: '', referenceText: '', instruction: '', speed: 1 } } },
+      { type: 'create_node', node: { id: 'audio', type: 'result', position: { x: 600, y: 0 }, data: { kind: 'audio' } } },
+      { type: 'connect', edge: { id: 'voice-edge', source: 'voice', sourceHandle: 'audio-source', target: 'tts', targetHandle: 'audio-target' } },
+      { type: 'connect', edge: { id: 'emotion-edge', source: 'emotion', sourceHandle: 'audio-source', target: 'tts', targetHandle: 'emotion-audio-target' } },
+      { type: 'connect', edge: { id: 'text-edge', source: 'text', sourceHandle: 'text-source', target: 'tts', targetHandle: 'text-target' } },
+      { type: 'connect', edge: { id: 'output-edge', source: 'tts', sourceHandle: 'audio-source', target: 'audio', targetHandle: 'audio-target' } },
+    ] });
+    expect(result.canvas.graph.nodes).toHaveLength(5);
+    expect(result.canvas.graph.edges).toHaveLength(4);
+  });
 });

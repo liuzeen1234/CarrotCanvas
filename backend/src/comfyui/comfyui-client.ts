@@ -194,6 +194,32 @@ export class ComfyUIClientService {
     return (await resp.json()) as Record<string, unknown>;
   }
 
+  async getQueue(): Promise<Record<string, unknown>> {
+    const resp = await this.request('/queue');
+    return (await resp.json()) as Record<string, unknown>;
+  }
+
+  async freeMemory(): Promise<void> {
+    await this.request('/free', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unload_models: true, free_memory: true }),
+    });
+  }
+
+  /** 等待 ComfyUI 自己的 CUDA allocator 收缩，避免 /free 返回后立刻加载另一 Provider。 */
+  async waitForModelsUnloaded(timeoutMs = 30_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const stats = await this.getSystemStats();
+      const devices = Array.isArray(stats.devices) ? stats.devices as Array<Record<string, unknown>> : [];
+      const cuda = devices.filter((device) => device.type === 'cuda');
+      if (!cuda.length || cuda.every((device) => Number(device.torch_vram_total ?? 0) <= 256 * 1024 * 1024)) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error('ComfyUI 已收到释放请求，但 CUDA 模型内存在 30 秒内未释放');
+  }
+
   /**
    * 上传图片到 ComfyUI input 目录。
    * 通过官方 POST /upload/image（multipart），由 ComfyUI 处理命名冲突并返回实际文件名。

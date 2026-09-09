@@ -17,6 +17,7 @@ import {
   fileKey,
   randomSeedValue,
 } from './types';
+import { confirmComfyTakeover } from './comfyTakeover';
 
 /** schema 按 workflowId 缓存，避免重复请求 /object_info 分析；编辑/导入变更后调用 clearSchemaCache 失效 */
 const schemaCache = new Map<string, SchemaAnalysis>();
@@ -266,8 +267,11 @@ export function useComfyRun(args: UseComfyRunArgs) {
     clearPoll();
     setRunState(null);
     setSubmitting(true);
+    const idempotencyKey = crypto.randomUUID();
     try {
-      const data = await request<{ run: RunStateData }>('/api/comfyui/runs', {
+      let data: { run: RunStateData } | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try { data = await request<{ run: RunStateData }>('/api/comfyui/runs', {
         method: 'POST',
         data: {
           workflowId: w.id,
@@ -278,9 +282,15 @@ export function useComfyRun(args: UseComfyRunArgs) {
           leaseToken: canvasRef.current?.leaseToken,
           leaseEpoch: canvasRef.current?.leaseEpoch,
           expectedRevision: canvasRef.current?.expectedRevision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey,
         },
-      });
+        }); break; }
+        catch (error) {
+          if (attempt === 0 && await confirmComfyTakeover(error)) continue;
+          throw error;
+        }
+      }
+      if (!data) return false;
       setRunState(data.run);
       onRunStartedRef.current?.(data.run);
       if ((TERMINAL_RUN_STATUS as readonly string[]).includes(data.run.status)) {

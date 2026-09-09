@@ -23,7 +23,7 @@ export interface CanvasGraph {
 
 export interface CanvasNode {
   id: string;
-  type: 'txt2img' | 'result' | 'codex-capability';
+  type: 'txt2img' | 'result' | 'codex-capability' | 'tts';
   position: { x: number; y: number };
   data: Record<string, unknown>;
   style?: Record<string, unknown>;

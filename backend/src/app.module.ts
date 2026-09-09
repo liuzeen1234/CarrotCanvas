@@ -10,6 +10,8 @@ import { AssetsModule } from './assets/assets.module';
 import { Codex2ApiModule } from './codex2api/codex2api.module';
 import { RunsModule } from './runs/runs.module';
 import { SystemResourcesModule } from './system-resources/system-resources.module';
+import { GpuSchedulerModule } from './gpu-scheduler/gpu-scheduler.module';
+import { TtsModule } from './tts/tts.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { SystemResourcesModule } from './system-resources/system-resources.modul
     Codex2ApiModule,
     RunsModule,
     SystemResourcesModule,
+    GpuSchedulerModule,
+    TtsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

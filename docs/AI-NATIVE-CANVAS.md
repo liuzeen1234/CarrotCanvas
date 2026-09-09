@@ -533,6 +533,12 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-09：Issue #12 支持在 AI 对话内确认 ComfyUI 托管。新增绑定当前进程快照的 5 分钟一次性令牌；Agent 可先展示快照并在收到本次明确确认后执行接管，无需用户回画布点击。执行前进程变化以及令牌缺失、伪造、过期或重放都会安全拒绝；Action Registry 标注 high-impact/human-confirmation。真实外部 Desktop 上完成令牌签发和伪造令牌不杀进程验证，16 suites / 101 tests 与前后端构建通过。
+
+- 2026-09-09：Issue #11 GPU 调度升级为进程级 fail-closed。CosyVoice/IndexTTS 按需启动并在切出时验证端口与 PID 消失；ComfyUI 只结束调度器可证明所有权的进程，外部 Desktop 触发包含 PID/路径/内存的人工确认。任何 Provider 连续 3 次释放失败会记录 RAM/VRAM 观测、锁住后续队列并中断任务。真实 Desktop 冲突与取消不杀进程、重启清理两 TTS worker、16 suites / 100 tests 和前后端构建均通过，详见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
+
+- 2026-09-09：新增画布本地 AI 配音节点与统一 GPU Provider 租约。CosyVoice 3 / IndexTTS2 运行沿用 canvas lease/revision、持久化 GenerationRun、画布资产和候选历史合同；TTS 与 ComfyUI 三方只允许一个模型持有 GPU，后端重启会清理 worker 中可能残留的模型。真实双 TTS 生成、TTS→Z-Image 切换和浏览器播放闭环通过，未改变既定 Phase 2/3 范围。详见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
+
 - 2026-09-08：修复 Issue #10 只读旁观者产物可见性。画布现持续比较持久 Run 的状态、终态、输出及候选选择变化，并统一刷新节点历史与全局生成流水；旁观者把服务端当前选中的图片、视频或文字结果投影到本地节点和下游结果节点，但不进入画布保存队列、不要求 lease、也不增加 canonical revision。失败、取消与 `needs_attention` 等无产物终态仍通过共享运行态/流水同步；只保留运行、编辑参数、切换候选、恢复 seed 等写操作为禁用。
 
 - 2026-09-08：按用户单独授权新增跨项目基础 `carrot-canvas` Skill 与独立 Node 控制脚本，覆盖动态能力发现、受控画布写入、双向交接、媒体上传下载及现有生成协议；结构校验、3 项生命周期测试和无费用真实 HTTP 验收通过。范围与证据见 §8.1，Phase 2/3 和最终成片 Skill 合同状态不变。

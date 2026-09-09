@@ -27,6 +27,8 @@ import { CanvasService } from '../canvas/canvas.service';
 import { AssetsService } from '../assets/assets.service';
 import { promises as fs } from 'fs';
 import { RunsService } from '../runs/runs.service';
+import { GpuSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
+import { ComfyUIProcessManagerService } from './comfyui-process-manager.service';
 
 interface PreviewBody {
   filename: string;
@@ -73,7 +75,23 @@ export class ComfyUIController {
     private readonly canvas: CanvasService,
     private readonly assets: AssetsService,
     private readonly persistentRuns: RunsService,
+    private readonly gpuScheduler: GpuSchedulerService,
+    private readonly comfyProcesses: ComfyUIProcessManagerService,
   ) {}
+
+  @Get('process-status')
+  processStatus() { return this.comfyProcesses.inspect(); }
+
+  @Post('takeover/confirmation')
+  takeoverConfirmation() { return this.comfyProcesses.requestTakeoverConfirmation(); }
+
+  @Post('takeover')
+  async takeover(@Body() body: { confirm?: boolean; confirmationToken?: string; alwaysManage?: boolean }) {
+    if (body.confirm !== true) throw new HttpException('接管 ComfyUI 必须显式确认', HttpStatus.BAD_REQUEST);
+    const result = await this.comfyProcesses.takeover(String(body.confirmationToken || ''), body.alwaysManage !== false);
+    this.gpuScheduler.clearBlock();
+    return result;
+  }
 
   // ---------- 步骤②：工作流导入 ----------
 
@@ -211,7 +229,16 @@ export class ComfyUIController {
       actorType: body.actorType ?? 'human', actorId: body.actorId ?? 'web',
       idempotencyKey: body.idempotencyKey ?? null,
     });
-    if (begun.replay) return { run: { ...begun.run, runId: begun.run.id, promptId: begun.run.providerRunId }, replay: true };
+    if (begun.replay && !takeoverRetryable(begun.run)) return { run: { ...begun.run, runId: begun.run.id, promptId: begun.run.providerRunId }, replay: true };
+    if (begun.replay) begun.run = await this.persistentRuns.patch(begun.run.id, {
+      status: 'queued', error: null, finishedAt: null, attemptCount: begun.run.attemptCount + 1,
+    });
+    let gpuLease;
+    try { gpuLease = await this.gpuScheduler.acquire('comfyui', begun.run.id); }
+    catch (error) {
+      await this.persistentRuns.finish(begun.run.id, 'failed', [], schedulerError(error));
+      throw error;
+    }
     let run: RunState;
     try { run = await this.runner.submit(apiJson, {
       workflowId: workflow.id,
@@ -220,13 +247,21 @@ export class ComfyUIController {
       nodeId: body.nodeId ?? null,
       // 画布节点运行成功 → 捕获输出字节进画布资产分区（C2）
       onComplete: async (finished) => {
-        if (body.canvasId && !finished.error && finished.status !== 'interrupted') await this.capture.captureRunOutputs(finished, body.canvasId, body.nodeId ?? null, workflow.id);
-        const ids = finished.outputs.flatMap((output) => output.assetId ? [output.assetId] : []);
-        const status = finished.status === 'interrupted' ? 'cancelled' : finished.error ? 'failed' : 'succeeded';
-        await this.persistentRuns.finish(begun.run.id, status, ids, finished.error ? { message: finished.error, nodeErrors: finished.nodeErrors } : null);
+        try {
+          if (body.canvasId && !finished.error && finished.status !== 'interrupted') await this.capture.captureRunOutputs(finished, body.canvasId, body.nodeId ?? null, workflow.id);
+          const ids = finished.outputs.flatMap((output) => output.assetId ? [output.assetId] : []);
+          const status = finished.status === 'interrupted' ? 'cancelled' : finished.error ? 'failed' : 'succeeded';
+          await this.persistentRuns.finish(begun.run.id, status, ids, finished.error ? { message: finished.error, nodeErrors: finished.nodeErrors } : null);
+        } finally {
+          await gpuLease.release(finished.error ? new Error(finished.error) : undefined);
+        }
       },
       // 不再自动写回缩略图：改由前端在结果区点"作为封面"手动设置
-    }); } catch (error) { await this.persistentRuns.finish(begun.run.id, 'failed', [], { message: (error as Error).message }); throw error; }
+    }); } catch (error) {
+      try { await this.persistentRuns.finish(begun.run.id, 'failed', [], { message: (error as Error).message }); }
+      finally { await gpuLease.release(error); }
+      throw error;
+    }
     await this.persistentRuns.patch(begun.run.id, { providerRunId: run.promptId });
     return { run: { ...run, runId: begun.run.id }, persistentRun: await this.persistentRuns.get(begun.run.id) };
   }
@@ -482,4 +517,16 @@ export class ComfyUIController {
     }
     return 'legacy';
   }
+}
+
+function schedulerError(error: unknown) {
+  const response = (error as { getResponse?: () => unknown })?.getResponse?.();
+  if (typeof response === 'object' && response) return response;
+  const details = (error as Error & { details?: unknown } | null)?.details;
+  return typeof details === 'object' && details ? details : { message: (error as Error).message };
+}
+
+function takeoverRetryable(run: { status: string; providerRunId?: string | null; error?: unknown }) {
+  return run.status === 'failed' && !run.providerRunId
+    && (run.error as { code?: string } | null)?.code === 'COMFYUI_TAKEOVER_REQUIRED';
 }

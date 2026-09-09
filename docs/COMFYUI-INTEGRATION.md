@@ -125,6 +125,12 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-09（AI 对话确认托管）：接管改为两阶段协议。页面或 Agent 先请求绑定当前 PID/路径/进程集合的 5 分钟一次性令牌，向用户展示快照并取得本次明确确认后才可消费；执行前快照变化、令牌缺失/过期/重放均拒绝且不结束进程。页面弹窗与 `carrot-canvas` Skill 使用同一接口，用户无需必须回到画布点击。Action Registry 明确标注执行为 high-impact/human-confirmation。
+
+- 2026-09-09（进程级安全调度）：ComfyUI 不再只依赖 `/free` 释放模型。平台记录自己启动的 PID/可执行文件/启动参数，跨 Provider 切换最多 3 次结束托管进程树，并观测端口、PID、RAM、allocator 与整卡显存；无法证明所有权或检测到 ComfyUI Desktop 时返回结构化冲突、锁住 GPU 队列，并由画布/工具箱弹窗请求用户显式确认。确认后才关闭 Desktop 并按需启动托管后端；取消不会改变外部进程。详见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
+
+- 2026-09-09（统一 GPU 调度）：ComfyUI、CosyVoice 3、IndexTTS2 接入同一持久化 FIFO GPU 租约。ComfyUI 切出时等待队列为空，调用 `/free` 并通过 `/system_stats` 确认 allocator 收缩；TTS 切回真实 512×512 / 1-step Z-Image Run 成功，提交时两个 TTS 模型均已卸载。详细设计与证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
+
 - 2026-09-08（Pixel Fantasy 本地适配）：按用户要求仅在 ComfyUI Desktop 保存 `Pixel_Fantasy_5060Ti_15s_Auto` / `Manual`，未导入平台。原工作流缺失节点、模型与动态连线迁移至本机 Ref2VA INT8、NVFP4 文本编码、4 步 Turbo、官方音视频输出和 XB llama 视觉扩写；补齐 CUDA llama.cpp 与 Qwen3.5-9B Q4，8192 上下文、全 GPU 层加载、扩写结束释放显存。指定人物图完成两条 864×480 / 24fps / 362 帧 / 15.083 秒音视频，人工提示词版 311.535 秒，自动版视频阶段 329.740 秒（复用约 40 秒扩写缓存）。媒体全量解码与逐秒抽帧通过；扩写存在眼睛颜色误判，人工版保留校准提示词。采样 GPU 平均约 99.3%，仍保留必要 RAM 暂存与 CPU 调度。证据与使用说明：`artifacts/pixel-fantasy/README.md`。本次不改平台业务代码、运行协议或阶段状态。
 
 - 2026-09-07（Desktop R2V 实测）：官方 MiniMax H3 Ref2VA 工作流通过两张 codex2api 生成的角色/城市参考图完成《重启天际》视频，Desktop 保存为 `Sky_Reboot_R2V`。4 步 Turbo LoRA、种子 2609071842，输出 1344×768 / 24fps / 6.58 秒及双声道音轨，执行 655 秒。实际请求保留 `ref_images.ref_image_0/1` 扁平动态输入名；旧版 LoadImage 下拉框仅枚举 input 根目录，故 Desktop 可复现副本使用根目录图片。提示词、工作流、执行记录与抽帧见 `artifacts/neon-reboot/README.md`。此次为 ComfyUI Desktop 直接测试，不涉及平台代码或运行协议变更，也未测试外部视频/音频参考。

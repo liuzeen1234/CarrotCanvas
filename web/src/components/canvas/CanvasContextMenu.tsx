@@ -29,13 +29,14 @@ export interface CanvasContextMenuProps {
   /** 选中某分类下的具体工作流 */
   onPick: (workflow: ComfyUIAPI) => void;
   onPickCapability: (capability: CodexCapability) => void;
+  onPickTts: () => void;
   onPickInput: (kind: 'image' | 'video' | 'audio' | 'text') => void;
 }
 
 /** 当前画布已支持的工作流分类。 */
 const ENABLED_CATEGORIES = new Set(['txt2img', 'img2img', 'txt2vid', 'img2vid', 'reference']);
 
-export default function CanvasContextMenu({ state, onClose, onPick, onPickCapability, onPickInput }: CanvasContextMenuProps) {
+export default function CanvasContextMenu({ state, onClose, onPick, onPickCapability, onPickTts, onPickInput }: CanvasContextMenuProps) {
   const [workflows, setWorkflows] = useState<ComfyUIAPI[]>([]);
   const [loading, setLoading] = useState(false);
   const loadedRef = useRef(false);
@@ -116,7 +117,8 @@ export default function CanvasContextMenu({ state, onClose, onPick, onPickCapabi
         })),
       ],
     }, { type: 'divider' }] : [];
-    return [...(!state?.connection ? [{key:'inputs',label:'输入节点',children:[{key:'in:image',label:'图片'},{key:'in:video',label:'视频'},{key:'in:audio',label:'音频'},{key:'in:text',label:'文本 / 参数'}]}] : []), ...capabilityItems, ...WORKFLOW_CATEGORIES.map((cat) => {
+    const ttsItems: MenuProps['items'] = !state?.connection || ['audio', 'text'].includes(state.connection.kind) ? [{ key: 'tts', label: 'AI 配音（本地）' }, { type: 'divider' }] : [];
+    return [...(!state?.connection ? [{key:'inputs',label:'输入节点',children:[{key:'in:image',label:'图片'},{key:'in:video',label:'视频'},{key:'in:audio',label:'音频'},{key:'in:text',label:'文本 / 参数'}]}] : []), ...ttsItems, ...capabilityItems, ...WORKFLOW_CATEGORIES.map((cat) => {
       const list = (byCategory.get(cat.value) ?? []).filter((workflow) =>
         !state?.connection || workflow.inputConfig?.fields?.some((field) => field.kind === state.connection!.kind),
       );
@@ -140,6 +142,7 @@ export default function CanvasContextMenu({ state, onClose, onPick, onPickCapabi
 
   const handleClick: MenuProps['onClick'] = ({ key }) => {
     if (key.startsWith('in:')) { onPickInput(key.slice(3) as 'image' | 'video' | 'audio' | 'text'); onClose(); return; }
+    if (key === 'tts') { onPickTts(); onClose(); return; }
     if (key.startsWith('cap:')) {
       onPickCapability(key.slice(4) as CodexCapability);
       onClose();

@@ -27,7 +27,7 @@ import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, DragOutlined, Envi
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
-import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
+import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { RunDuration } from '@/components/canvas/RunTiming';
 import { ComfyUIAPI, extractSeedValues, type RunStateData } from '@/components/comfyui/types';
@@ -810,7 +810,7 @@ function CanvasEditorInner() {
     });
   }, [canWrite]);
 
-  const ensureResultNode = useCallback((sourceNodeId: string, kind: 'image' | 'video' = 'image') => {
+  const ensureResultNode = useCallback((sourceNodeId: string, kind: 'image' | 'video' | 'audio' = 'image') => {
     if (!canWrite) return;
     const sourceHandle = resultSourceHandle(kind);
     const targetHandle = resultTargetHandle(kind);
@@ -844,13 +844,15 @@ function CanvasEditorInner() {
 
   const getResultState = useCallback((resultNodeId: string): CanvasResultState => {
     const resultNode = nodes.find((item) => item.id === resultNodeId);
-    const kind = (resultNode?.data as any)?.kind === 'video' ? 'video' : 'image';
+    const rawKind = (resultNode?.data as any)?.kind;
+    const kind = rawKind === 'video' || rawKind === 'audio' ? rawKind : 'image';
     const targetHandle = resultTargetHandle(kind);
     const edge = edges.find((item) => item.target === resultNodeId && item.targetHandle === targetHandle);
     if (!edge) return { run: null, assets: [] };
     let source = nodes.find((item) => item.id === edge.source);
     if (source?.type === NODE_TYPE_RESULT && !source.data.inputMode) {
-      const upstreamKind = (source.data as any)?.kind === 'video' ? 'video' : 'image';
+      const rawUpstreamKind = (source.data as any)?.kind;
+      const upstreamKind = rawUpstreamKind === 'video' || rawUpstreamKind === 'audio' ? rawUpstreamKind : 'image';
       const resultInput = edges.find((item) => item.target === source!.id && item.targetHandle === resultTargetHandle(upstreamKind));
       source = resultInput ? nodes.find((item) => item.id === resultInput.source) : undefined;
     }
@@ -863,7 +865,8 @@ function CanvasEditorInner() {
     if (!edge) return null;
     let source = nodes.find((item) => item.id === edge.source);
     if (source?.type === NODE_TYPE_RESULT && !source.data.inputMode) {
-      const upstreamKind = (source.data as any)?.kind === 'video' ? 'video' : 'image';
+      const rawUpstreamKind = (source.data as any)?.kind;
+      const upstreamKind = rawUpstreamKind === 'video' || rawUpstreamKind === 'audio' ? rawUpstreamKind : 'image';
       const resultInput = edges.find((item) => item.target === source!.id && item.targetHandle === resultTargetHandle(upstreamKind));
       source = resultInput ? nodes.find((item) => item.id === resultInput.source) : undefined;
     }
@@ -1025,6 +1028,19 @@ function CanvasEditorInner() {
         targetHandle,
       };
       setEdges((items) => [...items, edge]);
+    }
+    setMenu(null);
+  }, [canWrite, menu, screenToFlowPosition]);
+
+  const handlePickTts = useCallback(() => {
+    if (!canWrite) return;
+    let pos = { x: 0, y: 0 };
+    try { pos = menu ? screenToFlowPosition({ x: menu.screenX, y: menu.screenY }) : pos; } catch { /* fall back */ }
+    const node = createTtsNode(pos);
+    setNodes((items) => [...items, node]);
+    if (menu?.connection) {
+      const targetHandle = resultTargetHandle(menu.connection.kind);
+      setEdges((items) => [...items, { id: `edge-${menu.connection!.sourceNodeId}-${node.id}-${targetHandle}`, source: menu.connection!.sourceNodeId, sourceHandle: menu.connection!.sourceHandle, target: node.id, targetHandle }]);
     }
     setMenu(null);
   }, [canWrite, menu, screenToFlowPosition]);
@@ -1267,7 +1283,7 @@ function CanvasEditorInner() {
               <Controls />
             </ReactFlow>
 
-            {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} onPickInput={(kind) => {
+            {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} onPickTts={handlePickTts} onPickInput={(kind) => {
               const position = menu ? screenToFlowPosition({x:menu.screenX,y:menu.screenY}) : {x:0,y:0};
               setNodes(nds => [...nds, {id: crypto.randomUUID(), type: NODE_TYPE_RESULT, position, data:{kind,inputMode:true,lastText:'',lastAssets:[]},style:{width:300}}]);
             }} /> : null}
