@@ -55,6 +55,22 @@ describe('TtsController', () => {
     expect(runs.begin).toHaveBeenCalledWith(expect.objectContaining({ inputAssetIds: [], inputSnapshot: expect.objectContaining({ voiceMode: 'preset', presetVoiceId: 'cosyvoice-demo-female' }) }));
   });
 
+  it('submits Qwen built-in speakers without reference assets', async () => {
+    const client = { infer: jest.fn(async () => ({ buffer: pcmWav(), mime: 'audio/wav' })) } as any;
+    const runs = { begin: jest.fn(async () => ({ replay: false, run: { id: 'qwen-run' } })), patch: jest.fn(async (_id, patch) => ({ id: 'qwen-run', ...patch })), finish: jest.fn(async (_id, status, ids) => ({ id: 'qwen-run', status, outputAssetIds: ids })) } as any;
+    const assets = { read: jest.fn(), saveGenerated: jest.fn(async () => ({ id: 'qwen-output' })) } as any;
+    const controller = new TtsController(client, { acquire: jest.fn(async () => ({ release: jest.fn() })) } as any, runs, assets, { assertWriteAccess: jest.fn() } as any, {} as any);
+    await controller.run({ provider: 'qwen3tts', voiceMode: 'preset', presetVoiceId: 'qwen-vivian', text: '你好', instruction: '温柔自然', language: 'Chinese', canvasId: 'canvas', ...control });
+    expect(assets.read).not.toHaveBeenCalled();
+    expect(client.infer).toHaveBeenCalledWith('qwen3tts', expect.objectContaining({ nativeSpeaker: 'Vivian', language: 'Chinese', referenceAudioBase64: null }));
+  });
+
+  it('validates prompt-only Qwen voice design mode', async () => {
+    const controller = new TtsController({} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    await expect(controller.run({ provider: 'qwen3tts', voiceMode: 'design', text: '你好', canvasId: 'canvas', ...control })).rejects.toThrow('需要填写音色与表演描述');
+    await expect(controller.run({ provider: 'cosyvoice3', voiceMode: 'design', text: '你好', instruction: '低沉男声', canvasId: 'canvas', ...control })).rejects.toThrow('仅支持 Qwen3-TTS');
+  });
+
   it('cancels at a speech boundary, releases the outer lease, and exposes no partial asset', async () => {
     let cancel!: (runId: string) => Promise<unknown>; let calls = 0;
     const released = jest.fn(async () => undefined);

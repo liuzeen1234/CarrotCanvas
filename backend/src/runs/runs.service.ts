@@ -87,7 +87,7 @@ export class RunsService implements OnModuleInit {
   capabilities(run: GenerationRun) {
     return {
       observe: true, adopt: !!run.canvasId, wait: true,
-      cancel: ['cosyvoice3', 'indextts2'].includes(run.provider) ? { precise: true, mode: 'safe-segment-boundary', endpoint: `/api/runs/${run.id}/cancel` } : run.provider === 'comfyui' ? { precise: false, mode: 'global-if-sole-active', reasonCode: 'CANCEL_NOT_PRECISE' } : { precise: false, mode: 'unsupported', reasonCode: 'CANCEL_NOT_PRECISE' },
+      cancel: ['cosyvoice3', 'indextts2', 'qwen3tts'].includes(run.provider) ? { precise: true, mode: 'safe-segment-boundary', endpoint: `/api/runs/${run.id}/cancel` } : run.provider === 'comfyui' ? { precise: false, mode: 'global-if-sole-active', reasonCode: 'CANCEL_NOT_PRECISE' } : { precise: false, mode: 'unsupported', reasonCode: 'CANCEL_NOT_PRECISE' },
       statusUpdatesRequireLease: false,
     };
   }

@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ChildProcess, spawn } from 'child_process';
 import { existsSync, mkdirSync, openSync } from 'fs';
 import { join, resolve } from 'path';
-import type { TtsProvider } from './tts-client.service';
+import { TTS_PROVIDERS, type TtsProvider } from './tts-client.service';
 
 export interface ProviderStopAttempt {
   attempt: number; pid: number | null; rssBytes: number | null;
@@ -16,12 +16,13 @@ export class TtsProcessManagerService implements OnModuleInit, OnModuleDestroy {
   private readonly root = resolve(__dirname, '..', '..', '..');
   private readonly worker = join(this.root, 'backend', 'tts-worker', 'server.py');
   private readonly runtime = join(this.root, 'backend', 'data', 'tts-runtime');
+  private readonly qwenOverlay = join(this.runtime, 'qwen3tts-overlay');
   private readonly logs = join(this.root, 'backend', 'data', 'tts-logs');
 
   async onModuleInit() {
     if (!this.managed) return;
     mkdirSync(this.logs, { recursive: true });
-    await Promise.allSettled((['cosyvoice3', 'indextts2'] as const).map((provider) => this.stop(provider)));
+    await Promise.allSettled(TTS_PROVIDERS.map((provider) => this.stop(provider)));
   }
 
   async ensureRunning(provider: TtsProvider) {
@@ -35,6 +36,7 @@ export class TtsProcessManagerService implements OnModuleInit, OnModuleDestroy {
     const err = openSync(join(this.logs, `${provider}.stderr.log`), 'a');
     const child = spawn(config.python, [this.worker, '--provider', provider, '--port', String(config.port)], {
       cwd: this.root, windowsHide: true, stdio: ['ignore', out, err],
+      env: provider === 'qwen3tts' ? { ...process.env, PYTHONPATH: this.qwenOverlay } : process.env,
     });
     child.once('exit', () => { if (this.children.get(provider) === child) this.children.delete(provider); });
     child.on('error', (error) => this.logger.error(`${provider} 启动失败：${error.message}`));
@@ -83,18 +85,20 @@ export class TtsProcessManagerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    if (this.managed) await Promise.allSettled((['cosyvoice3', 'indextts2'] as const).map((provider) => this.stop(provider)));
+    if (this.managed) await Promise.allSettled(TTS_PROVIDERS.map((provider) => this.stop(provider)));
   }
 
   private get managed() { return process.env.CARROT_MANAGE_TTS !== 'false'; }
   private config(provider: TtsProvider) {
     return provider === 'cosyvoice3'
       ? { port: 50000, python: join(this.runtime, 'cosyvoice-env', 'Scripts', 'python.exe') }
-      : { port: 50001, python: join(this.runtime, 'indextts-env', 'Scripts', 'python.exe') };
+      : provider === 'indextts2'
+        ? { port: 50001, python: join(this.runtime, 'indextts-env', 'Scripts', 'python.exe') }
+        : { port: 50002, python: join(this.runtime, 'cosyvoice-env', 'Scripts', 'python.exe') };
   }
-  private url(provider: TtsProvider) { return provider === 'cosyvoice3' ? 'http://127.0.0.1:50000' : 'http://127.0.0.1:50001'; }
+  private url(provider: TtsProvider) { return provider === 'cosyvoice3' ? 'http://127.0.0.1:50000' : provider === 'indextts2' ? 'http://127.0.0.1:50001' : 'http://127.0.0.1:50002'; }
   private isLocal(provider: TtsProvider) {
-    const configured = provider === 'cosyvoice3' ? process.env.COSYVOICE3_URL : process.env.INDEXTTS2_URL;
+    const configured = provider === 'cosyvoice3' ? process.env.COSYVOICE3_URL : provider === 'indextts2' ? process.env.INDEXTTS2_URL : process.env.QWEN3TTS_URL;
     return !configured || /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/i.test(configured);
   }
   private async waitStopped(provider: TtsProvider, pid: number | null, timeoutMs: number) {

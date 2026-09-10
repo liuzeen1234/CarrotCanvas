@@ -18,6 +18,7 @@ class Engine:
     def __init__(self, provider: str):
         self.provider = provider
         self.model = None
+        self.model_variant = None
         self.lock = threading.RLock()
 
     def load(self):
@@ -29,7 +30,7 @@ class Engine:
                 sys.path[:0] = [str(source), str(source / "third_party" / "Matcha-TTS")]
                 from cosyvoice.cli.cosyvoice import AutoModel
                 self.model = AutoModel(model_dir=str(MODELS / "Fun-CosyVoice3-0.5B-2512"), fp16=True)
-            else:
+            elif self.provider == "indextts2":
                 source = RUNTIME / "index-tts"
                 sys.path.insert(0, str(source))
                 from indextts.infer_v2 import IndexTTS2
@@ -39,10 +40,26 @@ class Engine:
                     use_fp16=True, device="cuda:0", use_cuda_kernel=False,
                     use_deepspeed=False, use_qwen_emo=True,
                 )
+            else:
+                self._load_qwen("custom")
+
+    def _load_qwen(self, variant: str):
+        if self.model is not None and self.model_variant == variant:
+            return
+        if self.model is not None:
+            self.unload()
+        import torch
+        from qwen_tts import Qwen3TTSModel
+        folder = "Qwen3-TTS-12Hz-0.6B-CustomVoice" if variant == "custom" else "Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+        self.model = Qwen3TTSModel.from_pretrained(
+            str(MODELS / folder), device_map="cuda:0", dtype=torch.bfloat16,
+        )
+        self.model_variant = variant
 
     def unload(self):
         with self.lock:
             self.model = None
+            self.model_variant = None
             gc.collect()
             try:
                 import torch
@@ -55,6 +72,8 @@ class Engine:
     def infer(self, payload: dict) -> bytes:
         with self.lock, tempfile.TemporaryDirectory(prefix="carrot-tts-") as tmp:
             self.load()
+            if self.provider == "qwen3tts":
+                return self._infer_qwen(payload)
             reference = base64.b64decode(payload["referenceAudioBase64"])
             emotion_raw = payload.get("emotionReferenceAudioBase64")
             prompt = Path(tmp) / "prompt.wav"
@@ -89,6 +108,24 @@ class Engine:
                 )
             return output.read_bytes()
 
+    def _infer_qwen(self, payload: dict) -> bytes:
+        import io
+        import soundfile as sf
+        mode = "design" if payload.get("voiceMode") == "design" else "custom"
+        self._load_qwen(mode)
+        common = {"text": str(payload["text"]), "language": str(payload.get("language") or "Auto")}
+        instruction = str(payload.get("instruction") or "").strip()
+        if mode == "design":
+            wavs, sample_rate = self.model.generate_voice_design(**common, instruct=instruction)
+        else:
+            speaker = str(payload.get("nativeSpeaker") or "").strip()
+            if not speaker:
+                raise ValueError("Qwen3-TTS 预设音色缺少 speaker")
+            wavs, sample_rate = self.model.generate_custom_voice(**common, speaker=speaker, instruct=instruction or None)
+        stream = io.BytesIO()
+        sf.write(stream, wavs[0], sample_rate, format="WAV", subtype="PCM_16")
+        return stream.getvalue()
+
 
 class Handler(BaseHTTPRequestHandler):
     engine: Engine
@@ -97,7 +134,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/health":
             self.send_error(404)
             return
-        metrics = {"pid": os.getpid(), "rssBytes": None, "vmsBytes": None, "cudaAllocatedBytes": 0, "cudaReservedBytes": 0}
+        metrics = {"pid": os.getpid(), "rssBytes": None, "vmsBytes": None, "cudaAllocatedBytes": 0, "cudaReservedBytes": 0, "modelVariant": self.engine.model_variant}
         try:
             import psutil
             memory = psutil.Process().memory_info()
@@ -154,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", choices=("cosyvoice3", "indextts2"), required=True)
+    parser.add_argument("--provider", choices=("cosyvoice3", "indextts2", "qwen3tts"), required=True)
     parser.add_argument("--port", type=int, required=True)
     args = parser.parse_args()
     Handler.engine = Engine(args.provider)

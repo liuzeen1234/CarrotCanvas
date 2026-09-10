@@ -37,6 +37,8 @@ node <绝对脚本路径> operations <canvasId> <JSON文件绝对路径>
 
 运行提交必须带 canvasId/nodeId、当前 proof 与稳定幂等键，通过平台记录 Run，不能绕过平台直调 provider 冒充画布生成。采用 [运行与媒体约定](references/operations.md#运行与媒体)；生成等待也保持生命周期，不能靠 TTL 正常释放。接手时检查已有 Run 的 Handoff，必要时 adopt 原 Run，禁止以重新提交代替接手。取消前读取 `capabilities.cancel`；TTS 支持 speech 片段边界取消，其他 provider 以实时能力为准。
 
+ComfyUI、CosyVoice 3、IndexTTS2、Qwen3-TTS 共用一张 FIFO 本机重型计算租约。提交这些 Provider 前读取 `/local-compute-scheduler/status`；`blocked` 非空时停止提交并报告结构化原因。Qwen3-TTS 的预设 speaker 与文字设计音色均无需参考音频，具体节点和提交合同见运行与媒体约定。
+
 先核对 Run 终态、真实产物、画布引用与文件内容，再声明完成。下载使用 `download <assetId> <当前项目内绝对路径>`（拒绝覆盖已有文件），不要硬编码后端 data 目录。报告画布 ID/链接、Run ID、可用产物路径及未完成项；失败/needs_attention/超时不等于成功。
 
 当前 Skill 封装现有画布和生成能力，不承诺自动分镜、时间轴剪辑或最终成片系统已实现。

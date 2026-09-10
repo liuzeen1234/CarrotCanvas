@@ -2,19 +2,19 @@
 
 ## 目标
 
-统一调度 `comfyui`、`cosyvoice3`、`indextts2` 三个 Provider。领域概念已从“GPU 租约”升级为“本机重型计算租约”：任一时刻只允许一个 Provider 占用 GPU、CPU、内存、页面文件、磁盘与重型模型进程的排他执行窗口。
+统一调度 `comfyui`、`cosyvoice3`、`indextts2`、`qwen3tts` 四个 Provider。领域概念已从“GPU 租约”升级为“本机重型计算租约”：任一时刻只允许一个 Provider 占用 GPU、CPU、内存、页面文件、磁盘与重型模型进程的排他执行窗口。
 
 对应需求：[GitHub Issue #11](https://github.com/liuzeen1234/CarrotCanvas/issues/11)。
 
 ## 已拍板设计
 
-- CosyVoice 3 与 IndexTTS2 使用各自独立的 Python 3.10 环境，worker 由调度器按需启动，切出时退出整个进程，不只调用模型 `/unload`。
+- CosyVoice 3 与 IndexTTS2 使用各自独立的 Python 3.10 环境；Qwen3-TTS 复用 CosyVoice 的 CUDA/PyTorch 基础环境，并通过独立 overlay 隔离自身 Python 包。worker 均由调度器按需启动，切出时退出整个进程，不只调用模型 `/unload`。
 - TTS 进程退出最多尝试 3 次：先请求优雅关闭，再升级到结束进程；每次记录 PID、端口、RSS 与 CUDA reserved。只有端口消失且原 PID 不存在才算释放成功。
 - ComfyUI 运行也必须先取得相同的持久化 FIFO 租约。调度器托管的 ComfyUI 切出时等待队列清空，再按进程树退出，并在每次尝试前后记录端口所有者、working set/private bytes、Comfy allocator 与 `nvidia-smi` 整卡显存。
 - 8188 若属于非调度器 PID，或检测到 ComfyUI Desktop，返回 `COMFYUI_TAKEOVER_REQUIRED` 并锁住后续队列。页面必须由用户确认后才关闭 Desktop/相关进程、保存启动参数并改由调度器启动纯后端；未知外部进程以后仍会再次询问。
 - 连续运行同一 Provider 时允许模型驻留，避免重复加载；切换 Provider 时严格串行执行 `release(old) → prepare(new)`。
 - 租约写入 SQLite `local_compute_leases`。启动时旧 `gpu_resource_leases` 历史单向兼容迁移；后端重启时把未完成租约标记为 `abandoned`，不把陈旧状态当作仍在占用。
-- 两个 TTS worker 内部对 load、infer、unload 加互斥锁，平台之外的误调用也不会在同一 worker 内并发改动模型。
+- 三个 TTS worker 内部对 load、infer、unload 加互斥锁，平台之外的误调用也不会在同一 worker 内并发改动模型。Qwen3-TTS 的 CustomVoice 与 VoiceDesign 在同一 worker 内互斥换载，切换前释放上一模型。
 - 任一旧 Provider 连续 3 次仍未完全退出，调度器进入 fail-closed 锁定态，持久化原因与三次观测，拒绝继续启动下一个 Provider。
 
 ## 本地目录与模型来源
@@ -25,21 +25,24 @@
 |---|---|---|
 | CosyVoice 源码 | `backend/data/tts-runtime/CosyVoice` | FunAudioLLM/CosyVoice 官方仓库 |
 | IndexTTS 源码 | `backend/data/tts-runtime/index-tts` | index-tts/index-tts 官方仓库 |
+| Qwen3-TTS Python overlay | `backend/data/tts-runtime/qwen3tts-overlay` | `backend/tts-worker/requirements-qwen3tts-windows.txt` |
 | CosyVoice 3 权重 | `backend/data/tts-models/Fun-CosyVoice3-0.5B-2512` | ModelScope `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` |
 | IndexTTS2 权重 | `backend/data/tts-models/IndexTTS-2` | ModelScope `IndexTeam/IndexTTS-2` |
+| Qwen3-TTS CustomVoice 权重 | `backend/data/tts-models/Qwen3-TTS-12Hz-0.6B-CustomVoice` | ModelScope `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` |
+| Qwen3-TTS VoiceDesign 权重 | `backend/data/tts-models/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | ModelScope `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` |
 
 主模型及可用的辅助权重固定优先使用 ModelScope。IndexTTS2 所需的 `nvidia/bigvgan_v2_22khz_80band_256x` 在 ModelScope 主站和备用站均不存在，官方加载器收到 404 后仅对该约 449 MB 辅助声码器回退到 hf-mirror；其余权重均来自 ModelScope。不要把模型、Python 环境或运行日志提交进 Git。
 
 ## 接口与画布节点
 
 - `GET /api/local-compute-scheduler/status`：当前租约、驻留 Provider 与等待队列；旧 `/api/gpu-scheduler/status` 暂作兼容入口。
-- `GET /api/tts/providers`：两个 worker 的在线及模型加载状态。
+- `GET /api/tts/providers`：三个 worker 的在线及模型加载状态；Qwen3-TTS 额外报告当前 `modelVariant`。
 - `GET /api/comfyui/process-status`：8188 所有者、Desktop 进程、进程内存及显存观测。
 - `POST /api/comfyui/takeover/confirmation`：针对当前端口所有者和 Desktop 进程集合签发 5 分钟有效、一次性使用的确认令牌，并返回供页面或 AI 对话展示的快照。
 - `POST /api/comfyui/takeover`：只接受显式 `confirm=true` 与有效确认令牌；执行前重新核验进程快照，关闭 Desktop 后保存并启动调度器托管的 ComfyUI 后端，同时解除因该冲突产生的队列锁。
 - `POST /api/tts/runs`：受 canvas lease/revision 保护的配音运行；结果保存为画布 audio asset 和持久化 GenerationRun。
 - `GET /api/tts/voices`：列出当前本地运行时已安装、且适用于指定 Provider 的预设音色；只返回稳定 ID 和展示元数据，不暴露服务端路径或内部逐字稿。
-- 画布 `tts` 节点支持切换 CosyVoice 3 / IndexTTS2，并提供“预设音色 / 自定义音色”两种模式。新节点默认使用预设音色，用户只需输入台词、风格/情绪要求和语速即可生成；自定义模式保留原有参考音频克隆。旧画布未保存 `voiceMode` 时按自定义模式解释，不改变已有运行语义。
+- 画布 `tts` 节点支持切换 CosyVoice 3 / IndexTTS2 / Qwen3-TTS。前两者提供“预设音色 / 自定义音色”；Qwen3-TTS 提供 9 个官方预设音色，以及无需参考音频、仅凭文字要求生成音色和表演的“文字设计音色”。旧画布未保存 `voiceMode` 时仍按自定义模式解释，不改变已有运行语义。
 - 预设音色由后端白名单解析为参考音频和精确逐字稿，客户端不能提交任意服务端文件路径。预设音频不冒充画布资产，Run 快照记录 `voiceMode` / `presetVoiceId`，`inputAssetIds` 只记录用户自定义音色与情绪资产。
 
 ### 精确停顿协议（Issue #17）
@@ -50,7 +53,7 @@
 - 外层本机重型计算租约覆盖逐段推理、CPU 拼接、正式资产保存和最终 Run 落库。中间片段只存在于内存，不建资产或候选；成功只保存一个最终 audio asset。
 - `inputSnapshot` 持久化原文、规范化 segments、`speech-segment-serial-v1` 执行状态、逐段时长/采样率、拼接工具、实际格式、目标及实际静音帧。取消在语音片段边界生效；失败、取消或重启不会把半成品发布为候选，最终资产落库失败会清理刚写入的孤立文件。
 
-CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可额外使用情绪参考音频或情绪文字指令。
+CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可额外使用情绪参考音频或情绪文字指令。Qwen3-TTS 当前不开放参考音频克隆：`preset` 直接传官方 speaker，`design` 将音色、语调、年龄、情绪等文字要求传给 VoiceDesign；两种模式都不读取画布参考资产。
 
 ## 故障边界
 
@@ -67,6 +70,7 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 - [x] 调度器并发与同/跨 Provider 切换单元测试。
 - [x] TTS 画布图结构、输入约束、资产保存和运行记录测试。
 - [x] 预设音色列表、无画布参考资产提交、服务端白名单解析与 Run 快照测试。
+- [x] Qwen3-TTS 9 个官方预设音色、VoiceDesign 文字设计音色、画布参数切换和无参考资产提交测试。
 - [x] 后端完整测试与 TypeScript 构建。
 - [x] 前端生产构建。
 - [x] CosyVoice 3 使用真实参考音频生成 WAV。
@@ -74,6 +78,7 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 - [x] 从 TTS 切回真实 ComfyUI 工作流，确认 IndexTTS2 已卸载且结果可用。
 - [x] 浏览器中完成节点创建、Provider 切换、音频播放与下游结果回看。
 - [x] 后端重启清理遗留 TTS worker，确认 50000/50001 端口及原 PID 均消失。
+- [x] Qwen3-TTS 真实 CustomVoice / VoiceDesign 生成，确认经统一租约驻留为 `qwen3tts`，其他 TTS worker 未运行。
 - [x] 真实 ComfyUI Desktop 冲突返回 409、持久 Run 失败原因和调度器锁定状态；浏览器显示 PID/路径/内存及显式接管按钮，取消后 Desktop 保持运行。
 - [x] 页面与 AI 对话共用一次性确认协议；无令牌、伪造、过期、重放和进程快照变化测试均确认不会结束进程。
 - [x] CPU-only 阶段阻塞 ComfyUI/TTS、重启残留状态无法证明时 fail-closed、连续三次清理失败观测均有自动测试。
@@ -89,3 +94,5 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 Issue #17 精确停顿验收：CosyVoice 3 Run `2da5fa14-35b4-4f9e-86e9-e73def3d7f06` 输出 24 kHz 单声道 float32 WAV（11.380 秒），IndexTTS2 Run `d21d5a24-0d3b-4f2e-97ae-5eab26f140b4` 输出 22.05 kHz 单声道 PCM16 WAV（11.5532 秒）。两者均将 3 个 speech 段严格串行生成后插入 800ms 与 1500ms 静音；按最终采样率分别为 19200/36000 与 17640/33075 帧，目标与实际误差均为 0ms。每条 Run 只产生一个正式资产，Run 快照保留完整计划和拼接审计。
 
 2026-09-10 预设音色增量：新增双模式音色选择与 `tts.voices` Action，首个“清亮女声”复用 CosyVoice 安装随附的官方 zero-shot 示例及其逐字稿，可供两个现有 Provider 使用。新节点默认无参考音频操作，旧节点保持自定义克隆；17 suites / 121 tests 与前后端生产构建通过。
+
+2026-09-10 Qwen3-TTS 增量：新增正式 Provider `qwen3tts`（worker 端口 50002），与 ComfyUI、CosyVoice 3、IndexTTS2 共用持久化 FIFO 本机重型计算租约。画布可选择 9 个官方 speaker，或通过 1.7B VoiceDesign 只输入台词与音色/语调文字要求。验收画布 `4eaf64a8-8223-40e2-a1cc-43c4adf49466` 的预设 Run `ab1abd25-02dc-4aa8-ab2a-d7c20bd90fbb` 与 VoiceDesign Run `901aab73-7d80-42ff-b45f-a1db1795cdd0` 均成功并回填音频资产；结束时调度器 `residentProvider=qwen3tts`、无活动/等待/阻塞租约，VoiceDesign CUDA allocated 约 4.19 GB。重启后 50002 与原 worker PID 均消失、调度驻留状态清空；17 suites / 123 tests、后端 TypeScript、前端生产构建和 Python 语法检查通过。

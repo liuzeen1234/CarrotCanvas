@@ -49,13 +49,16 @@ export default async function (s) {
 
 - ComfyUI 节点统一 `type: 'txt2img'`，即使工作流生成视频也不改类型；data 含 `workflowId, workflowName, formValues`。formValues 键为 `${nodeId}::${param}`；nodeId 是 ComfyUI 图内 ID，可能带冒号。显示分类等字段参照选定工作流或已有有效节点。
 - Codex2API 节点 `type: 'codex-capability'`；data 含 `capability: text|image|edit|analyze, prompt, model`，可有 `outputMode` 和 `lastAssets/lastText/lastTextParts`。模型从 `/codex2api/models` 发现。
+- AI 配音卡 `type: 'tts'`；data 为 `{provider:'cosyvoice3'|'indextts2'|'qwen3tts', voiceMode:'preset'|'custom'|'design', presetVoiceId?, language?, text, referenceText, instruction, speed, lastAssets?}`。`custom` 的 `audio-target` 是音色参考，`emotion-audio-target` 是 IndexTTS2 可选情绪参考，`text-target` 是可选上游配音文本，输出为 `audio-source`。Qwen3-TTS 支持无需参考音频的 `preset` 与 `design`；预设列表实时读取 `/tts/voices`，文字设计音色必须填写 `instruction`。不得把本地音频路径直接写进节点，自定义参考需先用 `s.uploadMedia` 得到当前画布 audio asset。
 - 输入/结果卡 `type: 'result'`；data 含 `kind: text|image|video|audio`，输入模式 `inputMode:true`，文字放 `lastText`，媒体放 `lastAssets:[{assetId,url,kind,filename?}]`；媒体引用用平台资产而非其他项目本地路径。
 - 常规 source 为 `text-source`、`image-source`、`video-source`、`audio-source`；正负提示词为 `text-positive-source` / `text-negative-source`。Codex 输入为 `text-target`，edit/analyze 可接 `image-target`。
 - 工作流 target 从实时 `inputConfig.fields` 构造：image 为 `input:${nodeId}:${param}`，其余为 `input:${kind}:${nodeId}:${param}`。不要按固定冒号段数拆 ID。媒体类型必须匹配，单个输入最多一条边，不允许有向环路。
 
 ## 运行与媒体
 
-TTS 提交使用 `POST /tts/runs`，在 session 内传 `provider`、`text`、当前画布的 `referenceAssetId`、canvas/node/proof 和稳定幂等键。CosyVoice 3 还必须传参考音频准确逐字稿 `referenceText`；IndexTTS2 可传情绪参考资产或 `instruction`。
+ComfyUI、CosyVoice 3、IndexTTS2、Qwen3-TTS 的平台运行都经过同一持久化 FIFO 本机重型计算租约。开始真实生成前读取 `GET /local-compute-scheduler/status`；`blocked` 非空时停止继续提交并原样报告。Agent 只提交正常的 `/comfyui/runs` 或 `/tts/runs`，不得直调 worker 或自行结束 Provider 进程。
+
+TTS 提交使用 `POST /tts/runs`，在 session 内传 `provider`、`voiceMode`、`text`、canvas/node/proof 和稳定幂等键。只有 `custom` 必须传当前画布的 `referenceAssetId`；CosyVoice 3 还必须传准确逐字稿 `referenceText`，IndexTTS2 可传情绪参考资产或 `instruction`。Qwen3-TTS 的 `preset` 传 `/tts/voices` 返回的 `presetVoiceId`，`design` 传音色与表演描述 `instruction`；两者均可传 `language` 且无需参考资产。当前不提供 Qwen 参考音频克隆。
 
 精确停顿只接受 `<pause ms="N"/>`，整数范围 100–10000ms；连续标签累计且总计不得超过 10000ms，首尾标签允许，纯停顿拒绝。平台不会把标签发送给模型，而是在同一外层本机重型计算租约内严格串行生成 speech 段、按最终 WAV 采样率插入 PCM 静音并无损拼接。成功只产生一个正式 audio asset；`inputSnapshot.segments/execution.concat` 是计划、格式和实际静音帧的审计事实。取消前读 `capabilities.cancel`；TTS 的 `safe-segment-boundary` 表示当前 speech 片段结束后停止，不会发布已生成的中间片段。
 

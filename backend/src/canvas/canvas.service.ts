@@ -166,7 +166,7 @@ function validateNode(node: CanvasNode) {
   if (node.type === 'txt2img' && (!validId(node.data.workflowId) || (node.data.formValues != null && (typeof node.data.formValues !== 'object' || Array.isArray(node.data.formValues))))) bad('INVALID_NODE_DATA', 'txt2img 节点需要 workflowId，formValues 必须为对象');
   if (node.type === 'result' && node.data.kind != null && !['image', 'video', 'audio', 'text'].includes(String(node.data.kind))) bad('INVALID_NODE_DATA', 'result.kind 不合法');
   if (node.type === 'codex-capability' && (!['text', 'image', 'edit', 'analyze'].includes(String(node.data.capability)) || typeof node.data.prompt !== 'string' || typeof node.data.model !== 'string')) bad('INVALID_NODE_DATA', 'AI 能力节点字段不合法');
-  if (node.type === 'tts' && (!['cosyvoice3', 'indextts2'].includes(String(node.data.provider)) || typeof node.data.text !== 'string' || typeof node.data.referenceText !== 'string')) bad('INVALID_NODE_DATA', 'AI 配音节点字段不合法');
+  if (node.type === 'tts' && (!['cosyvoice3', 'indextts2', 'qwen3tts'].includes(String(node.data.provider)) || typeof node.data.text !== 'string' || typeof node.data.referenceText !== 'string')) bad('INVALID_NODE_DATA', 'AI 配音节点字段不合法');
 }
 function handleKind(handle: string, source: boolean): string | null {
   if (source && (handle === 'text-positive-source' || handle === 'text-negative-source')) return 'text';

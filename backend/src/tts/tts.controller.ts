@@ -4,7 +4,7 @@ import { AssetsService } from '../assets/assets.service';
 import { CanvasService } from '../canvas/canvas.service';
 import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.service';
 import { RunsService } from '../runs/runs.service';
-import { TtsClientService, TtsProvider } from './tts-client.service';
+import { TTS_PROVIDERS, TtsClientService, TtsProvider } from './tts-client.service';
 import { TtsProcessManagerService } from './tts-process-manager.service';
 import { getVoicePreset, listAvailableVoicePresets, publicVoicePreset } from './tts-voice-presets';
 import { concatenatePcmWav, parsePausePlan, PAUSE_SYNTAX_VERSION, PausePlanSegment } from './pause-plan';
@@ -14,7 +14,7 @@ interface TtsRunBody {
   text: string;
   canvasId: string;
   nodeId?: string;
-  voiceMode?: 'preset' | 'custom';
+  voiceMode?: 'preset' | 'custom' | 'design';
   presetVoiceId?: string;
   referenceAssetId?: string;
   referenceText?: string;
@@ -22,6 +22,7 @@ interface TtsRunBody {
   instruction?: string;
   speed?: number;
   targetDurationMs?: number;
+  language?: string;
   leaseToken: string;
   leaseEpoch: number;
   expectedRevision: number;
@@ -43,7 +44,7 @@ export class TtsController implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    for (const provider of ['cosyvoice3', 'indextts2'] as const) this.runs.registerCancelHandler(provider, async (runId) => {
+    for (const provider of TTS_PROVIDERS) this.runs.registerCancelHandler(provider, async (runId) => {
       const run = await this.runs.get(runId);
       if (!['queued', 'running'].includes(run.status)) return run;
       this.cancelRequested.add(runId);
@@ -53,7 +54,7 @@ export class TtsController implements OnModuleInit {
 
   @Get('providers')
   async providers() {
-    const items = await Promise.all((['cosyvoice3', 'indextts2'] as const).map(async (provider) => {
+    const items = await Promise.all(TTS_PROVIDERS.map(async (provider) => {
       const health = await this.processes.health(provider);
       return { provider, available: true, running: !!health, health };
     }));
@@ -67,18 +68,21 @@ export class TtsController implements OnModuleInit {
 
   @Post('runs')
   async run(@Body() body: TtsRunBody) {
-    if (!['cosyvoice3', 'indextts2'].includes(body.provider)) throw new BadRequestException('不支持的 TTS Provider');
+    if (!(TTS_PROVIDERS as readonly string[]).includes(body.provider)) throw new BadRequestException('不支持的 TTS Provider');
     const plan = parsePausePlan(body.text);
     if (!body.canvasId) throw new BadRequestException('缺少画布');
     const voiceMode = body.voiceMode ?? (body.presetVoiceId ? 'preset' : 'custom');
-    if (!['preset', 'custom'].includes(voiceMode)) throw new BadRequestException('不支持的音色来源');
+    if (!['preset', 'custom', 'design'].includes(voiceMode)) throw new BadRequestException('不支持的音色来源');
+    if (voiceMode === 'design' && body.provider !== 'qwen3tts') throw new BadRequestException('文字设计音色仅支持 Qwen3-TTS');
+    if (voiceMode === 'design' && !body.instruction?.trim()) throw new BadRequestException('文字设计音色需要填写音色与表演描述');
+    if (voiceMode === 'custom' && body.provider === 'qwen3tts') throw new BadRequestException('Qwen3-TTS 当前支持预设音色或文字设计音色');
     const preset = voiceMode === 'preset' ? getVoicePreset(body.presetVoiceId ?? '', body.provider) : null;
     if (voiceMode === 'preset' && !preset) throw new BadRequestException('预设音色不存在、未安装或不支持当前 Provider');
     if (voiceMode === 'custom' && !body.referenceAssetId) throw new BadRequestException('自定义音色需要参考音频');
     const effectiveReferenceText = preset?.referenceText ?? body.referenceText?.trim() ?? '';
     if (body.provider === 'cosyvoice3' && !effectiveReferenceText) throw new BadRequestException('CosyVoice 3 需要参考音频对应文本');
     await this.canvas.assertWriteAccess(body.canvasId, body);
-    const reference = preset ? null : await this.assets.read(body.referenceAssetId!);
+    const reference = voiceMode === 'custom' ? await this.assets.read(body.referenceAssetId!) : null;
     if (reference && (reference.asset.canvasId !== body.canvasId || reference.asset.kind !== 'audio')) throw new BadRequestException('参考音频必须属于当前画布');
     const emotion = body.emotionReferenceAssetId ? await this.assets.read(body.emotionReferenceAssetId) : null;
     if (emotion && (emotion.asset.canvasId !== body.canvasId || emotion.asset.kind !== 'audio')) throw new BadRequestException('情绪参考音频必须属于当前画布');
@@ -88,6 +92,7 @@ export class TtsController implements OnModuleInit {
       referenceAssetId: voiceMode === 'custom' ? body.referenceAssetId ?? null : null,
       referenceText: effectiveReferenceText || null,
       emotionReferenceAssetId: body.emotionReferenceAssetId ?? null, instruction: body.instruction ?? null,
+      nativeSpeaker: preset?.nativeSpeaker ?? null, language: body.language ?? 'Auto',
       speed: body.speed ?? 1, targetDurationMs: body.targetDurationMs ?? null };
     const begun = await this.runs.begin({ provider: body.provider, canvasId: body.canvasId, nodeId: body.nodeId ?? null,
       inputSnapshot: snapshot, inputAssetIds, actorType: body.actorType ?? 'human', actorId: body.actorId ?? 'web',
@@ -105,8 +110,8 @@ export class TtsController implements OnModuleInit {
     let failure: unknown;
     try {
       await this.runs.patch(begun.run.id, { status: 'running', startedAt: Date.now() });
-      const referencePath = preset?.absPath ?? reference!.absPath;
-      const common = { ...snapshot, referenceAudioBase64: (await fs.readFile(referencePath)).toString('base64'), emotionReferenceAudioBase64: emotion ? (await fs.readFile(emotion.absPath)).toString('base64') : null };
+      const referencePath = preset?.absPath ?? reference?.absPath;
+      const common = { ...snapshot, referenceAudioBase64: referencePath ? (await fs.readFile(referencePath)).toString('base64') : null, emotionReferenceAudioBase64: emotion ? (await fs.readFile(emotion.absPath)).toString('base64') : null };
       const wavParts: Array<{ type: 'speech'; wav: Buffer } | { type: 'silence'; durationMs: number }> = [];
       const execution = initialExecution(plan); let speechPosition = 0;
       for (let position = 0; position < plan.length; position += 1) {

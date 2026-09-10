@@ -74,9 +74,10 @@ export interface CodexCapabilityNodeData {
 }
 
 export interface TtsNodeData {
-  provider: 'cosyvoice3' | 'indextts2';
-  voiceMode?: 'preset' | 'custom';
+  provider: 'cosyvoice3' | 'indextts2' | 'qwen3tts';
+  voiceMode?: 'preset' | 'custom' | 'design';
   presetVoiceId?: string;
+  language?: string;
   text: string;
   referenceText: string;
   instruction: string;

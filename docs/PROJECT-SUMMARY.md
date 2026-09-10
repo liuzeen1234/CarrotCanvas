@@ -1,6 +1,6 @@
 # CarrotCanvas 项目现状总结
 
-> 最后更新：2026-09-06
+> 最后更新：2026-09-10
 
 > 2026-09-03 增量：画布已支持图生图工作流与 `image → image` 跨工作流连线。工作流导入/编辑可将图片字段标记为可连接输入；结果卡图片输出可连接到下游图片字段，运行前自动将平台资产回灌 ComfyUI 并覆盖参数。视频、音频端点类型已预留但尚未开放。
 > 2026-09-04 增量：接入 Codex2API 通用能力提供方，新增“AI 能力”一级工具箱（文生文/文生图/图生图/图像理解）及对应画布卡片；支持 SSE、multipart、URL/Base64 图片、可选 Bearer Key、统一错误处理和画布资产捕获。详见 `CODEX2API-INTEGRATION.md`。
@@ -19,6 +19,7 @@
 > 2026-09-07 ComfyUI seed：所有含可靠识别 seed 的工具箱/画布工作流卡片统一支持一键随机与每次运行自动随机；实际 seed 冻结进 Run 输入快照，可在节点历史和画布流水查看、复制，并可从节点历史恢复。
 > 2026-09-07 系统资源监控：画布右上角新增 CPU/GPU/内存三圆环，圆环显示使用率，CPU/GPU 圆心优先显示温度，内存圆心显示占用率；支持折叠、后台降频、多 NVIDIA GPU 详情及指标不可用降级。后端新增缓存式只读采样接口，不持久化或外传监控数据。
 > 2026-09-09 TTS 精确停顿：CosyVoice 3 / IndexTTS2 共用 `<pause ms="N"/>` 协议；平台解析为严格串行 speech 与 PCM 静音计划，在同一外层本机重型计算租约内无损拼接并只发布一个最终音频。前后端双重校验、版本化 Run 审计、片段边界取消和失败清理已落地；真实双 Provider 的 800ms/1500ms 停顿误差均为 0ms。
+> 2026-09-10 Qwen3-TTS：新增 0.6B CustomVoice 与 1.7B VoiceDesign，本地画布可用 9 个官方预设音色，或只输入文字描述音色、语调和表演直接生成；无需参考音频。Qwen3-TTS 已接入统一本机重型计算租约、GenerationRun、画布资产和候选回填。
 > 本文件是对项目当前状态的完整快照，开发过程中行变更时应同步更新。
 
 > 2026-09-08 修复：Issue #10 的只读旁观者现在会随持久 Run 变化自动刷新图片、视频、文字节点历史与全局生成流水，并在本地展示服务端当前选中产物及下游结果；该同步不取得编辑权、不保存 graph、不增加 revision，所有共享写操作仍保持禁用。
@@ -189,11 +190,12 @@ pnpm start     # 生产运行后端（需先 build）
 
 ## 8. 2026-09-09 本地配音与本机重型计算调度增量
 
-- ✅ 新增 CosyVoice 3 / IndexTTS2 独立 Python worker 和画布 `tts` 节点；worker 按需启动、同 Provider 可驻留、跨 Provider 必须退出旧进程后再启动新进程。
-- ✅ ComfyUI、CosyVoice 3、IndexTTS2 共用 SQLite FIFO 本机重型计算租约；提供 `/api/local-compute-scheduler/status`（旧 GPU 路径兼容）与各 Provider 可观测状态。
+- ✅ 新增 CosyVoice 3 / IndexTTS2 / Qwen3-TTS Python worker 和画布 `tts` 节点；worker 按需启动、同 Provider 可驻留、跨 Provider 必须退出旧进程后再启动新进程。
+- ✅ ComfyUI、CosyVoice 3、IndexTTS2、Qwen3-TTS 共用 SQLite FIFO 本机重型计算租约；提供 `/api/local-compute-scheduler/status`（旧 GPU 路径兼容）与各 Provider 可观测状态。
 - ✅ 主模型与绝大部分辅助权重从 ModelScope 下载；只有 ModelScope 不存在的 Index BigVGAN 449 MB 辅助文件由官方加载器回退 hf-mirror。
 - ✅ 真实 CosyVoice、IndexTTS2、TTS→Z-Image 三段运行全部成功；画布音频结果支持播放、下载和历史候选。
 - ✅ ComfyUI 纳入进程托管：外部 Desktop/PID 必须弹窗确认，托管进程最多 3 次退出并核验 PID、端口、RAM/VRAM；失败时锁住队列而非继续加载下一 Provider。
 - ✅ 页面与 AI 对话均可使用 5 分钟一次性确认令牌接管 ComfyUI；令牌绑定进程快照，缺失、伪造、过期、重放或 PID/路径变化均在杀进程前拒绝。
 - ✅ 完整后端测试、后端 TypeScript 构建、前端生产构建通过；真实 Desktop 冲突、TTS 遗留进程清理和 UI/对话确认分支通过。设计与验收证据见 [TTS-GPU-SCHEDULER.md](./TTS-GPU-SCHEDULER.md)。
 - ✅ 2026-09-10 新增预设音色模式：新建配音节点可不连接参考音频，直接选择内置音色并填写文本、风格/情绪及语速；自定义克隆与旧画布语义保持不变。
+- ✅ 2026-09-10 接入 Qwen3-TTS：9 个官方预设 speaker 与纯文字 VoiceDesign 均可在画布直接生成，模型与依赖按需加载且纳入统一资源调度；两条真实 Run 已成功生成并回填结果卡。

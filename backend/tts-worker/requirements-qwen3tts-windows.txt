@@ -1,0 +1,8 @@
+qwen-tts==0.1.1
+transformers==4.57.3
+accelerate==1.12.0
+tokenizers==0.22.1
+soundfile
+psutil
+modelscope
+sox

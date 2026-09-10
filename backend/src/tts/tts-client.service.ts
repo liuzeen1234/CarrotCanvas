@@ -1,13 +1,15 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
 import { LocalComputeProvider } from '../gpu-scheduler/gpu-resource-lease.entity';
 
-export type TtsProvider = Extract<LocalComputeProvider, 'cosyvoice3' | 'indextts2'>;
+export const TTS_PROVIDERS = ['cosyvoice3', 'indextts2', 'qwen3tts'] as const;
+export type TtsProvider = typeof TTS_PROVIDERS[number];
 
 @Injectable()
 export class TtsClientService {
   private url(provider: TtsProvider) {
-    const configured = provider === 'cosyvoice3' ? process.env.COSYVOICE3_URL : process.env.INDEXTTS2_URL;
-    return (configured || (provider === 'cosyvoice3' ? 'http://127.0.0.1:50000' : 'http://127.0.0.1:50001')).replace(/\/+$/, '');
+    const configured = provider === 'cosyvoice3' ? process.env.COSYVOICE3_URL : provider === 'indextts2' ? process.env.INDEXTTS2_URL : process.env.QWEN3TTS_URL;
+    const fallback = provider === 'cosyvoice3' ? 'http://127.0.0.1:50000' : provider === 'indextts2' ? 'http://127.0.0.1:50001' : 'http://127.0.0.1:50002';
+    return (configured || fallback).replace(/\/+$/, '');
   }
 
   async health(provider: TtsProvider) {
