@@ -38,7 +38,9 @@
 - `POST /api/comfyui/takeover/confirmation`：针对当前端口所有者和 Desktop 进程集合签发 5 分钟有效、一次性使用的确认令牌，并返回供页面或 AI 对话展示的快照。
 - `POST /api/comfyui/takeover`：只接受显式 `confirm=true` 与有效确认令牌；执行前重新核验进程快照，关闭 Desktop 后保存并启动调度器托管的 ComfyUI 后端，同时解除因该冲突产生的队列锁。
 - `POST /api/tts/runs`：受 canvas lease/revision 保护的配音运行；结果保存为画布 audio asset 和持久化 GenerationRun。
-- 画布 `tts` 节点支持切换 CosyVoice 3 / IndexTTS2，接收文本、音色参考音频和可选情绪参考音频，输出可预览和下载的音频候选。
+- `GET /api/tts/voices`：列出当前本地运行时已安装、且适用于指定 Provider 的预设音色；只返回稳定 ID 和展示元数据，不暴露服务端路径或内部逐字稿。
+- 画布 `tts` 节点支持切换 CosyVoice 3 / IndexTTS2，并提供“预设音色 / 自定义音色”两种模式。新节点默认使用预设音色，用户只需输入台词、风格/情绪要求和语速即可生成；自定义模式保留原有参考音频克隆。旧画布未保存 `voiceMode` 时按自定义模式解释，不改变已有运行语义。
+- 预设音色由后端白名单解析为参考音频和精确逐字稿，客户端不能提交任意服务端文件路径。预设音频不冒充画布资产，Run 快照记录 `voiceMode` / `presetVoiceId`，`inputAssetIds` 只记录用户自定义音色与情绪资产。
 
 ### 精确停顿协议（Issue #17）
 
@@ -64,6 +66,7 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 
 - [x] 调度器并发与同/跨 Provider 切换单元测试。
 - [x] TTS 画布图结构、输入约束、资产保存和运行记录测试。
+- [x] 预设音色列表、无画布参考资产提交、服务端白名单解析与 Run 快照测试。
 - [x] 后端完整测试与 TypeScript 构建。
 - [x] 前端生产构建。
 - [x] CosyVoice 3 使用真实参考音频生成 WAV。
@@ -84,3 +87,5 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 对话确认升级验收：真实 Desktop 运行时成功签发绑定当前进程集合的 5 分钟一次性令牌及公开快照指纹；使用伪造令牌调用执行接口返回 `TAKEOVER_CONFIRMATION_INVALID`，8188 所有者与全部 Desktop 进程保持不变。自动测试覆盖缺失、伪造、过期、重放、快照变化和有效令牌路径，共 16 suites / 101 tests；Action Registry 将执行动作声明为 `high-impact + human confirmation`，前后端生产构建通过。本轮未把“确认升级功能”解释成“立即关闭当前 Desktop”。
 
 Issue #17 精确停顿验收：CosyVoice 3 Run `2da5fa14-35b4-4f9e-86e9-e73def3d7f06` 输出 24 kHz 单声道 float32 WAV（11.380 秒），IndexTTS2 Run `d21d5a24-0d3b-4f2e-97ae-5eab26f140b4` 输出 22.05 kHz 单声道 PCM16 WAV（11.5532 秒）。两者均将 3 个 speech 段严格串行生成后插入 800ms 与 1500ms 静音；按最终采样率分别为 19200/36000 与 17640/33075 帧，目标与实际误差均为 0ms。每条 Run 只产生一个正式资产，Run 快照保留完整计划和拼接审计。
+
+2026-09-10 预设音色增量：新增双模式音色选择与 `tts.voices` Action，首个“清亮女声”复用 CosyVoice 安装随附的官方 zero-shot 示例及其逐字稿，可供两个现有 Provider 使用。新节点默认无参考音频操作，旧节点保持自定义克隆；17 suites / 121 tests 与前后端生产构建通过。

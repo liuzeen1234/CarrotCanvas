@@ -43,6 +43,18 @@ describe('TtsController', () => {
     await expect(controller.run({ provider: 'cosyvoice3', text: '测试', referenceAssetId: 'voice', canvasId: 'canvas', ...control })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('lists installed presets and runs without a canvas reference asset', async () => {
+    const client = { infer: jest.fn(async () => ({ buffer: pcmWav(), mime: 'audio/wav' })) } as any;
+    const runs = { begin: jest.fn(async () => ({ replay: false, run: { id: 'preset-run' } })), patch: jest.fn(async (_id, patch) => ({ id: 'preset-run', ...patch })), finish: jest.fn(async (_id, status, ids) => ({ id: 'preset-run', status, outputAssetIds: ids })) } as any;
+    const assets = { read: jest.fn(), saveGenerated: jest.fn(async () => ({ id: 'preset-output' })) } as any;
+    const controller = new TtsController(client, { acquire: jest.fn(async () => ({ release: jest.fn() })) } as any, runs, assets, { assertWriteAccess: jest.fn() } as any, {} as any);
+    expect(controller.voices().voices).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'cosyvoice-demo-female' })]));
+    await controller.run({ provider: 'cosyvoice3', voiceMode: 'preset', presetVoiceId: 'cosyvoice-demo-female', text: '直接生成', canvasId: 'canvas', ...control });
+    expect(assets.read).not.toHaveBeenCalled();
+    expect(client.infer).toHaveBeenCalledWith('cosyvoice3', expect.objectContaining({ referenceText: '希望你以后能够做的比我还好呦。' }));
+    expect(runs.begin).toHaveBeenCalledWith(expect.objectContaining({ inputAssetIds: [], inputSnapshot: expect.objectContaining({ voiceMode: 'preset', presetVoiceId: 'cosyvoice-demo-female' }) }));
+  });
+
   it('cancels at a speech boundary, releases the outer lease, and exposes no partial asset', async () => {
     let cancel!: (runId: string) => Promise<unknown>; let calls = 0;
     const released = jest.fn(async () => undefined);

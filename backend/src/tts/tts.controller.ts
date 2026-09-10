@@ -6,6 +6,7 @@ import { LocalComputeSchedulerService } from '../gpu-scheduler/gpu-scheduler.ser
 import { RunsService } from '../runs/runs.service';
 import { TtsClientService, TtsProvider } from './tts-client.service';
 import { TtsProcessManagerService } from './tts-process-manager.service';
+import { getVoicePreset, listAvailableVoicePresets, publicVoicePreset } from './tts-voice-presets';
 import { concatenatePcmWav, parsePausePlan, PAUSE_SYNTAX_VERSION, PausePlanSegment } from './pause-plan';
 
 interface TtsRunBody {
@@ -13,7 +14,9 @@ interface TtsRunBody {
   text: string;
   canvasId: string;
   nodeId?: string;
-  referenceAssetId: string;
+  voiceMode?: 'preset' | 'custom';
+  presetVoiceId?: string;
+  referenceAssetId?: string;
   referenceText?: string;
   emotionReferenceAssetId?: string;
   instruction?: string;
@@ -57,21 +60,33 @@ export class TtsController implements OnModuleInit {
     return { providers: items };
   }
 
+  @Get('voices')
+  voices() {
+    return { voices: listAvailableVoicePresets().map(publicVoicePreset) };
+  }
+
   @Post('runs')
   async run(@Body() body: TtsRunBody) {
     if (!['cosyvoice3', 'indextts2'].includes(body.provider)) throw new BadRequestException('不支持的 TTS Provider');
     const plan = parsePausePlan(body.text);
-    if (!body.canvasId || !body.referenceAssetId) throw new BadRequestException('缺少画布或参考音频');
-    if (body.provider === 'cosyvoice3' && !body.referenceText?.trim()) throw new BadRequestException('CosyVoice 3 需要参考音频对应文本');
+    if (!body.canvasId) throw new BadRequestException('缺少画布');
+    const voiceMode = body.voiceMode ?? (body.presetVoiceId ? 'preset' : 'custom');
+    if (!['preset', 'custom'].includes(voiceMode)) throw new BadRequestException('不支持的音色来源');
+    const preset = voiceMode === 'preset' ? getVoicePreset(body.presetVoiceId ?? '', body.provider) : null;
+    if (voiceMode === 'preset' && !preset) throw new BadRequestException('预设音色不存在、未安装或不支持当前 Provider');
+    if (voiceMode === 'custom' && !body.referenceAssetId) throw new BadRequestException('自定义音色需要参考音频');
+    const effectiveReferenceText = preset?.referenceText ?? body.referenceText?.trim() ?? '';
+    if (body.provider === 'cosyvoice3' && !effectiveReferenceText) throw new BadRequestException('CosyVoice 3 需要参考音频对应文本');
     await this.canvas.assertWriteAccess(body.canvasId, body);
-    const reference = await this.assets.read(body.referenceAssetId);
-    if (reference.asset.canvasId !== body.canvasId || reference.asset.kind !== 'audio') throw new BadRequestException('参考音频必须属于当前画布');
+    const reference = preset ? null : await this.assets.read(body.referenceAssetId!);
+    if (reference && (reference.asset.canvasId !== body.canvasId || reference.asset.kind !== 'audio')) throw new BadRequestException('参考音频必须属于当前画布');
     const emotion = body.emotionReferenceAssetId ? await this.assets.read(body.emotionReferenceAssetId) : null;
     if (emotion && (emotion.asset.canvasId !== body.canvasId || emotion.asset.kind !== 'audio')) throw new BadRequestException('情绪参考音频必须属于当前画布');
-    const inputAssetIds = [body.referenceAssetId, ...(body.emotionReferenceAssetId ? [body.emotionReferenceAssetId] : [])];
+    const inputAssetIds = [...(body.referenceAssetId && voiceMode === 'custom' ? [body.referenceAssetId] : []), ...(body.emotionReferenceAssetId ? [body.emotionReferenceAssetId] : [])];
     const snapshot = { provider: body.provider, text: body.text, pauseSyntaxVersion: PAUSE_SYNTAX_VERSION, segments: plan,
-      execution: initialExecution(plan), referenceAssetId: body.referenceAssetId,
-      referenceText: body.referenceText?.trim() ?? null,
+      execution: initialExecution(plan), voiceMode, presetVoiceId: preset?.id ?? null,
+      referenceAssetId: voiceMode === 'custom' ? body.referenceAssetId ?? null : null,
+      referenceText: effectiveReferenceText || null,
       emotionReferenceAssetId: body.emotionReferenceAssetId ?? null, instruction: body.instruction ?? null,
       speed: body.speed ?? 1, targetDurationMs: body.targetDurationMs ?? null };
     const begun = await this.runs.begin({ provider: body.provider, canvasId: body.canvasId, nodeId: body.nodeId ?? null,
@@ -90,7 +105,8 @@ export class TtsController implements OnModuleInit {
     let failure: unknown;
     try {
       await this.runs.patch(begun.run.id, { status: 'running', startedAt: Date.now() });
-      const common = { ...snapshot, referenceAudioBase64: (await fs.readFile(reference.absPath)).toString('base64'), emotionReferenceAudioBase64: emotion ? (await fs.readFile(emotion.absPath)).toString('base64') : null };
+      const referencePath = preset?.absPath ?? reference!.absPath;
+      const common = { ...snapshot, referenceAudioBase64: (await fs.readFile(referencePath)).toString('base64'), emotionReferenceAudioBase64: emotion ? (await fs.readFile(emotion.absPath)).toString('base64') : null };
       const wavParts: Array<{ type: 'speech'; wav: Buffer } | { type: 'silence'; durationMs: number }> = [];
       const execution = initialExecution(plan); let speechPosition = 0;
       for (let position = 0; position < plan.length; position += 1) {

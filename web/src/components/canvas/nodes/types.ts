@@ -75,6 +75,8 @@ export interface CodexCapabilityNodeData {
 
 export interface TtsNodeData {
   provider: 'cosyvoice3' | 'indextts2';
+  voiceMode?: 'preset' | 'custom';
+  presetVoiceId?: string;
   text: string;
   referenceText: string;
   instruction: string;
@@ -124,7 +126,7 @@ export function createTxt2ImgNode(
 export function createTtsNode(position: { x: number; y: number }): Node<TtsNodeData, typeof NODE_TYPE_TTS> {
   return {
     id: newNodeId(NODE_TYPE_TTS), type: NODE_TYPE_TTS, position,
-    data: { provider: 'cosyvoice3', text: '', referenceText: '', instruction: '', speed: 1 },
+    data: { provider: 'cosyvoice3', voiceMode: 'preset', presetVoiceId: 'cosyvoice-demo-female', text: '', referenceText: '', instruction: '', speed: 1 },
     style: { width: NODE_W },
   };
 }
