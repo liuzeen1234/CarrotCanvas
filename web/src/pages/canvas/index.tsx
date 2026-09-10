@@ -18,6 +18,7 @@ import {
   ArrowRightOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons';
+import { createClientUuid } from '@/utils/uuid';
 import { history, request } from 'umi';
 
 const { Title, Text } = Typography;
@@ -34,10 +35,10 @@ interface CanvasListItem {
 }
 
 async function withCanvasControl<T>(item: CanvasListItem, operation: (proof: Record<string, unknown>) => Promise<T>): Promise<T> {
-  const holderId = `human-list-${crypto.randomUUID()}`;
+  const holderId = `human-list-${createClientUuid()}`;
   const lease = await request<{ leaseToken: string; epoch: number }>(`/api/canvas/${item.id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId } });
   try {
-    return await operation({ leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: item.revision, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: holderId });
+    return await operation({ leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: item.revision, idempotencyKey: createClientUuid(), actorType: 'human', actorId: holderId });
   } finally {
     try { await request(`/api/canvas/${item.id}/control/release`, { method: 'POST', data: { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch } }); } catch { /* TTL 会兜底释放 */ }
   }

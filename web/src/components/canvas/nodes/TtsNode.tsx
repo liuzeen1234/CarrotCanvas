@@ -8,6 +8,7 @@ import { ImeSafeInput, ImeSafeTextArea } from '../ImeSafeInput';
 import NodeOutputHistory from '../NodeOutputHistory';
 import { resultSourceHandle, resultTargetHandle, type TtsNodeData } from './types';
 import { confirmComfyTakeover } from '../../comfyui/comfyTakeover';
+import { createClientUuid } from '@/utils/uuid';
 
 export default function TtsNode(props: NodeProps) {
   const data = props.data as TtsNodeData;
@@ -35,7 +36,7 @@ export default function TtsNode(props: NodeProps) {
     if (!canvasId || !control || (voiceMode === 'custom' && !voice)) return;
     setBusy(true); setError('');
     try {
-      const idempotencyKey = crypto.randomUUID();
+      const idempotencyKey = createClientUuid();
       let result: any = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try { result = await request<any>('/api/tts/runs', { method: 'POST', data: {

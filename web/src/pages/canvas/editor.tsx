@@ -32,6 +32,7 @@ import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/can
 import { RunDuration } from '@/components/canvas/RunTiming';
 import { ComfyUIAPI, extractSeedValues, type RunStateData } from '@/components/comfyui/types';
 import SystemResourceMonitor from '@/components/canvas/SystemResourceMonitor';
+import { createClientUuid } from '@/utils/uuid';
 import './editor.css';
 
 const { Text } = Typography;
@@ -65,7 +66,7 @@ const sourceHandleKind = (handle: string) => handle === 'text-positive-source' |
 function humanHolderId() {
   const key = 'carrot-canvas:human-holder-id';
   let value = window.sessionStorage.getItem(key);
-  if (!value) { value = `human-${crypto.randomUUID()}`; window.sessionStorage.setItem(key, value); }
+  if (!value) { value = `human-${createClientUuid()}`; window.sessionStorage.setItem(key, value); }
   return value;
 }
 
@@ -146,10 +147,12 @@ function CanvasEditorInner() {
   const [controlMessage, setControlMessage] = useState('正在读取控制权…');
   const [observedHolder, setObservedHolder] = useState<CanvasControlHolder | null>(null);
   const [handoffRequested, setHandoffRequested] = useState(false);
+  /** acquire 成功后必须先同步最新 canonical state / Run handoff，完成前不开放写入。 */
+  const [controlReady, setControlReady] = useState(false);
   const revisionRef = useRef(0);
   const leaseRef = useRef<CanvasLease | null>(null);
   leaseRef.current = lease;
-  const canWrite = lease?.status === 'active';
+  const canWrite = lease?.status === 'active' && controlReady;
 
   // 受控节点图：C5 编辑器内可添加/删除/连线；自动保存由 C7 落地
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -262,6 +265,7 @@ function CanvasEditorInner() {
     setEdges([]);
     setViewport(null);
     setSaveStatus('idle');
+    setControlReady(false);
     setLoading(true);
     setLoadError(null);
     Promise.all([
@@ -273,17 +277,25 @@ function CanvasEditorInner() {
         let status = initialStatus;
         let acquired: CanvasLease | null = null;
         const available = ['available', 'expired', 'revoked'].includes(status?.status);
+        let acquiredStateSynced = false;
+        let retryInitialAcquire = false;
         if (available) {
           try {
             acquired = await request<CanvasLease>(`/api/canvas/${id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId: humanHolderId() } });
             // status 与首次 graph 读取之间可能发生过写入；取得 lease 后重新读取 canonical state。
-            data = await request<CanvasDoc>(`/api/canvas/${id}`);
+            try {
+              data = await request<CanvasDoc>(`/api/canvas/${id}`);
+              acquiredStateSynced = true;
+            } catch {
+              // acquire 已成功，不能丢失 token；保留租约并由后续同步循环重试。
+            }
           } catch {
             // 竞争失败表示控制权刚被其他写入者取得，刷新状态并安全退回只读。
             [data, status] = await Promise.all([
               request<CanvasDoc>(`/api/canvas/${id}`),
               request<any>(`/api/canvas/${id}/control/status`),
             ]);
+            retryInitialAcquire = ['available', 'expired', 'revoked'].includes(status?.status);
           }
         }
         if (cancelled) {
@@ -294,8 +306,9 @@ function CanvasEditorInner() {
           ? { holderType: status.lease.holderType, holderId: status.lease.holderId, status: status.status }
           : null;
         leaseRef.current = acquired;
-        setDoc(data); revisionRef.current = data.revision ?? 0; setLease(acquired); setObservedHolder(activeHolder); setHandoffRequested(false);
-        setControlMessage(acquired ? '' : activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
+        setDoc(data); revisionRef.current = data.revision ?? 0; setLease(acquired); setObservedHolder(activeHolder); setHandoffRequested(retryInitialAcquire);
+        setControlReady(Boolean(acquired && acquiredStateSynced));
+        setControlMessage(acquired ? (acquiredStateSynced ? '' : '已取得编辑权，正在同步最新画布…') : retryInitialAcquire ? '自动取得编辑权失败，正在重试…' : activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
         setSaveStatus('saved'); setLastSavedAt(new Date(data.updatedAt)); setSaveError('');
       })
       .catch((e: any) => {
@@ -354,7 +367,7 @@ function CanvasEditorInner() {
     renamingRef.current = true;
     setRenaming(true);
     try {
-      const saved = await request<CanvasDoc>(`/api/canvas/${id}`, { method: 'PATCH', data: { name, leaseToken: currentLease.leaseToken, leaseEpoch: currentLease.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: currentLease.holderId } });
+      const saved = await request<CanvasDoc>(`/api/canvas/${id}`, { method: 'PATCH', data: { name, leaseToken: currentLease.leaseToken, leaseEpoch: currentLease.epoch, expectedRevision: revisionRef.current, idempotencyKey: createClientUuid(), actorType: 'human', actorId: currentLease.holderId } });
       revisionRef.current = saved.revision;
       setCanvasName(name);
       setEditingName(false);
@@ -380,7 +393,7 @@ function CanvasEditorInner() {
     try {
       const operations = graphOperations(lastSavedGraphRef.current, pending.graph);
       if (!operations.length) { lastSavedSnapshotRef.current = pending.snapshot; setSaveStatus('saved'); succeeded = true; return; }
-      const result = await request<{ canvas: CanvasDoc; resultRevision: number }>(`/api/canvas/${id}/operations`, { method: 'POST', data: { operations, intent: '人工编辑画布', leaseToken: currentLease.leaseToken, leaseEpoch: currentLease.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: currentLease.holderId } });
+      const result = await request<{ canvas: CanvasDoc; resultRevision: number }>(`/api/canvas/${id}/operations`, { method: 'POST', data: { operations, intent: '人工编辑画布', leaseToken: currentLease.leaseToken, leaseEpoch: currentLease.epoch, expectedRevision: revisionRef.current, idempotencyKey: createClientUuid(), actorType: 'human', actorId: currentLease.holderId } });
       const saved = result.canvas;
       revisionRef.current = result.resultRevision;
       lastSavedGraphRef.current = pending.graph;
@@ -455,7 +468,7 @@ function CanvasEditorInner() {
     const current = leaseRef.current; if (!id || !current) return;
     try {
       await drainSaves();
-      const result = await request<{ canvas: CanvasDoc }>(`/api/canvas/${id}/operation-log/${logId}/undo`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: current.holderId } });
+      const result = await request<{ canvas: CanvasDoc }>(`/api/canvas/${id}/operation-log/${logId}/undo`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, idempotencyKey: createClientUuid(), actorType: 'human', actorId: current.holderId } });
       adoptCanvas(result.canvas); message.success('操作批次已撤销'); await loadHistory();
     } catch (error: any) { message.error(error?.response?.data?.message || error?.message || '撤销失败'); }
   }, [adoptCanvas, drainSaves, id, loadHistory]);
@@ -464,7 +477,7 @@ function CanvasEditorInner() {
     const current = leaseRef.current; if (!id || !current) return;
     try {
       await drainSaves();
-      const result = await request<{ canvas: CanvasDoc }>(`/api/canvas/${id}/checkpoints/${checkpointId}/restore`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, idempotencyKey: crypto.randomUUID(), actorType: 'human', actorId: current.holderId } });
+      const result = await request<{ canvas: CanvasDoc }>(`/api/canvas/${id}/checkpoints/${checkpointId}/restore`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, idempotencyKey: createClientUuid(), actorType: 'human', actorId: current.holderId } });
       adoptCanvas(result.canvas); message.success('画布已恢复到所选恢复点'); await loadHistory();
     } catch (error: any) { message.error(error?.response?.data?.message || error?.message || '恢复失败'); }
   }, [adoptCanvas, drainSaves, id, loadHistory]);
@@ -509,10 +522,11 @@ function CanvasEditorInner() {
           }
           leaseRef.current = null;
           setLease(null);
+          setControlReady(false);
           setObservedHolder(null);
           setControlMessage('编辑权已交接，当前为只读');
         }
-      } catch (e: any) { leaseRef.current = null; setLease(null); setControlMessage(e?.response?.data?.message || '编辑权已失效，当前为只读'); }
+      } catch (e: any) { leaseRef.current = null; setLease(null); setControlReady(false); setControlMessage(e?.response?.data?.message || '编辑权已失效，当前为只读'); }
     }, 15000);
     return () => window.clearInterval(timer);
   }, [drainSaves, id, lease?.epoch]);
@@ -545,22 +559,49 @@ function CanvasEditorInner() {
         if (!handoffRequested) setControlMessage(activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
         if (!handoffRequested || !available) return;
         const acquired = await request<CanvasLease>(`/api/canvas/${id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId: humanHolderId() } });
-        const latest = await request<CanvasDoc>(`/api/canvas/${id}`);
-        const runHistory = await request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=1`);
-        const handedRun = runHistory.items?.find((run) => run.latestHandoff?.outcome === 'released');
-        if (handedRun) await request(`/api/runs/${handedRun.id}/adopt`, { method: 'POST', data: {
-          leaseToken: acquired.leaseToken, leaseEpoch: acquired.epoch, expectedRevision: latest.revision,
-          actorType: 'human', actorId: humanHolderId(),
-        } });
+        // acquire 一旦成功先保存 token，避免后续移动网络请求失败后服务端已持有、前端却永久停在“申请中”。
         leaseRef.current = acquired;
-        revisionRef.current = latest.revision; setDoc(latest); setLease(acquired); setObservedHolder(null); setHandoffRequested(false); setControlMessage('');
-        setSaveStatus('saved'); setLastSavedAt(new Date(latest.updatedAt)); setSaveError('');
-      } catch { /* 竞争失败或尚未释放，继续等待 */ }
+        setLease(acquired); setControlReady(false); setObservedHolder(null); setHandoffRequested(false);
+        setControlMessage('已取得编辑权，正在同步最新画布…');
+      } catch (error: any) {
+        if (handoffRequested) setControlMessage(error?.response?.data?.message ? `取得编辑权失败：${error.response.data.message}；正在重试…` : '取得编辑权失败，正在重试…');
+      }
     };
     void checkControl();
     const timer = window.setInterval(() => void checkControl(), 2000);
     return () => window.clearInterval(timer);
   }, [handoffRequested, id, lease]);
+
+  useEffect(() => {
+    if (!id || !lease || controlReady) return;
+    let cancelled = false;
+    let inFlight = false;
+    const synchronizeAcquiredControl = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const current = leaseRef.current;
+        if (!current) return;
+        const latest = await request<CanvasDoc>(`/api/canvas/${id}`);
+        const runHistory = await request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=1`);
+        const handedRun = runHistory.items?.find((run) => run.latestHandoff?.outcome === 'released');
+        if (handedRun) await request(`/api/runs/${handedRun.id}/adopt`, { method: 'POST', data: {
+          leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: latest.revision,
+          actorType: 'human', actorId: current.holderId,
+        } });
+        if (cancelled || leaseRef.current?.epoch !== current.epoch) return;
+        revisionRef.current = latest.revision; setDoc(latest); setObservedHolder(null); setControlReady(true); setControlMessage('');
+        setSaveStatus('saved'); setLastSavedAt(new Date(latest.updatedAt)); setSaveError('');
+      } catch (error: any) {
+        if (!cancelled) setControlMessage(error?.response?.data?.message ? `已取得编辑权，同步失败：${error.response.data.message}；正在重试…` : '已取得编辑权，同步最新画布失败，正在重试…');
+      } finally {
+        inFlight = false;
+      }
+    };
+    void synchronizeAcquiredControl();
+    const timer = window.setInterval(() => void synchronizeAcquiredControl(), 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [controlReady, id, lease?.epoch]);
 
   /**
    * 只读观察者自动跟随 canonical graph；所有控制者持续读取共享 ComfyUI 运行态。
@@ -1285,7 +1326,7 @@ function CanvasEditorInner() {
 
             {canWrite ? <CanvasContextMenu state={menu} onClose={() => setMenu(null)} onPick={handlePickWorkflow} onPickCapability={handlePickCapability} onPickTts={handlePickTts} onPickInput={(kind) => {
               const position = menu ? screenToFlowPosition({x:menu.screenX,y:menu.screenY}) : {x:0,y:0};
-              setNodes(nds => [...nds, {id: crypto.randomUUID(), type: NODE_TYPE_RESULT, position, data:{kind,inputMode:true,lastText:'',lastAssets:[],note:''},style:{width:300}}]);
+              setNodes(nds => [...nds, {id: createClientUuid(), type: NODE_TYPE_RESULT, position, data:{kind,inputMode:true,lastText:'',lastAssets:[],note:''},style:{width:300}}]);
             }} /> : null}
 
             {/* 空白画布提示 */}

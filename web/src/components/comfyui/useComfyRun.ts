@@ -18,6 +18,7 @@ import {
   randomSeedValue,
 } from './types';
 import { confirmComfyTakeover } from './comfyTakeover';
+import { createClientUuid } from '@/utils/uuid';
 
 /** schema 按 workflowId 缓存，避免重复请求 /object_info 分析；编辑/导入变更后调用 clearSchemaCache 失效 */
 const schemaCache = new Map<string, SchemaAnalysis>();
@@ -267,7 +268,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
     clearPoll();
     setRunState(null);
     setSubmitting(true);
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = createClientUuid();
     try {
       let data: { run: RunStateData } | null = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {

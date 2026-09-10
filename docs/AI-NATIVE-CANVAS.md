@@ -533,6 +533,8 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-10：修复 Issue #15 移动端通过局域网 HTTP 访问时申请编辑权限永久停留在“申请中”。根因为非安全上下文没有 `crypto.randomUUID()`，human holder ID 在请求发出前即抛错且轮询吞掉异常；现统一提供基于 `crypto.getRandomValues()` 的 LAN HTTP 兼容 UUID（极旧浏览器有最终回退），覆盖控制权、保存、节点创建及各类 Run 幂等键。首次自动 acquire 失败会持续重试，轮询错误会显示具体状态；acquire 成功后立即保存 lease token 并维持续租，最新 canonical graph、生成历史或 Run adopt 短暂失败时保持写入禁用并每 2 秒重试，同步完成后才开放编辑。前端生产构建和 dev server 热更新通过，源码已无直接 `crypto.randomUUID()` 调用；3100 健康检查与 8000 页面访问正常，待用户在实际移动端刷新复验。
+
 - 2026-09-10：画布 TTS 新增正式 `qwen3tts` Provider，0.6B CustomVoice 提供 9 个官方预设 speaker，1.7B VoiceDesign 支持只输入台词及音色/语调/表演描述直接生成，无需参考音频。Qwen worker 纳入既有持久化 FIFO 本机重型计算租约、GenerationRun、资产与候选合同，模型变体在同一 worker 内互斥换载。专用验收画布完成两条真实生成并回填结果，调度状态与进程观测正常。
 
 - 2026-09-10：AI 配音节点新增“预设音色 / 自定义音色”双模式。新节点默认预设音色，可只输入台词、风格/情绪要求与语速直接生成；旧节点未存模式字段时继续使用自定义参考音频。预设由后端白名单解析，Run 保留模式与预设 ID 审计，不暴露文件路径；17 suites / 121 tests 与前后端构建通过。

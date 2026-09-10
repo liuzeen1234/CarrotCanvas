@@ -10,6 +10,7 @@ import { ImeSafeTextArea } from '../ImeSafeInput';
 import NodeOutputHistory from '../NodeOutputHistory';
 import { RunElapsed } from '../RunTiming';
 import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview';
+import { createClientUuid } from '@/utils/uuid';
 
 const LABELS = { text: '文生文', image: '文生图', edit: '图生图', analyze: '图像理解' } as const;
 
@@ -58,7 +59,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
           model: data.model || 'codex',
           messages: [{ role: 'user', content: effectivePrompt }],
           ...(textTransformMode ? { carrotInputText: upstreamPrompt.text, carrotInstruction: data.prompt } : {}),
-          carrotOutputMode: promptPairMode ? data.outputMode : 'text', canvasId, nodeId: props.id, idempotencyKey: crypto.randomUUID(), ...control,
+          carrotOutputMode: promptPairMode ? data.outputMode : 'text', canvasId, nodeId: props.id, idempotencyKey: createClientUuid(), ...control,
         };
         let text = '';
         let parts: { positive: string; negative: string } | undefined;
@@ -66,10 +67,10 @@ export default function CodexCapabilityNode(props: NodeProps) {
         else { const result = await postJson<any>('/api/codex2api/chat/completions', { ...body, stream: false }, controller.signal); text = result?.choices?.[0]?.message?.content || ''; parts = result?.outputParts || undefined; setLiveText(text); }
         update({ lastText: text, lastTextParts: parts });
       } else if (data.capability === 'image') {
-        const result = await postJson<CodexImageResponse>('/api/codex2api/images/generations', { prompt: effectivePrompt, model: data.model || 'codex', n: 1, size: data.size, response_format: data.responseFormat, canvasId, nodeId: props.id, idempotencyKey: crypto.randomUUID(), ...control }, controller.signal);
+        const result = await postJson<CodexImageResponse>('/api/codex2api/images/generations', { prompt: effectivePrompt, model: data.model || 'codex', n: 1, size: data.size, response_format: data.responseFormat, canvasId, nodeId: props.id, idempotencyKey: createClientUuid(), ...control }, controller.signal);
         update({ lastAssets: result.data.map((item) => ({ assetId: item.assetId || '', url: imageSource(item), kind: 'image' })) });
       } else {
-        const form = new FormData(); form.append('image', await imageFile()); form.append('prompt', effectivePrompt); form.append('model', data.model || 'codex'); form.append('idempotencyKey', crypto.randomUUID()); if (promptPairMode) form.append('carrotOutputMode', data.outputMode!); if (canvasId) form.append('canvasId', canvasId); form.append('nodeId', props.id); if (control) { form.append('leaseToken', control.leaseToken); form.append('leaseEpoch', String(control.leaseEpoch)); form.append('expectedRevision', String(control.expectedRevision)); }
+        const form = new FormData(); form.append('image', await imageFile()); form.append('prompt', effectivePrompt); form.append('model', data.model || 'codex'); form.append('idempotencyKey', createClientUuid()); if (promptPairMode) form.append('carrotOutputMode', data.outputMode!); if (canvasId) form.append('canvasId', canvasId); form.append('nodeId', props.id); if (control) { form.append('leaseToken', control.leaseToken); form.append('leaseEpoch', String(control.leaseEpoch)); form.append('expectedRevision', String(control.expectedRevision)); }
         if (data.capability === 'edit') { form.append('n', '1'); form.append('size', data.size || '1024x1024'); form.append('response_format', data.responseFormat || 'url'); const result = await postForm<CodexImageResponse>('/api/codex2api/images/edits', form, controller.signal); update({ lastAssets: result.data.map((item) => ({ assetId: item.assetId || '', url: imageSource(item), kind: 'image' })) }); }
         else { const result = await postForm<any>('/api/codex2api/images/analyze', form, controller.signal); update({ lastText: result.text || result.data?.[0]?.text || result.choices?.[0]?.message?.content || '', lastTextParts: result.outputParts || undefined }); }
       }
