@@ -47,10 +47,13 @@ export default async function (s) {
 
 优先语义操作，避免整图 replace_graph。节点位置是共享内容；viewport、选中态仅属于个人展示。
 
+- 所有现有画布节点的 `data` 均可带 `cardName?: string` 与 `note?: string`。`cardName` 是人工可读的卡片标题，`note` 是用途、内容或上下文备注；两者随 canonical graph 持久化，但不替代稳定 `node.id`，也不应覆盖 `workflowName`、提示词或其他运行字段。创建节点时可直接填写；更新既有节点用 `update_node.dataPatch` 浅合并并保留其他 data。
+
 - ComfyUI 节点统一 `type: 'txt2img'`，即使工作流生成视频也不改类型；data 含 `workflowId, workflowName, formValues`。formValues 键为 `${nodeId}::${param}`；nodeId 是 ComfyUI 图内 ID，可能带冒号。显示分类等字段参照选定工作流或已有有效节点。
 - Codex2API 节点 `type: 'codex-capability'`；data 含 `capability: text|image|edit|analyze, prompt, model`，可有 `outputMode` 和 `lastAssets/lastText/lastTextParts`。模型从 `/codex2api/models` 发现。
 - AI 配音卡 `type: 'tts'`；data 为 `{provider:'cosyvoice3'|'indextts2'|'qwen3tts', voiceMode:'preset'|'custom'|'design', presetVoiceId?, language?, text, referenceText, instruction, speed, lastAssets?}`。`custom` 的 `audio-target` 是音色参考，`emotion-audio-target` 是 IndexTTS2 可选情绪参考，`text-target` 是可选上游配音文本，输出为 `audio-source`。Qwen3-TTS 支持无需参考音频的 `preset` 与 `design`；预设列表实时读取 `/tts/voices`，文字设计音色必须填写 `instruction`。不得把本地音频路径直接写进节点，自定义参考需先用 `s.uploadMedia` 得到当前画布 audio asset。
 - 输入/结果卡 `type: 'result'`；data 含 `kind: text|image|video|audio`，输入模式 `inputMode:true`，文字放 `lastText`，媒体放 `lastAssets:[{assetId,url,kind,filename?}]`；媒体引用用平台资产而非其他项目本地路径。
+- 每个正式媒体产物以 `assetId` 唯一标识。节点 `lastAssets`、Run 的 `outputAssetIds`、候选组选择和下载命令必须使用同一个完整 `assetId`；不要用文件名、数组序号或卡片名称代替。向用户交付或请求选择时明确列出 `assetId`，界面会在当前产物、结果、输入资产、节点历史和生成流水附近展示并允许复制。
 - 常规 source 为 `text-source`、`image-source`、`video-source`、`audio-source`；正负提示词为 `text-positive-source` / `text-negative-source`。Codex 输入为 `text-target`，edit/analyze 可接 `image-target`。
 - 工作流 target 从实时 `inputConfig.fields` 构造：image 为 `input:${nodeId}:${param}`，其余为 `input:${kind}:${nodeId}:${param}`。不要按固定冒号段数拆 ID。媒体类型必须匹配，单个输入最多一条边，不允许有向环路。
 

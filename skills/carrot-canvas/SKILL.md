@@ -5,7 +5,7 @@ description: 从任意项目通过 CarrotCanvas API 创建和编辑画布、编�
 
 # CarrotCanvas 跨项目控制
 
-用机器接口操作同一份持久化画布。默认服务 `http://localhost:3100/api`，可用环境变量 `CARROT_CANVAS_URL` 覆盖为包含 `/api` 的地址。服务须从当前任务环境可达；云端的 localhost 不指向用户电脑。Skill 本身不会启动服务或扩大网络/文件权限。
+用机器接口操作同一份持久化画布。默认服务 `http://localhost:3100/api`，可用环境变量 `CARROT_CANVAS_URL` 覆盖为包含 `/api` 的地址。服务须从当前任务环境可达；云端的 localhost 不指向用户电脑。仅在当前环境是用户本机、CarrotCanvas 仓库可用且权限允许时，才可按下述流程启动本地服务；这不扩大网络、文件或进程权限。
 
 本目录的 `scripts/canvas.mjs` 是无第三方依赖的 Node 22+ 客户端。以此 SKILL.md 的实际目录定位脚本，调用时用绝对路径；当前工作目录可以是用户的任何项目，不需要切到画布仓库。无 Node 时先使用环境提供的运行时。
 
@@ -16,6 +16,22 @@ description: 从任意项目通过 CarrotCanvas API 创建和编辑画布、编�
 3. `get /canvas/<id>/agent-view` 读取最新图、revision、控制状态。复用工作流前读 `/workflows`、`/workflows/<id>` 和对应实时 schema；不要凭记忆猜工作流 ID、模型名、参数或动态端口。
 
 部分 Action Registry 的 body/output schema 仍较宽泛，不能据此宣称任意参数有效。节点及运行的已验证协议见 [references/operations.md](references/operations.md)。遇到未覆盖字段先查实际接口或已有有效数据；本机仓库默认位于 `D:/dev/CarrotCanvas`，必要时只读 Controller/类型定义，不要求每次加载仓库历史。
+
+## 本地服务检测与启动
+
+先运行 `node <绝对脚本路径> get /health` 检测后端；需要打开画布界面时，再请求 `http://localhost:8000` 检测前端。以 HTTP 响应为准，不只看进程或端口：后端应返回成功状态以及 `status: ok`，前端应返回 2xx。
+
+检测失败时先判断运行环境。只有当前任务运行在用户本机、`D:/dev/CarrotCanvas`（或已明确定位的仓库）存在，并且启动本地进程属于当前请求所需操作时，才在仓库根目录执行：
+
+```text
+pnpm --filter @carrot-canvas/backend build
+pnpm --filter @carrot-canvas/backend start
+pnpm --filter @carrot-canvas/web dev
+```
+
+后端和前端应作为独立后台进程启动，输出分别重定向到仓库内 `backend/data/backend.stdout.log`、`backend/data/backend.stderr.log`、`web/dev.stdout.log`、`web/dev.stderr.log`。不要用 `tsx` 启动后端；它会缺失 NestJS 装饰器元数据。启动前检查 3100 和 8000 的现有监听，避免重复启动；如果端口已被占用但健康检查失败，先识别所属进程，不擅自终止非 CarrotCanvas 进程。
+
+启动后短暂等待并重新检查 `/health` 与前端 HTTP 状态。失败时读取上述日志的末尾并报告具体错误；不要仅因启动命令已返回就宣称服务可用。若处于云端/远程环境、仓库不存在、依赖未安装、权限不足，或 `CARROT_CANVAS_URL` 指向外部服务，则停止自动启动并说明需要用户在服务所在机器处理。
 
 ## 写入与交接
 
@@ -34,6 +50,8 @@ node <绝对脚本路径> operations <canvasId> <JSON文件绝对路径>
 ## 生成与交付
 
 按用户目标和已授权预算运行；普通素材请求不意味着修改全局服务、密钥、工作流或大批量生成。明确删除画布、覆盖恢复、替换已批准产物、批量清理和外部发布的授权；已有明确授权不用重复询问。Registry 的权限标记可能不完整，候选 approve 也不能冒充 human。
+
+创建或更新画布卡片时，按用户给出的语义填写可选 `data.cardName` 和 `data.note`，让人工能在卡片标题和正文中识别用途；不要把它们误当成节点 ID、工作流名或模型入参。引用、交付或请人工选择媒体产物时优先报告平台 `assetId`，必要时同时给 Run ID；具体字段合同见节点与操作约定。
 
 运行提交必须带 canvasId/nodeId、当前 proof 与稳定幂等键，通过平台记录 Run，不能绕过平台直调 provider 冒充画布生成。采用 [运行与媒体约定](references/operations.md#运行与媒体)；生成等待也保持生命周期，不能靠 TTL 正常释放。接手时检查已有 Run 的 Handoff，必要时 adopt 原 Run，禁止以重新提交代替接手。取消前读取 `capabilities.cancel`；TTS 支持 speech 片段边界取消，其他 provider 以实时能力为准。
 

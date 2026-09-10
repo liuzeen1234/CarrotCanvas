@@ -12,6 +12,7 @@ import { Txt2ImgNodeData, resultSourceHandle, workflowInputHandle, workflowOutpu
 import NodeOutputHistory from '../NodeOutputHistory';
 import { RunElapsed } from '../RunTiming';
 import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview';
+import { AssetIdLabel, NodeCardFields } from './NodeCardFields';
 
 const isEmpty = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 
@@ -168,7 +169,7 @@ export default function Txt2ImgNode(props: NodeProps) {
   return <div className={`canvas-node canvas-node--txt2img${props.selected ? ' selected' : ''}`}>
     <div className="canvas-node__header">
       <span className="canvas-node__type" style={{ background: workflow?.category === 'img2img' ? '#52c41a' : '#1677ff' }}>{workflow?.categoryLabel || '工作流'}</span>
-      <span className="canvas-node__bind" title={data.workflowName}>{data.workflowName || '未绑定工作流'}</span>
+      <span className="canvas-node__bind" title={data.cardName || data.workflowName}>{data.cardName || data.workflowName || '未绑定工作流'}</span>
       <RunElapsed status={visibleRunState?.status} queuedAt={visibleRunState?.queuedAt} startedAt={visibleRunState?.startedAt} />
       {run.running
         ? <Button size="small" type="text" danger disabled={readOnly} icon={<PauseCircleOutlined />} className="nodrag canvas-node__run-action" aria-label="中断运行" onClick={() => void run.interrupt()} />
@@ -180,6 +181,7 @@ export default function Txt2ImgNode(props: NodeProps) {
       </Popconfirm>
     </div>
     <div className="canvas-node__body canvas-node__form-body nodrag">
+      <NodeCardFields name={data.cardName} note={data.note} readOnly={readOnly} onChange={(patch) => updateNodeData(nodeId, patch)} />
       {!data.workflowId ? <Alert type="warning" showIcon message="未绑定工作流" />
         : workflowLoading || run.schemaLoading ? <div style={{ textAlign: 'center', padding: '16px 0' }}><Spin size="small" /><div style={{ color: '#999', marginTop: 6 }}>加载入参表单…</div></div>
         : loadError || run.schemaError ? <Alert type="warning" showIcon message={loadError || run.schemaError} description={data.lastAssets?.length ? '历史结果仍可在结果节点查看。' : undefined} />
@@ -190,7 +192,7 @@ export default function Txt2ImgNode(props: NodeProps) {
         <Tag color={visibleRunState.status === 'success' ? 'success' : visibleRunState.status === 'error' ? 'error' : visibleRunState.status === 'interrupted' ? 'warning' : 'processing'}>{statusLabel[visibleRunState.status] || visibleRunState.status}</Tag>
         {visibleRunState.error ? <div style={{ color: '#ff4d4f', marginTop: 4, wordBreak: 'break-word' }}>{visibleRunState.error}</div> : null}
       </div>}
-      {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset, assetIndex) => <div key={asset.assetId}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
+      {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset, assetIndex) => <div key={asset.assetId}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><AssetIdLabel assetId={asset.assetId} /><Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
       <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} onObserveAsset={(asset) => observeNodeData(nodeId, { lastAssets: [asset] })} onRestoreSeeds={(values) => run.setFormValues((previous) => ({ ...previous, ...values }))} />
     </div>
     <CanvasMediaPreview open={previewIndex !== null} items={(data.lastAssets ?? []).filter((asset): asset is CanvasMediaItem => asset.kind === 'image' || asset.kind === 'video')} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />

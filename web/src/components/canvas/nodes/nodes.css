@@ -187,3 +187,37 @@
 .canvas-reference-input__note {
   margin-top: 8px;
 }
+
+.canvas-node-card-fields {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.canvas-asset-id {
+  align-items: center;
+  background: #fafafa;
+  border: 1px solid rgba(5, 5, 5, 0.08);
+  border-radius: 5px;
+  display: flex;
+  gap: 5px;
+  margin: 5px 0;
+  min-width: 0;
+  padding: 3px 4px 3px 7px;
+}
+
+.canvas-asset-id__label {
+  color: rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.canvas-asset-id__value {
+  color: rgba(0, 0, 0, 0.72);
+  flex: 1;
+  font-size: 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

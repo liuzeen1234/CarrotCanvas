@@ -7,13 +7,14 @@ import { DeleteOutlined, DownloadOutlined, PlayCircleFilled } from '@ant-design/
 import { CanvasNodeDataContext } from '../context';
 import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview';
 import { ResultNodeData, resultSourceHandle, resultTargetHandle } from './types';
+import { AssetIdLabel, NodeCardFields } from './NodeCardFields';
 
 export default function ResultNode(props: NodeProps) {
   return props.data.inputMode ? <ReferenceInputNode {...props} /> : <ResultPreviewNode {...props} />;
 }
 
 function ResultPreviewNode(props: NodeProps) {
-  const { readOnly, deleteNode, getResultState } = useContext(CanvasNodeDataContext);
+  const { readOnly, updateNodeData, deleteNode, getResultState } = useContext(CanvasNodeDataContext);
   const { run, assets } = getResultState(props.id);
   const configuredKind = (props.data as ResultNodeData).kind;
   const kind = (configuredKind === 'video' || configuredKind === 'audio' ? configuredKind : 'image') as 'image' | 'video' | 'audio';
@@ -33,18 +34,21 @@ function ResultPreviewNode(props: NodeProps) {
     <Handle type="source" position={Position.Right} id={resultSourceHandle(kind)} className={`canvas-handle--${kind}`} title={`${kindLabel}输出`} />
     <div className="canvas-node__header">
       <span className="canvas-node__type" style={{ background: '#722ed1' }}>结果</span>
-      <span className="canvas-node__bind" style={{ color: '#999' }}>{running ? (run?.status === 'pending' ? '排队中' : run?.currentNodeTitle || '生成中') : mediaCount ? `${mediaCount} 个${kindLabel}` : `${kindLabel}预览`}</span>
+      <span className="canvas-node__bind" style={{ color: '#999' }} title={(props.data as ResultNodeData).cardName || undefined}>{(props.data as ResultNodeData).cardName || (running ? (run?.status === 'pending' ? '排队中' : run?.currentNodeTitle || '生成中') : mediaCount ? `${mediaCount} 个${kindLabel}` : `${kindLabel}预览`)}</span>
       <Popconfirm title="删除该节点？" description="仅移除结果节点和连线，生成资产仍保留在上游节点。" okText="删除" okButtonProps={{ danger: true }} cancelText="取消" onConfirm={() => deleteNode(props.id)}>
         <Button size="small" type="text" danger disabled={readOnly} icon={<DeleteOutlined />} className="nodrag canvas-node__delete-action" aria-label="删除节点" />
       </Popconfirm>
     </div>
     <div className="canvas-node__body canvas-node__result-body nodrag">
+      <div style={{ width: '100%' }}>
+      <NodeCardFields name={(props.data as ResultNodeData).cardName} note={(props.data as ResultNodeData).note} readOnly={readOnly} onChange={(patch) => updateNodeData(props.id, patch)} />
       {running ? <div style={{ width: '100%', textAlign: 'center' }}><Spin /><div style={{ margin: '8px 0', color: '#888' }}>{run?.status === 'pending' ? '等待 ComfyUI 执行…' : run?.currentNodeTitle || '正在生成…'}</div><Progress size="small" percent={percent} status="active" showInfo={percent !== undefined} /></div>
         : run?.status === 'error' ? <Alert style={{ width: '100%' }} type="error" showIcon message="生成失败" description={run.error || '请检查 ComfyUI 后重试'} />
         : run?.status === 'interrupted' ? <Alert style={{ width: '100%' }} type="warning" showIcon message="运行已中断" />
-        : kind === 'audio' && audios.length ? <Space direction="vertical" size={8} style={{ width: '100%' }}>{audios.map((asset) => <div key={asset.assetId} style={{ width: '100%' }}><audio controls preload="metadata" src={asset.url} style={{ width: '100%' }} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download={asset.filename || 'canvas-audio.wav'} onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space>
-        : previewItems.length ? <Space direction="vertical" size={8} style={{ width: '100%' }}>{previewItems.map((asset, assetIndex) => <div key={asset.assetId} className="canvas-result-image"><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download={asset.filename || (asset.kind === 'video' ? 'canvas-video.mp4' : 'canvas-image.png')} onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space>
+        : kind === 'audio' && audios.length ? <Space direction="vertical" size={8} style={{ width: '100%' }}>{audios.map((asset) => <div key={asset.assetId} style={{ width: '100%' }}><audio controls preload="metadata" src={asset.url} style={{ width: '100%' }} /><AssetIdLabel assetId={asset.assetId} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download={asset.filename || 'canvas-audio.wav'} onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space>
+        : previewItems.length ? <Space direction="vertical" size={8} style={{ width: '100%' }}>{previewItems.map((asset, assetIndex) => <div key={asset.assetId} className="canvas-result-image"><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><video src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={asset.url} alt={asset.filename || '生成图片'} />}</button><AssetIdLabel assetId={asset.assetId} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download={asset.filename || (asset.kind === 'video' ? 'canvas-video.mp4' : 'canvas-image.png')} onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space>
         : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="等待上游生成结果" />}
+      </div>
     </div>
     <CanvasMediaPreview open={previewIndex !== null} items={previewItems} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
   </div>;

@@ -30,6 +30,7 @@ import { canvasNodeTypes } from '@/components/canvas/nodes';
 import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { RunDuration } from '@/components/canvas/RunTiming';
+import { AssetIdLabel } from '@/components/canvas/nodes/NodeCardFields';
 import { ComfyUIAPI, extractSeedValues, type RunStateData } from '@/components/comfyui/types';
 import SystemResourceMonitor from '@/components/canvas/SystemResourceMonitor';
 import { createClientUuid } from '@/utils/uuid';
@@ -1398,7 +1399,7 @@ function CanvasEditorInner() {
                 {Object.entries(extractSeedValues(run.inputSnapshot)).length ? <div style={{ marginTop: 6 }}><Text type="secondary">seed：{Object.entries(extractSeedValues(run.inputSnapshot)).map(([key, value]) => `${key.split('::').pop()}=${value}`).join(' · ')}</Text><Button size="small" type="text" onClick={() => void navigator.clipboard.writeText(Object.values(extractSeedValues(run.inputSnapshot)).join(', ')).then(() => message.success('seed 已复制'))}>复制</Button></div> : null}
                 {run.error?.message ? <div style={{ color: '#ff4d4f', marginTop: 4 }}>{run.error.message}</div> : null}
                 {run.outputText ? <Typography.Paragraph style={{ marginTop: 10, whiteSpace: 'pre-wrap' }} ellipsis={{ rows: 4, expandable: true, symbol: '展开全文' }}>{run.outputText}</Typography.Paragraph> : null}
-                {run.outputAssetIds.length ? <Image.PreviewGroup><Space wrap style={{ marginTop: 10 }}>{run.outputAssetIds.map((assetId) => <div key={assetId} style={{ width: 112 }}><Image src={`/api/assets/${assetId}`} alt="生成产物" width={112} height={84} style={{ objectFit: 'cover', borderRadius: 6 }} preview={{ mask: '放大预览' }} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download onClick={(event) => event.stopPropagation()} style={{ marginTop: 4 }}>下载</Button></div>)}</Space></Image.PreviewGroup> : null}
+                {run.outputAssetIds.length ? <Image.PreviewGroup><Space wrap style={{ marginTop: 10 }}>{run.outputAssetIds.map((assetId) => <div key={assetId} style={{ width: 210 }}><Image src={`/api/assets/${assetId}`} alt="生成产物" width={112} height={84} style={{ objectFit: 'cover', borderRadius: 6 }} preview={{ mask: '放大预览' }} /><AssetIdLabel assetId={assetId} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space></Image.PreviewGroup> : null}
               </div>
             </List.Item>
           )} />

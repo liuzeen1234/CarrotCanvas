@@ -15,6 +15,13 @@ export const NODE_TYPE_CODEX = 'codex-capability';
 export const NODE_TYPE_TTS = 'tts';
 export type CodexCapability = 'text' | 'image' | 'edit' | 'analyze';
 
+export interface NodeCardMetadata {
+  /** 用户自定义的卡片名称；为空时继续显示节点原有名称。 */
+  cardName?: string;
+  /** 用户对卡片用途、内容或上下文的备注。 */
+  note?: string;
+}
+
 /** 句柄标识：image 数据流（一期唯一连线类型，§4.4），用于连线校验 */
 export const HANDLE_IMAGE_SOURCE = 'image-source';
 export const HANDLE_IMAGE_TARGET = 'image-target';
@@ -36,7 +43,7 @@ export const workflowInputHandle = (nodeId: string, param: string, kind: string 
  * 右键菜单落点即绑定工作流（workflowId/workflowName），提示词并入 formValues 中的多行字段。
  * lastAssets 由 C6 运行成功后写入（平台资产引用）。
  */
-export interface Txt2ImgNodeData {
+export interface Txt2ImgNodeData extends NodeCardMetadata {
   /** 绑定的工作流 id（category=txt2img），右键菜单落节点时即写入 */
   workflowId?: string;
   /** 绑定工作流名（供显示，不随工作流改名自动同步） */
@@ -51,7 +58,7 @@ export interface Txt2ImgNodeData {
 }
 
 /** 结果节点 data：读上游生成节点 lastAssets 展示，自身不冗余存 */
-export interface ResultNodeData {
+export interface ResultNodeData extends NodeCardMetadata {
   /** 输入节点模式下，媒体文件的补充说明。 */
   note?: string;
   /** 输入节点模式下，上传媒体的持久化资产引用。 */
@@ -59,7 +66,7 @@ export interface ResultNodeData {
   [key: string]: unknown;
 }
 
-export interface CodexCapabilityNodeData {
+export interface CodexCapabilityNodeData extends NodeCardMetadata {
   capability: CodexCapability;
   prompt: string;
   model: string;
@@ -73,7 +80,7 @@ export interface CodexCapabilityNodeData {
   [key: string]: unknown;
 }
 
-export interface TtsNodeData {
+export interface TtsNodeData extends NodeCardMetadata {
   provider: 'cosyvoice3' | 'indextts2' | 'qwen3tts';
   voiceMode?: 'preset' | 'custom' | 'design';
   presetVoiceId?: string;

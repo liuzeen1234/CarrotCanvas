@@ -533,6 +533,8 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-10：画布所有现有卡片类型统一支持用户填写卡片名称与备注，字段随节点 data 经既有 lease/revision/语义化 `update_node` 流程持久化；卡片标题优先展示自定义名称。图片、视频、音频的当前产物、结果卡片、输入资产、节点历史候选与画布生成流水均在对应媒体附近显示完整且可复制的 `assetId`，便于人工在对话、接口和历史记录之间准确引用产物。同步更新仓库 `carrot-canvas` Skill，指导外部 AI 使用 `data.cardName` / `data.note` 并在交付与选片时报告完整 `assetId`。本次不改变资产 ID、Run、候选或 revision 合同。
+
 - 2026-09-10：修复 Issue #15 移动端通过局域网 HTTP 访问时申请编辑权限永久停留在“申请中”。根因为非安全上下文没有 `crypto.randomUUID()`，human holder ID 在请求发出前即抛错且轮询吞掉异常；现统一提供基于 `crypto.getRandomValues()` 的 LAN HTTP 兼容 UUID（极旧浏览器有最终回退），覆盖控制权、保存、节点创建及各类 Run 幂等键。首次自动 acquire 失败会持续重试，轮询错误会显示具体状态；acquire 成功后立即保存 lease token 并维持续租，最新 canonical graph、生成历史或 Run adopt 短暂失败时保持写入禁用并每 2 秒重试，同步完成后才开放编辑。前端生产构建和 dev server 热更新通过，源码已无直接 `crypto.randomUUID()` 调用；3100 健康检查与 8000 页面访问正常，待用户在实际移动端刷新复验。
 
 - 2026-09-10：画布 TTS 新增正式 `qwen3tts` Provider，0.6B CustomVoice 提供 9 个官方预设 speaker，1.7B VoiceDesign 支持只输入台词及音色/语调/表演描述直接生成，无需参考音频。Qwen worker 纳入既有持久化 FIFO 本机重型计算租约、GenerationRun、资产与候选合同，模型变体在同一 worker 内互斥换载。专用验收画布完成两条真实生成并回填结果，调度状态与进程观测正常。

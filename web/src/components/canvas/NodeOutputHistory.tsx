@@ -5,6 +5,7 @@ import { request } from 'umi';
 import { RunDuration } from './RunTiming';
 import CanvasMediaPreview, { type CanvasMediaItem } from './CanvasMediaPreview';
 import { extractSeedValues } from '@/components/comfyui/types';
+import { AssetIdLabel } from './nodes/NodeCardFields';
 
 export interface NodeHistoryRun {
   id: string;
@@ -84,6 +85,7 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeCo
         const current = run.candidateGroup?.selectedAssetId === assetId;
         return <div key={assetId} className={`canvas-node-history__media${current ? ' is-current' : ''}`}>
           {kind === 'audio' ? <audio controls src={`/api/assets/${assetId}`} style={{ width: '100%' }} /> : <button type="button" className="canvas-media-trigger canvas-media-trigger--history" onClick={() => setPreviewIndex(mediaItems.findIndex((item) => item.assetId === assetId))} aria-label={`放大预览${kind === 'video' ? '视频' : '图片'}`}>{kind === 'video' ? <><video src={`/api/assets/${assetId}`} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={`/api/assets/${assetId}`} alt="历史图片产物" />}</button>}
+          <AssetIdLabel assetId={assetId} />
           <RunDuration timestamps={run} />
           {seedActions(run)}
           <Space size={2}>{current ? <Tag color="blue" icon={<CheckOutlined />}>当前</Tag> : <Button size="small" disabled={readOnly} onClick={() => void chooseAsset(run, assetId)}>使用</Button>}<Button size="small" type="text" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download aria-label="下载历史产物" /></Space>

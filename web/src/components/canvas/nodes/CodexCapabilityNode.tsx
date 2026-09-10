@@ -11,6 +11,7 @@ import NodeOutputHistory from '../NodeOutputHistory';
 import { RunElapsed } from '../RunTiming';
 import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview';
 import { createClientUuid } from '@/utils/uuid';
+import { AssetIdLabel, NodeCardFields } from './NodeCardFields';
 
 const LABELS = { text: '文生文', image: '文生图', edit: '图生图', analyze: '图像理解' } as const;
 
@@ -81,7 +82,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
   const canRun = !!effectivePrompt?.trim() && (!textTransformMode || !!data.prompt.trim()) && (!needsImage || !!files.length || !!upstream);
   return <div className={`canvas-node canvas-node--codex${props.selected ? ' selected' : ''}`}>
     {needsImage ? <Handle type="target" position={Position.Left} id={resultTargetHandle('image')} className="canvas-handle--image" title="图片输入" /> : null}
-    <div className="canvas-node__header"><span className="canvas-node__type" style={{ background: '#fa8c16' }}>Codex2API</span><span className="canvas-node__bind">{LABELS[data.capability]}</span>
+    <div className="canvas-node__header"><span className="canvas-node__type" style={{ background: '#fa8c16' }}>Codex2API</span><span className="canvas-node__bind" title={data.cardName || LABELS[data.capability]}>{data.cardName || LABELS[data.capability]}</span>
       <RunElapsed status={sharedRun?.status ?? (busy ? 'running' : undefined)} queuedAt={sharedRun?.queuedAt ?? localStartedAt} startedAt={sharedRun?.startedAt ?? localStartedAt} />
       <Popconfirm title="确认运行该节点？" description="运行可能消耗 API 额度并需要一定时间。" okText="确认运行" cancelText="取消" onConfirm={() => void run()}>
         <Button size="small" type="text" icon={<PlayCircleOutlined />} loading={busy} disabled={readOnly || !canRun} className="nodrag canvas-node__run-action" aria-label="运行节点" />
@@ -89,6 +90,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
       <Popconfirm title="删除该节点？" okText="删除" cancelText="取消" onConfirm={() => deleteNode(props.id)}><Button size="small" type="text" danger disabled={readOnly} icon={<DeleteOutlined />} className="nodrag canvas-node__delete-action" aria-label="删除节点" /></Popconfirm>
     </div>
     <div className="canvas-node__body nodrag"><Space direction="vertical" size={8} style={{ width: '100%' }}>
+      <NodeCardFields name={data.cardName} note={data.note} readOnly={readOnly} onChange={update} />
       {needsImage ? <Upload disabled={readOnly} accept="image/*" maxCount={1} fileList={files} beforeUpload={() => false} onChange={({ fileList }) => setFiles(fileList.slice(-1))} listType="picture"><Button disabled={readOnly} icon={<UploadOutlined />}>{upstream ? '改用本地图片' : '上传图片'}</Button></Upload> : null}
       {upstream ? <Tag color="success">已连接上游图片</Tag> : null}
       {textTransformMode ? <div className="canvas-codex-input-text">
@@ -109,7 +111,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
       {data.capability === 'image' || data.capability === 'edit' ? <Space.Compact block><Select disabled={readOnly} size="small" value={data.size} options={['1024x1024','1536x1024','1024x1536'].map((value) => ({ value, label: value }))} onChange={(size) => update({ size })} style={{ width: '60%' }} /><Select disabled={readOnly} size="small" value={data.responseFormat} options={[{ value: 'url', label: 'URL' },{ value: 'b64_json', label: 'Base64' }]} onChange={(responseFormat) => update({ responseFormat })} style={{ width: '40%' }} /></Space.Compact> : null}
       {busy ? <div><Progress percent={70} status="active" showInfo={false} /><Tag color="processing">{data.capability === 'text' ? '正在生成文字' : reversePromptMode ? '正在反推图片提示词' : data.capability === 'analyze' ? '正在理解图片' : data.capability === 'edit' ? '正在编辑图片' : '正在生成图片'}</Tag></div> : null}{error ? <Alert type="error" showIcon message={error} /> : null}
       {displayedText ? <div className="canvas-codex-text">{displayedText}</div> : null}
-      {images.map((item, index) => <div key={`${item.url}-${index}`}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(index)} aria-label="放大预览图片"><img src={item.url} alt="生成图片" /></button><Button size="small" block icon={<DownloadOutlined />} href={item.assetId ? `/api/assets/${item.assetId}/download` : item.url} download>下载</Button></div>)}
+      {images.map((item, index) => <div key={`${item.url}-${index}`}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(index)} aria-label="放大预览图片"><img src={item.url} alt="生成图片" /></button><AssetIdLabel assetId={item.assetId} /><Button size="small" block icon={<DownloadOutlined />} href={item.assetId ? `/api/assets/${item.assetId}/download` : item.url} download>下载</Button></div>)}
       <NodeOutputHistory canvasId={canvasId} nodeId={props.id} kind={outputKind} promptModeContext={data.capability} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => update({ lastAssets: [asset] })} onSelectText={(text, parts) => { setLiveText(''); update({ lastText: text, lastTextParts: parts || undefined }); }} onObserveAsset={(asset) => observeNodeData(props.id, { lastAssets: [asset] })} onObserveText={(text, parts) => { setLiveText(''); observeNodeData(props.id, { lastText: text, lastTextParts: parts || undefined }); }} />
     </Space></div>
     <CanvasMediaPreview open={previewIndex !== null} items={images.map((item): CanvasMediaItem => ({ assetId: item.assetId || '', url: item.url, kind: 'image' }))} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
