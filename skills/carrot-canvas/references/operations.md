@@ -67,17 +67,21 @@ TTS 提交使用 `POST /tts/runs`，在 session 内传 `provider`、`voiceMode`�
 
 画布连线和 formValues 是创作状态；提交后端 Run 时仍需准备实际入参，后端不会自动执行整张画布 DAG。
 
-ComfyUI：读选定 `/workflows/<workflowId>` 的 `apiJson`、`inputConfig`，并读 `/comfyui/workflows/<workflowId>/schema`。复制 apiJson，在 `apiJson[comfyNodeId].inputs[param]` 写实际值；解析上游文字/资产并匹配 schema 类型。提交一次：
+ComfyUI：读选定 `/workflows/<workflowId>` 的 `apiJson`、`inputConfig`。`/comfyui/workflows/<workflowId>/schema` 只查询节点定义（可命中服务端有效缓存），不会启动或切换 Provider；离线且没有有效缓存时会失败。对已确认有效的模板、明确字段和值，可直接提交正常 Run，让后端取得计算租约后完成动态 schema 校验；缺少必要参数证据时报告具体缺失，不猜字段或模型，也不要求打开 Desktop 来读取 schema。复制 apiJson，在 `apiJson[comfyNodeId].inputs[param]` 写实际值；调用方仍需解析上游文字与媒体输入。提交一次：
 
 ```js
 const result = await s.write('POST', '/comfyui/runs', {
   canvasId: s.canvasId, nodeId, workflowId, apiJson,
   inputAssetIds, idempotencyKey: stableKey,
-}, { timeoutMs: 60000, providerRun: true });
+}, { timeoutMs: 180000, providerRun: true });
 const runId = result.persistentRun?.id || result.run?.runId;
 const run = await s.waitRun(runId);
 if (run.status !== 'succeeded') throw new Error(`Run ${runId}: ${run.status}`);
 ```
+
+服务端顺序为：离线基础校验 → 持久 Run → FIFO 计算租约 → 调度器切换/启动 ComfyUI 并等待健康检查 → `/object_info` 与动态参数准备 → 保存最终 `inputSnapshot` → `/prompt`。`requestSnapshot` 用于原始请求幂等比较，不能用准备后的 `inputSnapshot` 替换新 Run 重放的原始请求。提交前失败会记录 failed Run 并释放计算租约；生成已提交后，租约持续到完成回调。健康 ComfyUI 可在同 Provider 任务之间驻留，切换 Provider 时退出，不要求每次任务完成都立即关闭。
+
+示例超时涵盖常规冷启动，FIFO 排队仍可能超过此时间。请求超时后先按画布历史和幂等键核对已有 Run，不能换键重复提交；等待期间保持 session 生命周期。`COMFYUI_LAUNCH_NOT_CONFIGURED` 表示缺少托管启动配置，路径失效则按实际启动错误报告，不自动修改全局配置或要求“先开 Desktop 再接管”。只有实际 `COMFYUI_TAKEOVER_REQUIRED` 才按实时 Registry 请求一次性确认令牌、展示当前外部进程快照，并在用户明确授权该次接管后执行；没有外部进程时无需接管确认。不要自行结束外部进程，也不要以空任务或无关生成来预热服务。
 
 `providerRun:true` 仅用于真实 provider 提交：接到交接时不用等同步生成 HTTP 返回才释放。图修改绝不能使用此选项。生成完成后先检查 `s.state === 'active'` 再决定下游写入；交接后保留结果在服务器，禁止自行重新 acquire。
 
@@ -85,7 +89,7 @@ Codex2API：使用 `/codex2api/chat/completions`（`stream:false, model, message
 
 运行成功不保证 canonical graph 中 lastAssets 已更新：按真实 `/runs/<id>` 的 `outputAssetIds`、`outputText`、`outputParts` 生成 `update_node`，媒体类型优先取提交结果的产物信息，或请求 `/assets/<id>` 检查 Content-Type（这是二进制流，不是元数据 JSON）；URL 为 `/api/assets/<assetId>`。更新 `lastAssets` 或 `lastText/lastTextParts` 前读当前节点，保留无关配置。若已交接，由新持有者完成图同步。
 
-媒体导入：用 `s.uploadMedia` 导入平台资产；已有平台资产用 `s.write('POST','/comfyui/upload/asset',{canvasId:s.canvasId,assetId})` 回灌 provider 输入。须校验画布归属，依据返回 file.name/subfolder 和字段 schema 填入 API JSON；不复用其他画布的 assetId。视频归一化和大小限制以当前接口为准。
+媒体导入：`s.uploadMedia` 在画布上下文中只保存平台资产，不依赖 ComfyUI 在线。`s.write('POST','/comfyui/upload/asset',{canvasId:s.canvasId,assetId})` 是在线回灌接口，不申请生成租约、不启动或切换 Provider；离线时会失败。须校验画布归属，依据返回 file.name/subfolder 和已确认的字段类型填入 API JSON；不复用其他画布的 assetId。`inputAssetIds` 只记录血缘，不会在 Run 中自动上传文件。如果本次生成必须回灌新素材且 ComfyUI 离线，保留平台资产并明确报告“当前 Run 接口尚未支持租约内自动回灌”，不能宣称冷启动生成已具备这一能力，也不能让用户手动打开 Desktop 来掩盖缺口。视频归一化和大小限制以当前接口为准。
 
 接手前 `GET /runs?canvasId=<id>` 读全部分页与交接记录，已有待接手 Run 使用 `s.write('POST','/runs/<id>/adopt',{})`。它保留平台/provider Run ID，不触发新生成。`run.retry` 可能仅创建重试记录，不等于已重新提交 provider，先看实际响应。
 

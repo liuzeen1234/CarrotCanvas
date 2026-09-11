@@ -109,6 +109,7 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
       canvasId?: string;
       nodeId?: string | null;
       onComplete?: (run: RunState) => void | Promise<void>;
+      beforeSubmit?: (apiJson: Record<string, unknown>) => Promise<void>;
     } = {},
   ): Promise<RunState> {
     // 先确保 WS 连接就绪再提交：ComfyUI 仅在提交时该 client 的 WS 已连接时下发 execution 消息，
@@ -116,7 +117,9 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
     await this.ensureWs();
     let result;
     try {
-      result = await this.client.submitPrompt(expandFrontendWildcards(apiJson), this.clientId);
+      const submittedJson = expandFrontendWildcards(apiJson);
+      await options.beforeSubmit?.(submittedJson);
+      result = await this.client.submitPrompt(submittedJson, this.clientId);
     } catch (e) {
       const err = e as HttpException;
       const status = err?.getStatus?.() ?? HttpStatus.BAD_GATEWAY;
@@ -154,7 +157,7 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
       run.finishedAt = now;
       run.error = `ComfyUI 校验失败：${errorKeys.join('、')}`;
       this.runs.set(run.promptId, run);
-      if (options.onComplete) options.onComplete(run);
+      if (options.onComplete) await options.onComplete(run);
       return run;
     }
 
@@ -369,7 +372,7 @@ export class ComfyUIRunnerService implements OnModuleDestroy {
     if (cb) {
       this.onComplete.delete(run.promptId);
       try {
-        cb(run);
+        Promise.resolve(cb(run)).catch((e) => this.logger.error(`onComplete 回调失败：${(e as Error).message}`));
       } catch (e) {
         this.logger.error(`onComplete 回调失败：${(e as Error).message}`);
       }

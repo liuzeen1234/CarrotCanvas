@@ -220,19 +220,26 @@ export class ComfyUIController {
       apiJson = workflow.apiJson as Record<string, unknown>;
     }
 
-    apiJson = prepareComfyInputs(apiJson, this.schemaService.analyze(apiJson, await this.client.getObjectInfo()));
+    // Stored workflows must also pass offline validation before any resource work.
+    const errors = ComfyUIValidator.validate(apiJson);
+    if (errors.length) throw new HttpException(errors.join('；'), HttpStatus.BAD_REQUEST);
     const begun = await this.persistentRuns.begin({
       provider: 'comfyui', canvasId: body.canvasId ?? null, nodeId: body.nodeId ?? null,
       shotId: body.shotId ?? null, parentRunId: body.parentRunId ?? null,
       capabilityId: workflow.id, capabilityVersion: workflow.updatedAt.toISOString(),
       inputSnapshot: apiJson, inputAssetIds: body.inputAssetIds ?? [],
+      requestSnapshot: { apiJson, workflowId: body.workflowId, canvasId: body.canvasId ?? null,
+        nodeId: body.nodeId ?? null, inputAssetIds: body.inputAssetIds ?? [],
+        shotId: body.shotId ?? null, parentRunId: body.parentRunId ?? null },
       actorType: body.actorType ?? 'human', actorId: body.actorId ?? 'web',
       idempotencyKey: body.idempotencyKey ?? null,
     });
     if (begun.replay && !takeoverRetryable(begun.run)) return { run: { ...begun.run, runId: begun.run.id, promptId: begun.run.providerRunId }, replay: true };
-    if (begun.replay) begun.run = await this.persistentRuns.patch(begun.run.id, {
-      status: 'queued', error: null, finishedAt: null, attemptCount: begun.run.attemptCount + 1,
-    });
+    if (begun.replay) {
+      const retry = await this.persistentRuns.claimComfyTakeoverRetry(begun.run);
+      begun.run = retry.run;
+      if (!retry.claimed) return { run: { ...retry.run, runId: retry.run.id, promptId: retry.run.providerRunId }, replay: true };
+    }
     let computeLease;
     try { computeLease = await this.computeScheduler.acquire('comfyui', begun.run.id); }
     catch (error) {
@@ -240,30 +247,47 @@ export class ComfyUIController {
       throw error;
     }
     let run: RunState;
-    try { run = await this.runner.submit(apiJson, {
+    try {
+      // acquire prepares the managed process and waits for health before node metadata is read.
+      apiJson = prepareComfyInputs(apiJson, this.schemaService.analyze(apiJson, await this.client.getObjectInfo()));
+      run = await this.runner.submit(apiJson, {
       workflowId: workflow.id,
       title: workflow.name,
       canvasId: body.canvasId,
       nodeId: body.nodeId ?? null,
+      // The runner expands filename wildcards before this durable write and /prompt.
+      beforeSubmit: async (submittedJson) => { await this.persistentRuns.patch(begun.run.id, { inputSnapshot: submittedJson }); },
       // 画布节点运行成功 → 捕获输出字节进画布资产分区（C2）
       onComplete: async (finished) => {
+        let completionError: unknown = finished.error ? new Error(finished.error) : undefined;
         try {
           if (body.canvasId && !finished.error && finished.status !== 'interrupted') await this.capture.captureRunOutputs(finished, body.canvasId, body.nodeId ?? null, workflow.id);
           const ids = finished.outputs.flatMap((output) => output.assetId ? [output.assetId] : []);
           const status = finished.status === 'interrupted' ? 'cancelled' : finished.error ? 'failed' : 'succeeded';
           await this.persistentRuns.finish(begun.run.id, status, ids, finished.error ? { message: finished.error, nodeErrors: finished.nodeErrors } : null);
+        } catch (error) {
+          completionError = error;
+          await this.persistentRuns.finish(begun.run.id, 'failed', [], schedulerError(error));
+          throw error;
         } finally {
-          await computeLease.release(finished.error ? new Error(finished.error) : undefined);
+          await computeLease.release(completionError);
         }
       },
       // 不再自动写回缩略图：改由前端在结果区点"作为封面"手动设置
     }); } catch (error) {
-      try { await this.persistentRuns.finish(begun.run.id, 'failed', [], { message: (error as Error).message }); }
+      try { await this.persistentRuns.finish(begun.run.id, 'failed', [], schedulerError(error)); }
       finally { await computeLease.release(error); }
       throw error;
     }
-    await this.persistentRuns.patch(begun.run.id, { providerRunId: run.promptId });
-    return { run: { ...run, runId: begun.run.id }, persistentRun: await this.persistentRuns.get(begun.run.id) };
+    try {
+      const persistentRun = await this.persistentRuns.patch(begun.run.id, { providerRunId: run.promptId });
+      return { run: { ...run, runId: begun.run.id }, persistentRun };
+    } catch (error) {
+      // /prompt has already accepted the job. The completion callback still owns
+      // the lease; releasing here would let another provider interrupt live work.
+      await this.persistentRuns.patch(begun.run.id, { providerRunId: run.promptId, status: 'needs_attention', error: schedulerError(error) });
+      throw error;
+    }
   }
 
   /** 运行状态（供前端轮询） */

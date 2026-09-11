@@ -5,6 +5,20 @@
 
 ## 1. 背景与目标
 
+### 2026-09-11：离线生成的调度启动顺序（已修复）
+
+`POST /api/comfyui/runs` 先执行不依赖 8188 的工作流、画布权限与 API JSON 结构校验，再建立持久 Run 和申请本机重型计算租约。调度器负责释放旧 Provider、按已保存启动配置启动 ComfyUI 并等待健康检查；取得租约后才读取 `/object_info`、分析 schema、执行 `prepareComfyInputs`、建立 WS 和提交 `/prompt`。不得用手动打开 Desktop 或绕过调度器启动 8188 作为生成前置步骤。
+
+Run 新增 nullable `request_snapshot`（SQLite synchronize 自动加列），保存原始请求及工作流/画布/节点/输入资产身份用于幂等比较；`inputSnapshot` 初始保存待准备输入，实际提交前更新为经过参数转换、参考 loader 展开以及日期/时间通配符展开的最终 API JSON（敏感字段继续脱敏）。启动/准备阶段失败的 Run 没有实际提交，保留原始输入用于诊断。旧记录没有原始请求快照，继续以保存的 `inputSnapshot` 比较；无法还原的旧转换前输入不会被猜测为等价，调用方可使用旧记录保存的输入重放，不能换键自动重投。
+
+并发新请求依赖唯一幂等键回读获胜记录；接管失败且尚无 providerRunId 的 Run 用条件更新领取一次重试，同一 Run 的 `attemptCount` 只增加一次。普通重放不读取节点信息、不申请计算租约、不提交 Provider。
+
+启动失败由调度器把 preparing 租约标为 failed；本次启动的子进程若残留则仅清理该子进程，无法确认退出时进入 fail-closed。取得租约后的参数、元数据、快照保存和提交异常将 Run 标为 failed，并在 finally 释放租约；即使写 Run 失败也会尝试释放。成功提交后租约由完成回调持有到产物捕获与终态落库结束；提交已被接受但 providerRunId 落库失败时标记 needs_attention，仍等完成回调释放，不能让另一 Provider 在任务运行中抢占。健康 ComfyUI 在租约结束后可保持驻留，这是既有行为；跨 Provider 切换时退出。外部进程仍要求显式接管确认。
+
+辅助接口边界：`GET /comfyui/workflows/:id/schema` 是只读查询，沿用节点定义 TTL 缓存；离线且无有效缓存时报连接错误，不启动、不获取生成租约、不切换 Provider。`POST /comfyui/upload/asset` 是既有在线文件转发，也不启动或切换 Provider；ComfyUI 离线时失败。二者仍允许独立在线调用，并不提供生成资源所有权保证。`upload/media` 带画布上下文时仅保存平台资产，可离线使用。当前 `/runs` 的 `inputAssetIds` 仅记录血缘，不会自动把资产上传到 ComfyUI；需要在冷启动生成中上传新引用素材的完整闭环，必须另行把明确字段→资产绑定纳入同一次 Run 租约内，不能由辅助路由另开启动租约来模拟。
+
+验证：新增 Controller 调用链 14 项测试使用真实 SQLite、RunsService、调度器、ComfyUI Provider 和 Runner，仅模拟进程启动/网络/WS 边界；覆盖冷启动到最终快照、在线路径、启动/metadata/参数/快照/提交失败、并发幂等、接管重试次数、FIFO/驻留/切换、辅助接口离线不启动、Run 写入故障和提交后元数据故障。ProcessManager 额外覆盖 Desktop 启动中与本次子进程清理/无法清理。后端完整 18 suites / 143 tests 通过，`tsc -p tsconfig.build.json` 通过。3100 已按 `pnpm --filter @carrot-canvas/backend start` 重启，health=ok，历史 Run 返回 requestSnapshot 字段，调度器 active/resident/blocked 均为空；重启前保留数据库备份。没有启动 Desktop、手工启动 8188 或执行真实生成，因此自动测试不冒充本机真实模型冷启动验收。
+
 CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 校验 / CRUD），但**不能运行**——「ComfyUI 客户端（HTTP + WebSocket 任务监听）」仍是 README 中的 TODO。
 
 本功能目标：把 ComfyUI API 从一个"静态 JSON 仓库"变成**一套可独立调用的工具箱**——每个 API 是一张卡片，点进去填参数就能提交到本地 ComfyUI 执行并看到结果。

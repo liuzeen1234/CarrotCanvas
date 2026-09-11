@@ -74,6 +74,7 @@ export class LocalComputeSchedulerService implements OnModuleInit {
     if (this.advancing || this.current || !this.queue.length) return;
     this.advancing = true;
     const waiter = this.queue.shift()!;
+    let preparingProvider = false;
     try {
       waiter.lease.status = 'preparing';
       await this.leases.save(waiter.lease);
@@ -81,6 +82,7 @@ export class LocalComputeSchedulerService implements OnModuleInit {
         await this.providers.get(this.residentProvider)?.release();
         this.residentProvider = null;
       }
+      preparingProvider = true;
       await this.providers.get(waiter.lease.provider)?.prepare();
       this.residentProvider = waiter.lease.provider;
       waiter.lease.status = 'active';
@@ -112,6 +114,7 @@ export class LocalComputeSchedulerService implements OnModuleInit {
         },
       });
     } catch (error) {
+      if (preparingProvider) this.residentProvider = null;
       waiter.lease.status = 'failed';
       waiter.lease.error = serializeError(error);
       waiter.lease.releasedAt = Date.now();
