@@ -53,6 +53,10 @@ node <绝对脚本路径> operations <canvasId> <JSON文件绝对路径>
 
 创建或更新画布卡片时，按用户给出的语义填写可选 `data.cardName` 和 `data.note`，让人工能在卡片标题和正文中识别用途；不要把它们误当成节点 ID、工作流名或模型入参。引用、交付或请人工选择媒体产物时优先报告平台 `assetId`，必要时同时给 Run ID；具体字段合同见节点与操作约定。
 
+Codex2API 图片编辑与图像理解的 `image-target` 可按明确顺序接入最多 16 张参考图。多图提示词必须把 `@` token 绑定到稳定的 edge/asset `referenceId`，不能把“图 1/图 2”序号当作身份；增删或重排图片后，在提交时按当前顺序重新编译提示词。仍被提示词引用的图片必须先解除 token 与绑定再断线或删除，详细数据结构、原子操作顺序和 Run 快照字段见节点与操作约定。
+
+ComfyUI 的 MiniMax H3 全能参考卡使用统一 `input:image:reference-group:images` 入口，最多 9 张图片，稳定 `@` 引用在提交时编译为 `<Picture N>`；Z-Image Turbo 通用图生图使用同一入口但最多 1 张。Agent 必须读取实时 workflow API JSON/inputConfig 确认能力，不能因为统一 UI 而假定所有 ComfyUI 工作流都支持多图。
+
 运行提交必须带 canvasId/nodeId、当前 proof 与稳定幂等键，通过平台记录 Run，不能绕过平台直调 provider 冒充画布生成。采用 [运行与媒体约定](references/operations.md#运行与媒体)；生成等待也保持生命周期，不能靠 TTL 正常释放。接手时检查已有 Run 的 Handoff，必要时 adopt 原 Run，禁止以重新提交代替接手。取消前读取 `capabilities.cancel`；TTS 支持 speech 片段边界取消，其他 provider 以实时能力为准。
 
 ComfyUI、CosyVoice 3、IndexTTS2、Qwen3-TTS 共用一张 FIFO 本机重型计算租约。提交这些 Provider 前读取 `/local-compute-scheduler/status`；`blocked` 非空时停止提交并报告结构化原因。Qwen3-TTS 的预设 speaker 与文字设计音色均无需参考音频，具体节点和提交合同见运行与媒体约定。

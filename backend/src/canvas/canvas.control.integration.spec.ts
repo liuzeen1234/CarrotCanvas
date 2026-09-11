@@ -192,6 +192,70 @@ describe('Phase 0A canvas control (SQLite integration)', () => {
     expect((restored.canvas.graph.nodes[0].data.lastAssets as any[])[0].assetId).toBe('asset-1');
   });
 
+  it('Codex 多图端口接受 16 条入线并拒绝第 17 条', async () => {
+    const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'agent', holderId: 'codex-multi-image' });
+    const sources = Array.from({ length: 17 }, (_, index) => ({ id: `source-${index}`, type: 'result' as const, position: { x: 0, y: index * 10 }, data: { kind: 'image' } }));
+    const target = { id: 'edit', type: 'codex-capability' as const, position: { x: 300, y: 0 }, data: { capability: 'edit', prompt: '组合参考图', model: 'codex' } };
+    const first = await service.applyOperations(canvas.id, { ...proof(lease, 0, 'multi-16'), operations: [
+      ...sources.map((node) => ({ type: 'create_node' as const, node })), { type: 'create_node' as const, node: target },
+      ...sources.slice(0, 16).map((node, index) => ({ type: 'connect' as const, edge: { id: `edge-${index}`, source: node.id, sourceHandle: 'image-source', target: 'edit', targetHandle: 'image-target' } })),
+    ] });
+    expect(first.canvas.graph.edges).toHaveLength(16);
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'multi-17'), operations: [{ type: 'connect', edge: { id: 'edge-16', source: 'source-16', sourceHandle: 'image-source', target: 'edit', targetHandle: 'image-target' } }] })).rejects.toMatchObject({ response: { code: 'MAX_INCOMING_EXCEEDED' } });
+  });
+
+  it('阻止断开仍被 @ 引用的图片，解除引用后允许断开', async () => {
+    const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'agent', holderId: 'reference-protection' });
+    const prompt = '使用 @角色图·edge01 的人物';
+    await service.applyOperations(canvas.id, { ...proof(lease, 0, 'reference-setup'), operations: [
+      { type: 'create_node', node: { id: 'source', type: 'result', position: { x: 0, y: 0 }, data: { kind: 'image' } } },
+      { type: 'create_node', node: { id: 'edit', type: 'codex-capability', position: { x: 300, y: 0 }, data: { capability: 'edit', prompt, model: 'codex', promptImageReferences: [{ referenceId: 'edge-01', edgeId: 'edge-01', sourceNodeId: 'source', token: '@角色图·edge01', displayName: '角色图' }] } } },
+      { type: 'connect', edge: { id: 'edge-01', source: 'source', sourceHandle: 'image-source', target: 'edit', targetHandle: 'image-target' } },
+    ] });
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'reference-blocked'), operations: [{ type: 'disconnect', edgeId: 'edge-01' }] })).rejects.toMatchObject({ response: { code: 'IMAGE_REFERENCE_IN_USE' } });
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'reference-source-blocked'), operations: [{ type: 'delete_node', nodeId: 'source' }] })).rejects.toMatchObject({ response: { code: 'IMAGE_REFERENCE_IN_USE' } });
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'reference-binding-bypass'), operations: [
+      { type: 'update_node', nodeId: 'edit', dataPatch: { promptImageReferences: [] } },
+      { type: 'disconnect', edgeId: 'edge-01' },
+    ] })).rejects.toMatchObject({ response: { code: 'IMAGE_REFERENCE_IN_USE' } });
+    const released = await service.applyOperations(canvas.id, { ...proof(lease, 1, 'reference-released'), operations: [
+      { type: 'update_node', nodeId: 'edit', dataPatch: { prompt: '不再引用图片' } },
+      { type: 'disconnect', edgeId: 'edge-01' },
+    ] });
+    expect(released.canvas.graph.edges).toEqual([]);
+  });
+
+  it('MiniMax H3 统一参考图端口接受 9 张并保护 formValues 中的稳定 @ 引用', async () => {
+    const workflows = db.getRepository(Workflow);
+    const workflow = await workflows.save(workflows.create({ name: 'MiniMax H3 全能参考', category: 'reference', apiJson: JSON.stringify({ '136': { class_type: 'MiniMaxH3ReferenceToVideo', inputs: {} } }), exposureConfig: null, fieldConfig: null, thumbnailPath: null, description: null, tags: null, inputConfig: { version: 1, fields: [] } }));
+    const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'agent', holderId: 'h3-reference' });
+    const sources = Array.from({ length: 10 }, (_, index) => ({ id: `h3-source-${index}`, type: 'result' as const, position: { x: 0, y: index * 10 }, data: { kind: 'image' } }));
+    const token = '@角色·stable1';
+    const first = await service.applyOperations(canvas.id, { ...proof(lease, 0, 'h3-nine'), operations: [
+      ...sources.map((node) => ({ type: 'create_node' as const, node })),
+      { type: 'create_node', node: { id: 'h3', type: 'txt2img', position: { x: 300, y: 0 }, data: { workflowId: workflow.id, formValues: { '138::value': `使用 ${token}` }, promptImageReferences: [{ referenceId: 'h3-edge-0', edgeId: 'h3-edge-0', sourceNodeId: sources[0].id, token, displayName: '角色' }] } } },
+      ...sources.slice(0, 9).map((node, index) => ({ type: 'connect' as const, edge: { id: `h3-edge-${index}`, source: node.id, sourceHandle: 'image-source', target: 'h3', targetHandle: 'input:image:reference-group:images' } })),
+    ] });
+    expect(first.canvas.graph.edges).toHaveLength(9);
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'h3-ten'), operations: [{ type: 'connect', edge: { id: 'h3-edge-9', source: sources[9].id, sourceHandle: 'image-source', target: 'h3', targetHandle: 'input:image:reference-group:images' } }] })).rejects.toMatchObject({ response: { code: 'MAX_INCOMING_EXCEEDED' } });
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'h3-ref-block'), operations: [{ type: 'disconnect', edgeId: 'h3-edge-0' }] })).rejects.toMatchObject({ response: { code: 'IMAGE_REFERENCE_IN_USE' } });
+    const released = await service.applyOperations(canvas.id, { ...proof(lease, 1, 'h3-ref-release'), operations: [{ type: 'update_node', nodeId: 'h3', dataPatch: { formValues: { '138::value': '不再引用', }, promptImageReferences: [] } }, { type: 'disconnect', edgeId: 'h3-edge-0' }] });
+    expect(released.canvas.graph.edges).toHaveLength(8);
+  });
+
+  it('Z-Image 统一参考图端口保持真实的一张上限', async () => {
+    const workflows = db.getRepository(Workflow);
+    const workflow = await workflows.save(workflows.create({ name: 'Z-Image Turbo 通用高质量图生图', category: 'img2img', apiJson: '{}', exposureConfig: null, fieldConfig: null, thumbnailPath: null, description: null, tags: null, inputConfig: { version: 1, fields: [{ nodeId: '7', param: 'image', kind: 'image' }] } }));
+    const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'agent', holderId: 'z-image-reference' });
+    await service.applyOperations(canvas.id, { ...proof(lease, 0, 'z-one'), operations: [
+      { type: 'create_node', node: { id: 'a', type: 'result', position: { x: 0, y: 0 }, data: { kind: 'image' } } },
+      { type: 'create_node', node: { id: 'b', type: 'result', position: { x: 0, y: 100 }, data: { kind: 'image' } } },
+      { type: 'create_node', node: { id: 'z', type: 'txt2img', position: { x: 300, y: 0 }, data: { workflowId: workflow.id, formValues: {} } } },
+      { type: 'connect', edge: { id: 'z-edge-a', source: 'a', sourceHandle: 'image-source', target: 'z', targetHandle: 'input:image:reference-group:images' } },
+    ] });
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'z-two'), operations: [{ type: 'connect', edge: { id: 'z-edge-b', source: 'b', sourceHandle: 'image-source', target: 'z', targetHandle: 'input:image:reference-group:images' } }] })).rejects.toMatchObject({ response: { code: 'MAX_INCOMING_EXCEEDED' } });
+  });
+
   it('AI 配音节点接受文本与双音频输入并输出音频', async () => {
     const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'human', holderId: 'tts-graph' });
     const result = await service.applyOperations(canvas.id, { ...proof(lease, 0, 'tts-graph'), operations: [

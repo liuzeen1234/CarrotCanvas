@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Input } from 'antd';
+import { Input, Mentions } from 'antd';
 
 interface SharedProps {
   value: string;
@@ -12,6 +12,8 @@ interface SharedProps {
 interface TextAreaProps extends SharedProps {
   autoSize?: boolean | { minRows?: number; maxRows?: number };
 }
+
+type MentionsProps = Omit<React.ComponentProps<typeof Mentions>, 'value' | 'onChange'> & SharedProps;
 
 /**
  * 移动端中文输入法会先发送一串 composition 中间态。中间态只保留在控件本地，
@@ -73,5 +75,17 @@ export function ImeSafeInput({ value, onChange, ...props }: SharedProps) {
     onCompositionEnd={ime.onCompositionEnd}
     onBlur={ime.onBlur}
     onChange={(event) => ime.onValueChange(event.target.value, event.nativeEvent.isComposing)}
+  />;
+}
+
+export function ImeSafeMentions({ value, onChange, ...props }: MentionsProps) {
+  const ime = useImeDraft(value, onChange);
+  return <Mentions
+    {...props}
+    value={ime.draft}
+    onCompositionStart={ime.onCompositionStart}
+    onCompositionEnd={ime.onCompositionEnd}
+    onBlur={ime.onBlur}
+    onChange={(next) => ime.onValueChange(next, false)}
   />;
 }

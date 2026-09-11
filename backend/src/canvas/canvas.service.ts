@@ -29,6 +29,7 @@ export interface CheckpointDto extends LeaseProof { name: string; description?: 
 const DEFAULT_CANVAS_NAME = '未命名画布';
 const LEASE_TTL_MS = 45_000;
 const SERVER_INSTANCE_ID = randomUUID();
+const WORKFLOW_REFERENCE_IMAGES_HANDLE = 'input:image:reference-group:images';
 
 @Injectable()
 export class CanvasService implements OnModuleInit {
@@ -89,6 +90,7 @@ export class CanvasService implements OnModuleInit {
       const inverseOperations: CanvasOperation[] = [];
       const deletedGeneratedNodeIds: string[] = [];
       for (const op of dto.operations) applyCanvasOperation(draft, op, inverseOperations, deletedGeneratedNodeIds);
+      assertReferenceIntegrityChange(doc.graph, draft.graph);
       validateGraph(draft.graph);
       await validateWorkflowHandles(draft.graph, manager.getRepository(Workflow));
       doc.name = draft.name; doc.graph = draft.graph; doc.brief = draft.brief;
@@ -166,6 +168,7 @@ function validateNode(node: CanvasNode) {
   if (node.type === 'txt2img' && (!validId(node.data.workflowId) || (node.data.formValues != null && (typeof node.data.formValues !== 'object' || Array.isArray(node.data.formValues))))) bad('INVALID_NODE_DATA', 'txt2img 节点需要 workflowId，formValues 必须为对象');
   if (node.type === 'result' && node.data.kind != null && !['image', 'video', 'audio', 'text'].includes(String(node.data.kind))) bad('INVALID_NODE_DATA', 'result.kind 不合法');
   if (node.type === 'codex-capability' && (!['text', 'image', 'edit', 'analyze'].includes(String(node.data.capability)) || typeof node.data.prompt !== 'string' || typeof node.data.model !== 'string')) bad('INVALID_NODE_DATA', 'AI 能力节点字段不合法');
+  if (node.type === 'codex-capability' && Array.isArray(node.data.referenceImages) && node.data.referenceImages.length > 16) bad('MAX_INCOMING_EXCEEDED', 'Codex2API 参考图片最多 16 张');
   if (node.type === 'tts' && (!['cosyvoice3', 'indextts2', 'qwen3tts'].includes(String(node.data.provider)) || typeof node.data.text !== 'string' || typeof node.data.referenceText !== 'string')) bad('INVALID_NODE_DATA', 'AI 配音节点字段不合法');
 }
 function handleKind(handle: string, source: boolean): string | null {
@@ -207,12 +210,62 @@ function validateGraph(graph: CanvasGraph) {
       if (parts.length < 3 || !parts.at(-1)) bad('HANDLE_NOT_FOUND', `工作流输入句柄 ${edge.targetHandle} 格式不合法`);
     }
     if (sourceKind !== targetKind) bad('MEDIA_TYPE_MISMATCH', `${sourceKind} 不能连接到 ${targetKind}`);
-    const inputKey = `${edge.target}:${edge.targetHandle}`; if (inputs.has(inputKey)) bad('MAX_INCOMING_EXCEEDED', '同一输入端口最多一条入线'); inputs.add(inputKey);
+    const inputKey = `${edge.target}:${edge.targetHandle}`;
+    const multiImageTarget = targetNode.type === 'codex-capability'
+      && ['edit', 'analyze'].includes(String(targetNode.data.capability))
+      && edge.targetHandle === 'image-target';
+    const workflowReferenceTarget = targetNode.type === 'txt2img' && edge.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE;
+    if (multiImageTarget || workflowReferenceTarget) {
+      const incomingCount = graph.edges.filter((item) => item.target === edge.target && item.targetHandle === edge.targetHandle).length;
+      const uploads = Array.isArray(targetNode.data.referenceImages) ? targetNode.data.referenceImages.length : 0;
+      const max = multiImageTarget ? 16 : 9;
+      if (incomingCount + uploads > max) bad('MAX_INCOMING_EXCEEDED', `参考图片最多 ${max} 张`);
+    } else {
+      if (inputs.has(inputKey)) bad('MAX_INCOMING_EXCEEDED', '同一输入端口最多一条入线');
+      inputs.add(inputKey);
+    }
     adjacency.set(edge.source, [...(adjacency.get(edge.source) ?? []), edge.target]);
   }
   const visiting = new Set<string>(), visited = new Set<string>();
   const visit = (id: string) => { if (visiting.has(id)) bad('CYCLE_NOT_ALLOWED', '画布不允许环路'); if (visited.has(id)) return; visiting.add(id); for (const next of adjacency.get(id) ?? []) visit(next); visiting.delete(id); visited.add(id); };
   for (const id of nodes.keys()) visit(id);
+}
+
+type PromptImageReference = { referenceId?: unknown; edgeId?: unknown; token?: unknown };
+function nodePromptText(node: CanvasNode) {
+  return [typeof node.data.prompt === 'string' ? node.data.prompt : '', ...Object.values(node.data.formValues && typeof node.data.formValues === 'object' ? node.data.formValues : {}).filter((value) => typeof value === 'string')].join('\n');
+}
+function activeImageReferences(node: CanvasNode): PromptImageReference[] {
+  const prompt = nodePromptText(node);
+  const refs = Array.isArray(node.data.promptImageReferences) ? node.data.promptImageReferences as PromptImageReference[] : [];
+  return refs.filter((ref) => typeof ref.token === 'string' && prompt.includes(ref.token));
+}
+function referenceResolved(graph: CanvasGraph, target: CanvasNode, ref: PromptImageReference) {
+  if (typeof ref.edgeId === 'string' && ref.edgeId) return graph.edges.some((edge) => edge.id === ref.edgeId && edge.target === target.id && ['image-target', WORKFLOW_REFERENCE_IMAGES_HANDLE].includes(edge.targetHandle));
+  if (typeof ref.referenceId === 'string' && ref.referenceId.startsWith('field:')) {
+    const key = ref.referenceId.slice('field:'.length);
+    const values = target.data.formValues && typeof target.data.formValues === 'object' ? target.data.formValues as Record<string, unknown> : {};
+    return typeof values[key] === 'string' && !!String(values[key]).trim();
+  }
+  if (typeof ref.referenceId === 'string') return Array.isArray(target.data.referenceImages)
+    && target.data.referenceImages.some((item: any) => item?.referenceId === ref.referenceId && typeof item?.assetId === 'string');
+  return false;
+}
+
+/** 阻止本次操作新制造悬空 @ 引用；旧画布已有的缺失引用仍可载入并修复。 */
+function assertReferenceIntegrityChange(before: CanvasGraph, after: CanvasGraph) {
+  const nextNodes = new Map(after.nodes.map((node) => [node.id, node]));
+  for (const previous of before.nodes) {
+    const target = nextNodes.get(previous.id);
+    if (!target) continue;
+    for (const oldRef of activeImageReferences(previous)) {
+      if (!referenceResolved(before, previous, oldRef) || !nodePromptText(target).includes(String(oldRef.token))) continue;
+      const nextRef = activeImageReferences(target).find((item) => item.referenceId === oldRef.referenceId && item.token === oldRef.token);
+      if (!nextRef || !referenceResolved(after, target, nextRef)) {
+        bad('IMAGE_REFERENCE_IN_USE', `图片仍被节点 ${target.id} 的提示词引用，请先解除 @ 引用`, { targetNodeId: target.id, referenceId: oldRef.referenceId });
+      }
+    }
+  }
 }
 function applyCanvasOperation(draft: Pick<CanvasDoc, 'name' | 'graph' | 'brief'>, op: CanvasOperation, inverse: CanvasOperation[], deletedGeneratedNodeIds: string[]) {
   if (op.type === 'replace_graph') { validateGraph(op.graph); inverse.push({ type: 'replace_graph', graph: draft.graph }); draft.graph = JSON.parse(JSON.stringify(op.graph)); return; }
@@ -235,11 +288,33 @@ async function validateWorkflowHandles(graph: CanvasGraph, workflows: Repository
   const workflowIds = [...new Set(graph.nodes.filter((node) => node.type === 'txt2img').map((node) => String(node.data.workflowId)))];
   if (!workflowIds.length) return;
   const configured = new Map((await workflows.findByIds(workflowIds)).map((workflow) => [workflow.id, workflow]));
+  const referenceLimitFor = (workflow: Workflow) => {
+    let api: Record<string, any> = {};
+    try { api = typeof workflow.apiJson === 'string' ? JSON.parse(workflow.apiJson) : workflow.apiJson as any; } catch { /* normal handle validation reports malformed workflows elsewhere */ }
+    const apiNodes = Object.values(api);
+    if (apiNodes.some((item: any) => item?.class_type === 'MiniMaxH3ReferenceToVideo')) return 9;
+    return workflow.category === 'img2img' && /z[- ]?image/i.test(workflow.name) ? 1 : 0;
+  };
+  for (const node of graph.nodes.filter((item) => item.type === 'txt2img')) {
+    const workflow = configured.get(String(node.data.workflowId));
+    if (!workflow) continue;
+    const limit = referenceLimitFor(workflow);
+    const count = graph.edges.filter((item) => item.target === node.id && item.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE).length + (Array.isArray(node.data.referenceImages) ? node.data.referenceImages.length : 0);
+    if (count && !limit) bad('HANDLE_NOT_FOUND', `工作流 ${workflow.id} 不支持统一参考图输入`);
+    if (count > limit) bad('MAX_INCOMING_EXCEEDED', `${workflow.name} 参考图片最多 ${limit} 张`);
+  }
   for (const edge of graph.edges.filter((item) => item.targetHandle.startsWith('input:'))) {
     const node = nodes.get(edge.target)!; const workflow = configured.get(String(node.data.workflowId));
     // 已删除的工作流允许作为历史节点继续存在；若工作流存在，其端口必须精确匹配 inputConfig。
     if (!workflow) continue;
-    const exists = workflow.inputConfig?.fields?.some((field) => edge.targetHandle === (field.kind === 'image' ? `input:${field.nodeId}:${field.param}` : `input:${field.kind}:${field.nodeId}:${field.param}`));
+    const isReferenceGroup = edge.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE;
+    const referenceLimit = referenceLimitFor(workflow);
+    const exists = isReferenceGroup ? referenceLimit > 0 : workflow.inputConfig?.fields?.some((field) => edge.targetHandle === (field.kind === 'image' ? `input:${field.nodeId}:${field.param}` : `input:${field.kind}:${field.nodeId}:${field.param}`));
     if (!exists) bad('HANDLE_NOT_FOUND', `工作流 ${workflow.id} 未声明输入端口 ${edge.targetHandle}`);
+    if (isReferenceGroup) {
+      const target = graph.nodes.find((item) => item.id === edge.target)!;
+      const count = graph.edges.filter((item) => item.target === target.id && item.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE).length + (Array.isArray(target.data.referenceImages) ? target.data.referenceImages.length : 0);
+      if (count > referenceLimit) bad('MAX_INCOMING_EXCEEDED', `${workflow.name} 参考图片最多 ${referenceLimit} 张`);
+    }
   }
 }

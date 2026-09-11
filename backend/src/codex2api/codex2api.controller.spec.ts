@@ -109,3 +109,26 @@ describe('Codex2ApiController image prompt reverse mode', () => {
     });
   });
 });
+
+describe('Codex2ApiController ordered image references', () => {
+  it('stores the reference map in the Run snapshot without forwarding internal fields', async () => {
+    const payload = { data: [{ url: 'http://localhost/result.png' }] };
+    const service = {
+      forwardMultipart: jest.fn().mockResolvedValue(payload),
+      captureImages: jest.fn().mockResolvedValue({ data: [{ assetId: 'output-1', url: '/api/assets/output-1' }] }),
+    };
+    const runs = {
+      begin: jest.fn().mockResolvedValue({ run: { id: 'run-edit' }, replay: false }),
+      patch: jest.fn(), finish: jest.fn(),
+    };
+    const controller = new Codex2ApiController(service as any, { assertWriteAccess: jest.fn() } as any, runs as any);
+    const referenceMap = [{ referenceId: 'edge-a', assetId: 'asset-a', position: 1, displayName: '角色' }];
+
+    await controller.edit([{ buffer: Buffer.from('a'), originalname: 'a.png', mimetype: 'image/png' }], {
+      model: 'codex', prompt: '第 1 张输入图片', originalPrompt: '@角色', imageReferenceMap: JSON.stringify(referenceMap), inputAssetIds: JSON.stringify(['asset-a']),
+    });
+
+    expect(runs.begin.mock.calls[0][0]).toMatchObject({ inputAssetIds: ['asset-a'], inputSnapshot: { prompt: '第 1 张输入图片', originalPrompt: '@角色', imageReferenceMap: referenceMap } });
+    expect(service.forwardMultipart.mock.calls[0][2]).toEqual({ model: 'codex', prompt: '第 1 张输入图片' });
+  });
+});
