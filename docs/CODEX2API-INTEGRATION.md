@@ -45,6 +45,16 @@ Codex2API 是独立于 ComfyUI 工作流的通用能力提供方。CarrotCanvas 
 - 图像提示词模式依赖模型遵守 JSON 输出约束；无法解析为完整 `positive`/`negative` 对时不会伪造拆分字段，应作为提供方结构化输出异常处理。
 - 图片提示词反推无法得知图片外的原始生成参数，其输出是面向视觉近似复现的新提示词，不是原始 Prompt 的可验证还原。
 
+## 多图输入与稳定引用
+
+- 图生图与图像理解共用一个可接收多条入线的图片端口；连接图片与本地上传资产合计最多 16 张，与 GPT Image Edit API 上限一致。
+- 卡片以持久 `referenceImageOrder` 管理发送顺序，并显示 `N / 16`、有序缩略图、放大预览、拖动排序和单项移除。本地图片先保存为画布 upload 资产，刷新与交接后仍可恢复。
+- 连线图片以稳定 `edgeId`、上传图片以稳定 `asset:<assetId>` 作为 `referenceId`。提示词通过 `@` 选择器保存 token 与 referenceId 绑定；排序或删除未引用的中间图片不会改变引用目标。
+- 提交前按最终顺序把 `@` token 编译为“第 N 张输入图片（名称）”，同时加入序号说明。Run 的 `inputSnapshot` 保存用户原始提示词、编译后提示词和 `imageReferenceMap`，`inputAssetIds` 保存实际输入资产顺序。
+- 仍被提示词 `@` 引用的图片禁止断线、移除或删除来源节点；前端即时提示，后端对 operations 和 replace_graph 统一校验。旧数据意外形成的悬空引用允许载入，卡片标红并禁止运行，直到解除或重新建立引用。
+- 上述字段沿用 Canvas canonical graph JSON 与 GenerationRun `inputSnapshot`，无需数据库迁移。
+
 ## 变更记录
 
+- 2026-09-11：实现 Issue #19。Codex2API 图片输入扩展为单端口最多 16 图，新增持久上传、有序缩略图、预览/排序/移除、稳定 `@` 引用、动态序号编译、Run 输入映射审计及前后端删除保护；CarrotCanvas 与独立 codex2api 上传上限统一为 16，无数据库迁移。
 - 2026-09-06：实现 Issue #5。图像理解卡片将兼容的 `image-prompts` 模式明确呈现为“图片提示词反推”，注入面向视觉复现的专用指令，新 Run 记录 `reverse-image-prompt` 意图；三路输出、旧历史和文生文的图像提示词行为保持兼容。结构化输出异常现在返回可理解的 `502 STRUCTURED_PROMPT_INVALID`。

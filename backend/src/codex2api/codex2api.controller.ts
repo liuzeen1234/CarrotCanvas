@@ -127,11 +127,11 @@ export class Codex2ApiController {
   }
 
   @Post('images/edits')
-  @UseInterceptors(FilesInterceptor('image', 10, { limits: { fileSize: 15 * 1024 * 1024 } }))
+  @UseInterceptors(FilesInterceptor('image', 16, { limits: { fileSize: 15 * 1024 * 1024 } }))
   async edit(@UploadedFiles() files: UploadFile[], @Body() body: Record<string, unknown>) {
-    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, idempotencyKey, actorType, actorId, inputAssetIds, shotId, parentRunId, ...fields } = body || {};
+    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, idempotencyKey, actorType, actorId, inputAssetIds, imageReferenceMap, originalPrompt, shotId, parentRunId, ...fields } = body || {};
     if (canvasId) await this.canvas.assertWriteAccess(String(canvasId), { leaseToken: String(leaseToken || ''), leaseEpoch: Number(leaseEpoch), expectedRevision: Number(expectedRevision) });
-    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: String(canvasId || '') || null, nodeId: String(nodeId || '') || null, shotId: String(shotId || '') || null, parentRunId: String(parentRunId || '') || null, capabilityId: 'image-edit', capabilityVersion: String(fields.model || 'default'), inputSnapshot: fields, inputAssetIds: typeof inputAssetIds === 'string' ? JSON.parse(inputAssetIds) : [], actorType: actorType === 'agent' ? 'agent' : 'human', actorId: String(actorId || 'web'), idempotencyKey: String(idempotencyKey || '') || null });
+    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: String(canvasId || '') || null, nodeId: String(nodeId || '') || null, shotId: String(shotId || '') || null, parentRunId: String(parentRunId || '') || null, capabilityId: 'image-edit', capabilityVersion: String(fields.model || 'default'), inputSnapshot: { ...fields, ...(originalPrompt ? { originalPrompt } : {}), ...(imageReferenceMap ? { imageReferenceMap: typeof imageReferenceMap === 'string' ? JSON.parse(imageReferenceMap) : imageReferenceMap } : {}) }, inputAssetIds: typeof inputAssetIds === 'string' ? JSON.parse(inputAssetIds) : [], actorType: actorType === 'agent' ? 'agent' : 'human', actorId: String(actorId || 'web'), idempotencyKey: String(idempotencyKey || '') || null });
     if (begun.replay) return { ...(begun.run as any), runId: begun.run.id, replay: true };
     try {
       await this.runs.patch(begun.run.id, { status: 'running', startedAt: Date.now() });
@@ -144,14 +144,14 @@ export class Codex2ApiController {
   }
 
   @Post('images/analyze')
-  @UseInterceptors(FilesInterceptor('image', 10, { limits: { fileSize: 15 * 1024 * 1024 } }))
+  @UseInterceptors(FilesInterceptor('image', 16, { limits: { fileSize: 15 * 1024 * 1024 } }))
   async analyze(@UploadedFiles() files: UploadFile[], @Body() body: Record<string, unknown>) {
-    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, idempotencyKey, actorType, actorId, shotId, parentRunId, carrotOutputMode, ...fields } = body || {};
+    const { canvasId, nodeId, leaseToken, leaseEpoch, expectedRevision, idempotencyKey, actorType, actorId, shotId, parentRunId, carrotOutputMode, inputAssetIds, imageReferenceMap, originalPrompt, ...fields } = body || {};
     const structuredPromptMode = carrotOutputMode === 'image-prompts' || carrotOutputMode === 'video-prompts';
     const promptIntent = carrotOutputMode === 'image-prompts' ? 'reverse-image-prompt' : undefined;
     if (structuredPromptMode) fields.prompt = `${String(fields.prompt || (carrotOutputMode === 'video-prompts' ? '请根据图片生成图生视频提示词' : '请反推可尽可能复现输入图片的图像生成提示词'))}\n\n${carrotOutputMode === 'video-prompts' ? IMAGE_TO_VIDEO_PROMPT_INSTRUCTION : REVERSE_IMAGE_PROMPT_INSTRUCTION}`;
     if (canvasId) await this.canvas.assertWriteAccess(String(canvasId), { leaseToken: String(leaseToken || ''), leaseEpoch: Number(leaseEpoch), expectedRevision: Number(expectedRevision) });
-    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: String(canvasId || '') || null, nodeId: String(nodeId || '') || null, shotId: String(shotId || '') || null, parentRunId: String(parentRunId || '') || null, capabilityId: 'image-analysis', capabilityVersion: String(fields.model || 'default'), inputSnapshot: { ...fields, carrotOutputMode: carrotOutputMode || 'text', ...(promptIntent ? { carrotPromptIntent: promptIntent } : {}) }, actorType: actorType === 'agent' ? 'agent' : 'human', actorId: String(actorId || 'web'), idempotencyKey: String(idempotencyKey || '') || null });
+    const begun = await this.runs.begin({ provider: 'codex2api', canvasId: String(canvasId || '') || null, nodeId: String(nodeId || '') || null, shotId: String(shotId || '') || null, parentRunId: String(parentRunId || '') || null, capabilityId: 'image-analysis', capabilityVersion: String(fields.model || 'default'), inputSnapshot: { ...fields, carrotOutputMode: carrotOutputMode || 'text', ...(promptIntent ? { carrotPromptIntent: promptIntent } : {}), ...(originalPrompt ? { originalPrompt } : {}), ...(imageReferenceMap ? { imageReferenceMap: typeof imageReferenceMap === 'string' ? JSON.parse(imageReferenceMap) : imageReferenceMap } : {}) }, inputAssetIds: typeof inputAssetIds === 'string' ? JSON.parse(inputAssetIds) : [], actorType: actorType === 'agent' ? 'agent' : 'human', actorId: String(actorId || 'web'), idempotencyKey: String(idempotencyKey || '') || null });
     if (begun.replay) return { runId: begun.run.id, replay: true, run: begun.run };
     try {
       await this.runs.patch(begun.run.id, { status: 'running', startedAt: Date.now() });

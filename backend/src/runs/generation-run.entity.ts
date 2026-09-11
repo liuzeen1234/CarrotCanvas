@@ -16,6 +16,8 @@ export class GenerationRun {
   @Column({ type: 'text', name: 'capability_id', nullable: true }) capabilityId: string | null;
   @Column({ type: 'text', name: 'capability_version', nullable: true }) capabilityVersion: string | null;
   @Column({ type: 'simple-json', name: 'input_snapshot' }) inputSnapshot: unknown;
+  /** Stable request identity, independent of provider-side input preparation. */
+  @Column({ type: 'simple-json', name: 'request_snapshot', nullable: true }) requestSnapshot: unknown | null;
   @Column({ type: 'simple-json', name: 'input_asset_ids' }) inputAssetIds: string[];
   @Column({ type: 'simple-json', name: 'output_asset_ids' }) outputAssetIds: string[];
   @Column({ type: 'text', name: 'output_text', nullable: true }) outputText: string | null;

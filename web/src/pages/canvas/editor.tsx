@@ -27,7 +27,7 @@ import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, DragOutlined, Envi
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
-import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, type CodexCapability } from '@/components/canvas/nodes/types';
+import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, workflowReferenceImagesHandle, type CodexCapability } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { RunDuration } from '@/components/canvas/RunTiming';
 import { AssetIdLabel } from '@/components/canvas/nodes/NodeCardFields';
@@ -711,17 +711,45 @@ function CanvasEditorInner() {
   }, [manualSave]);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(canWrite ? changes : changes.filter((change) => change.type === 'select' || change.type === 'dimensions'), nds)),
+    (changes: NodeChange[]) => {
+      const deleting = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
+      const protectedSources = new Set(nodesRef.current.flatMap((node) => {
+        if (deleting.has(node.id)) return [];
+        const prompt = [String((node.data as any)?.prompt || ''), ...Object.values((node.data as any)?.formValues || {}).filter((value) => typeof value === 'string')].join('\n');
+        const refs = Array.isArray((node.data as any)?.promptImageReferences) ? (node.data as any).promptImageReferences : [];
+        return refs.filter((ref: any) => ref?.sourceNodeId && prompt.includes(String(ref.token || ''))).map((ref: any) => String(ref.sourceNodeId));
+      }));
+      const blocked = changes.some((change) => change.type === 'remove' && protectedSources.has(change.id));
+      if (blocked) message.error('该节点的图片仍被提示词 @ 引用，请先解除引用');
+      const allowed = changes.filter((change) => change.type !== 'remove' || !protectedSources.has(change.id));
+      setNodes((nds) => applyNodeChanges(canWrite ? allowed : allowed.filter((change) => change.type === 'select' || change.type === 'dimensions'), nds));
+    },
     [canWrite],
   );
   const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(canWrite ? changes : changes.filter((change) => change.type === 'select'), eds)),
+    (changes: EdgeChange[]) => {
+      const protectedEdges = new Set(nodesRef.current.flatMap((node) => {
+        if (node.selected) return [];
+        const prompt = [String((node.data as any)?.prompt || ''), ...Object.values((node.data as any)?.formValues || {}).filter((value) => typeof value === 'string')].join('\n');
+        const refs = Array.isArray((node.data as any)?.promptImageReferences) ? (node.data as any).promptImageReferences : [];
+        return refs.filter((ref: any) => ref?.edgeId && prompt.includes(String(ref.token || ''))).map((ref: any) => String(ref.edgeId));
+      }));
+      const blocked = changes.some((change) => change.type === 'remove' && protectedEdges.has(change.id));
+      if (blocked) message.error('该图片连线仍被提示词 @ 引用，请先解除引用');
+      const allowed = changes.filter((change) => change.type !== 'remove' || !protectedEdges.has(change.id));
+      setEdges((eds) => applyEdgeChanges(canWrite ? allowed : allowed.filter((change) => change.type === 'select'), eds));
+    },
     [canWrite],
   );
 
   /** 删除指定连线；供工具按钮和双击手势共用。 */
   const deleteEdge = useCallback((edgeId: string) => {
     if (!canWrite) return;
+    const used = nodesRef.current.some((node) => {
+      const prompt = [String((node.data as any)?.prompt || ''), ...Object.values((node.data as any)?.formValues || {}).filter((value) => typeof value === 'string')].join('\n');
+      return ((node.data as any)?.promptImageReferences || []).some((ref: any) => ref.edgeId === edgeId && prompt.includes(String(ref.token || '')));
+    });
+    if (used) { message.error('该图片连线仍被提示词 @ 引用，请先解除引用'); return; }
     setEdges((eds) => eds.filter((edge) => edge.id !== edgeId));
   }, [canWrite]);
 
@@ -743,9 +771,18 @@ function CanvasEditorInner() {
         .some((edge) => reachesSource(edge.target));
     };
     if (reachesSource(conn.target)) return false;
+    const targetNode = nodesRef.current.find((node) => node.id === conn.target);
+    const workflowReferenceLimit = targetNode?.type === NODE_TYPE_TXT2IMG && t === workflowReferenceImagesHandle()
+      ? (/MiniMax H3/i.test(String((targetNode.data as any)?.workflowName)) ? 9 : /Z-Image/i.test(String((targetNode.data as any)?.workflowName)) ? 1 : 0) : 0;
+    const multiImageTarget = sourceKind === 'image' && ((t === 'image-target' && targetNode?.type === NODE_TYPE_CODEX
+      && ['edit', 'analyze'].includes(String((targetNode.data as any)?.capability))) || workflowReferenceLimit > 0);
+    if (multiImageTarget) {
+      const connected = edgesRef.current.filter((edge) => edge.target === conn.target && edge.targetHandle === t).length;
+      const uploaded = Array.isArray((targetNode.data as any)?.referenceImages) ? (targetNode.data as any).referenceImages.length : 0;
+      return connected + uploaded < (workflowReferenceLimit || 16);
+    }
     if (t.endsWith('-target')) return t === `${sourceKind}-target`;
     if (!t.startsWith('input:')) return false;
-    const targetNode = nodesRef.current.find((node) => node.id === conn.target);
     const workflowId = (targetNode?.data as any)?.workflowId;
     if (!workflowId) return false;
     // 图片端点沿用历史格式 input:<node>:<param>；新增类型显式写入 input:<kind>:...。
@@ -760,10 +797,17 @@ function CanvasEditorInner() {
     (conn: Connection) => {
       if (!canWrite) return;
       pendingConnectionRef.current = null;
-      // 一个输入字段只能有一个来源；新连线替换该端口原有入线。
-      setEdges((eds) => addEdge(conn, eds.filter((edge) =>
-        !(edge.target === conn.target && edge.targetHandle === conn.targetHandle),
+      const target = nodesRef.current.find((node) => node.id === conn.target);
+      const multiImageTarget = (conn.targetHandle === 'image-target' && target?.type === NODE_TYPE_CODEX
+        && ['edit', 'analyze'].includes(String((target.data as any)?.capability)))
+        || (conn.targetHandle === workflowReferenceImagesHandle() && target?.type === NODE_TYPE_TXT2IMG);
+      const edge = { ...conn, id: `edge-${createClientUuid()}` } as Edge;
+      setEdges((eds) => addEdge(edge, multiImageTarget ? eds : eds.filter((item) =>
+        !(item.target === conn.target && item.targetHandle === conn.targetHandle),
       )));
+      if (multiImageTarget && conn.target) setNodes((items) => items.map((node) => node.id === conn.target ? {
+        ...node, data: { ...node.data, referenceImageOrder: [...(((node.data as any).referenceImageOrder || []) as string[]), edge.id] },
+      } : node));
     },
     [canWrite],
   );
@@ -842,6 +886,11 @@ function CanvasEditorInner() {
   /** 删除节点 + 其相连边（自定义节点经 Context 调用，二次确认在节点内） */
   const handleDeleteNode = useCallback(async (nodeId: string) => {
     if (!canWrite) return;
+    const used = nodesRef.current.some((node) => {
+      const prompt = [String((node.data as any)?.prompt || ''), ...Object.values((node.data as any)?.formValues || {}).filter((value) => typeof value === 'string')].join('\n');
+      return ((node.data as any)?.promptImageReferences || []).some((ref: any) => ref.sourceNodeId === nodeId && prompt.includes(String(ref.token || '')));
+    });
+    if (used) { message.error('该节点的图片仍被提示词 @ 引用，请先解除引用'); return; }
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     setNodeRuns((runs) => {
@@ -914,6 +963,27 @@ function CanvasEditorInner() {
     }
     const assets = ((source?.data as any)?.lastAssets ?? []) as CanvasResultState['assets'];
     return assets.find((asset) => asset.kind === kind) ?? null;
+  }, [edges, nodes]);
+
+  const getUpstreamAssets = useCallback((targetNodeId: string, targetHandle: string, kind: string) => {
+    const target = nodes.find((item) => item.id === targetNodeId);
+    const matching = edges.filter((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
+    const order = Array.isArray((target?.data as any)?.referenceImageOrder) ? (target?.data as any).referenceImageOrder as string[] : [];
+    const ordered = [...matching].sort((a, b) => {
+      const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+      return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+    });
+    return ordered.flatMap((edge, index) => {
+      let source = nodes.find((item) => item.id === edge.source);
+      if (source?.type === NODE_TYPE_RESULT && !source.data.inputMode) {
+        const rawKind = (source.data as any)?.kind;
+        const sourceInput = edges.find((item) => item.target === source!.id && item.targetHandle === resultTargetHandle(rawKind === 'video' || rawKind === 'audio' ? rawKind : 'image'));
+        source = sourceInput ? nodes.find((item) => item.id === sourceInput.source) : undefined;
+      }
+      const asset = (((source?.data as any)?.lastAssets ?? []) as CanvasResultState['assets']).find((item) => item.kind === kind);
+      if (!asset) return [];
+      return [{ ...asset, referenceId: edge.id, edgeId: edge.id, sourceNodeId: edge.source, displayName: String((source?.data as any)?.cardName || asset.filename || `参考图 ${index + 1}`) }];
+    });
   }, [edges, nodes]);
 
   const getUpstreamText = useCallback((targetNodeId: string, targetHandle: string) => {
@@ -1174,6 +1244,8 @@ function CanvasEditorInner() {
             getNodeRunState,
             getResultState,
             getUpstreamAsset,
+            getUpstreamAssets,
+            disconnectEdge: deleteEdge,
             getUpstreamText,
             generationHistoryVersion,
           }}>

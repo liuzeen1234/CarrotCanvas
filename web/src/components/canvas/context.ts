@@ -18,6 +18,17 @@ export interface CanvasUpstreamTextState {
   text: string;
 }
 
+export interface CanvasImageInputReference {
+  referenceId: string;
+  edgeId: string;
+  sourceNodeId: string;
+  displayName: string;
+  assetId: string;
+  url: string;
+  kind: string;
+  filename?: string;
+}
+
 export interface CanvasNodeDataApi {
   /** 当前画布是否只读；节点内所有共享副作用必须服从此标志。 */
   readOnly: boolean;
@@ -35,6 +46,8 @@ export interface CanvasNodeDataApi {
   getNodeRunState: (nodeId: string) => RunStateData | null;
   getResultState: (resultNodeId: string) => CanvasResultState;
   getUpstreamAsset: (targetNodeId: string, targetHandle: string, kind: string) => CanvasResultState['assets'][number] | null;
+  getUpstreamAssets: (targetNodeId: string, targetHandle: string, kind: string) => CanvasImageInputReference[];
+  disconnectEdge: (edgeId: string) => void;
   /** 读取文本输入端口连接的上游节点最后一次完整输出。 */
   getUpstreamText: (targetNodeId: string, targetHandle: string) => CanvasUpstreamTextState;
   /** 持久 Run/候选发生变化时递增，供节点刷新只读历史。 */
@@ -51,6 +64,8 @@ export const CanvasNodeDataContext = createContext<CanvasNodeDataApi>({
   getNodeRunState: () => null,
   getResultState: () => ({ run: null, assets: [] }),
   getUpstreamAsset: () => null,
+  getUpstreamAssets: () => [],
+  disconnectEdge: () => {},
   getUpstreamText: () => ({ connected: false, text: '' }),
   generationHistoryVersion: 0,
 });

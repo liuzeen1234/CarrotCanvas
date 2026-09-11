@@ -73,6 +73,22 @@
   justify-content: center;
 }
 
+.canvas-node--reference-error {
+  border-color: #ff4d4f;
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.18);
+}
+
+.canvas-reference-summary { align-items: center; display: flex; justify-content: space-between; }
+.canvas-reference-grid { display: grid; gap: 6px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.canvas-reference-thumb { min-width: 0; position: relative; text-align: center; }
+.canvas-reference-thumb > div { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-reference-thumb__preview { appearance: none; background: #111; border: 0; border-radius: 5px; cursor: zoom-in; display: block; height: 52px; overflow: hidden; padding: 0; position: relative; width: 100%; }
+.canvas-reference-thumb__preview img { height: 100%; object-fit: cover; width: 100%; }
+.canvas-reference-thumb__preview span { background: rgba(0, 0, 0, .68); bottom: 2px; color: #fff; font-size: 10px; left: 2px; padding: 0 4px; position: absolute; }
+.canvas-reference-thumb__remove { appearance: none; background: #fff; border: 0; border-radius: 50%; color: #ff4d4f; cursor: pointer; line-height: 1; padding: 0; position: absolute; right: -3px; top: -4px; z-index: 1; }
+.canvas-reference-thumb__remove:disabled { color: #bbb; cursor: not-allowed; }
+.canvas-reference-mention-image { border-radius: 3px; height: 22px; margin-right: 6px; object-fit: cover; vertical-align: middle; width: 22px; }
+
 .canvas-node__delete-action {
   margin-left: 12px;
 }

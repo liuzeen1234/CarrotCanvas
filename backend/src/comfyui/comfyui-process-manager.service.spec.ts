@@ -1,5 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { ComfyUIProcessManagerService } from './comfyui-process-manager.service';
+import childProcess = require('child_process');
+import { EventEmitter } from 'events';
 
 const owner = (pid: number) => ({ pid, name: 'python', path: 'D:\\Comfy\\python.exe', workingSetBytes: 10, privateBytes: 20 });
 const snapshot = (pid: number | null, desktop: number[] = []) => ({
@@ -12,7 +14,35 @@ describe('ComfyUIProcessManagerService', () => {
   const settings = { get: jest.fn(), set: jest.fn(async () => undefined) } as any;
   const client = { getSystemStats: jest.fn(async () => ({ system: { argv: ['ComfyUI\\main.py'] } })) } as any;
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    client.getSystemStats.mockResolvedValue({ system: { argv: ['ComfyUI\\main.py'] } });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('does not start a second backend while Desktop is still booting', async () => {
+    const service = new ComfyUIProcessManagerService(settings, client);
+    jest.spyOn(service, 'inspect').mockResolvedValue(snapshot(null, [102]));
+    const start = jest.spyOn(service as any, 'start');
+    const kill = jest.spyOn(service as any, 'killTree');
+    await expect(service.ensureManagedRunning()).rejects.toMatchObject({ response: { code: 'COMFYUI_TAKEOVER_REQUIRED' } });
+    expect(start).not.toHaveBeenCalled(); expect(kill).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('cleans up only its own failed boot child (still alive: %s)', async (alive) => {
+    const service = new ComfyUIProcessManagerService(settings, client);
+    const child = Object.assign(new EventEmitter(), { pid: 901, exitCode: 1 });
+    jest.spyOn(childProcess, 'spawn').mockReturnValue(child as any);
+    jest.spyOn(client, 'getSystemStats').mockRejectedValue(new Error('offline'));
+    const kill = jest.spyOn(service as any, 'killTree').mockResolvedValue('ok');
+    jest.spyOn(service as any, 'processExists').mockResolvedValue(alive);
+    const start = (service as any).start({ executable: process.execPath, args: [], cwd: process.cwd() });
+    if (alive) await expect(start).rejects.toMatchObject({ details: { code: 'PROVIDER_STATE_UNCONFIRMED', pid: 901 } });
+    else await expect(start).rejects.toThrow('提前退出');
+    expect(kill).toHaveBeenCalledWith(901);
+    expect(kill).toHaveBeenCalledTimes(1);
+    if (!alive) expect(settings.set).toHaveBeenCalledWith('comfyui-managed-process', null);
+  });
 
   it('never kills an external 8188 owner without explicit takeover', async () => {
     const service = new ComfyUIProcessManagerService(settings, client);

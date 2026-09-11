@@ -240,7 +240,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
    * - 否则按当前模式（form 值级写回 / JSON 文本）组装。
    * 返回 false 表示参数解析失败（formError 已设置），否则提交成功（异常时 throw）。
    */
-  const submit = async (apiJsonOverride?: unknown, connectedKeys: ReadonlySet<string> = new Set(), inputAssetIds: string[] = []): Promise<boolean> => {
+  const submit = async (apiJsonOverride?: unknown, connectedKeys: ReadonlySet<string> = new Set(), inputAssetIds: string[] = [], referenceInput?: { originalPrompt: string; imageReferenceMap: Array<Record<string, unknown>> }): Promise<boolean> => {
     const w = workflowRef.current;
     if (!w) return false;
     let apiJson: unknown;
@@ -278,6 +278,7 @@ export function useComfyRun(args: UseComfyRunArgs) {
           workflowId: w.id,
           apiJson,
           inputAssetIds,
+          ...referenceInput,
           canvasId: canvasRef.current?.canvasId,
           nodeId: canvasRef.current?.nodeId,
           leaseToken: canvasRef.current?.leaseToken,

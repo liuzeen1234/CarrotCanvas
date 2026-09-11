@@ -21,6 +21,9 @@ export class ComfyUIProcessManagerService {
 
   async ensureManagedRunning() {
     const inspection = await this.inspect();
+    if (inspection.desktopProcesses.length && !inspection.portOwner) throw new ConflictException({
+      code: 'COMFYUI_TAKEOVER_REQUIRED', message: '检测到外部 ComfyUI Desktop，拒绝并行启动托管后端', ...inspection,
+    });
     if (inspection.portOwner) {
       if (await this.isManagedProcess(inspection.portOwner)) return inspection;
       throw new ConflictException({
@@ -137,14 +140,31 @@ export class ComfyUIProcessManagerService {
     const child = spawn(launch.executable, launch.args, { cwd: launch.cwd, windowsHide: true,
       stdio: ['ignore', openSync(join(logs, 'stdout.log'), 'a'), openSync(join(logs, 'stderr.log'), 'a')] });
     this.child = child;
+    let spawnError: Error | undefined;
+    child.once('error', (error) => { spawnError = error; });
     child.once('exit', () => { if (this.child === child) this.child = null; });
+    try {
     await this.settings.set('comfyui-managed-process', JSON.stringify({ pid: child.pid, executable: launch.executable, startedAt: Date.now() }));
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
+      if (spawnError) throw spawnError;
       try { await this.client.getSystemStats(); return this.inspect(); }
       catch { if (child.exitCode !== null) throw new Error(`托管 ComfyUI 提前退出，exitCode=${child.exitCode}`); await delay(500); }
     }
     throw new Error('托管 ComfyUI 在 120 秒内未通过健康检查');
+    } catch (error) {
+      // A failed boot can leave a Python process alive without an 8188 listener.
+      // Only clean up the exact child spawned here; never kill a discovered external owner.
+      if (child.pid) {
+        await this.killTree(child.pid);
+        if (await this.processExists(child.pid)) throw Object.assign(new Error('ComfyUI 启动失败且进程未能退出'), {
+          details: { code: 'PROVIDER_STATE_UNCONFIRMED', provider: 'comfyui', pid: child.pid, cause: (error as Error).message },
+        });
+      }
+      if (this.child === child) this.child = null;
+      await this.settings.set('comfyui-managed-process', null);
+      throw error;
+    }
   }
 
   private async isManagedProcess(owner: ProcessInfo) {

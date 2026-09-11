@@ -49,6 +49,7 @@ export interface ComfySchemaFormProps {
   autoRandomSeedKeys?: ReadonlySet<string>;
   onAutoRandomSeedChange?: (key: string, enabled: boolean) => void;
   onRandomizeSeed?: (field: SchemaField) => void;
+  hiddenFieldKeys?: ReadonlySet<string>;
 }
 
 /** schema 字段 → antd 控件（受控，值来自 props.values，key=`${nodeId}::${param}`） */
@@ -71,6 +72,7 @@ export function ComfySchemaForm({
   autoRandomSeedKeys,
   onAutoRandomSeedChange,
   onRandomizeSeed,
+  hiddenFieldKeys,
 }: ComfySchemaFormProps) {
   if (schemaLoading) {
     return (
@@ -97,7 +99,7 @@ export function ComfySchemaForm({
   return (
     <div style={scroll ? { maxHeight, overflow: 'auto', paddingRight: 8 } : { overflow: 'visible' }}>
       {primary.length > 0 ? (
-        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} autoRandomSeedKeys={autoRandomSeedKeys} onAutoRandomSeedChange={onAutoRandomSeedChange} onRandomizeSeed={onRandomizeSeed} />
+        <RunGroups groups={primary} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} autoRandomSeedKeys={autoRandomSeedKeys} onAutoRandomSeedChange={onAutoRandomSeedChange} onRandomizeSeed={onRandomizeSeed} hiddenFieldKeys={hiddenFieldKeys} />
       ) : (
         <Alert
           type="info"
@@ -114,7 +116,7 @@ export function ComfySchemaForm({
               key: 'advanced',
               label: `高级参数（${advancedCount} 项）`,
               children: (
-                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} autoRandomSeedKeys={autoRandomSeedKeys} onAutoRandomSeedChange={onAutoRandomSeedChange} onRandomizeSeed={onRandomizeSeed} />
+                <RunGroups groups={advanced} values={values} onChange={onChange} disabled={disabled} onUploadImage={onUploadImage} uploading={uploading} singleColumn={singleColumn} invalidKeys={invalidKeys} renderInputConnector={renderInputConnector} getConnectedImage={getConnectedImage} getConnectedText={getConnectedText} autoRandomSeedKeys={autoRandomSeedKeys} onAutoRandomSeedChange={onAutoRandomSeedChange} onRandomizeSeed={onRandomizeSeed} hiddenFieldKeys={hiddenFieldKeys} />
               ),
             },
           ]}
@@ -139,10 +141,11 @@ interface RunGroupsProps {
   autoRandomSeedKeys?: ReadonlySet<string>;
   onAutoRandomSeedChange?: (key: string, enabled: boolean) => void;
   onRandomizeSeed?: (field: SchemaField) => void;
+  hiddenFieldKeys?: ReadonlySet<string>;
 }
 
 /** 渲染一组节点分组的表单控件 */
-function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn, invalidKeys, renderInputConnector, getConnectedImage, getConnectedText, autoRandomSeedKeys, onAutoRandomSeedChange, onRandomizeSeed }: RunGroupsProps) {
+function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploading, singleColumn, invalidKeys, renderInputConnector, getConnectedImage, getConnectedText, autoRandomSeedKeys, onAutoRandomSeedChange, onRandomizeSeed, hiddenFieldKeys }: RunGroupsProps) {
   return (
     <>
       {groups.map((g) => (
@@ -154,7 +157,7 @@ function RunGroups({ groups, values, onChange, disabled, onUploadImage, uploadin
           </Divider>
           <Row gutter={singleColumn ? 0 : 16}>
             {g.fields.map((f) =>
-              f.control === 'hidden' ? null : (
+              f.control === 'hidden' || hiddenFieldKeys?.has(fileKey(f)) ? null : (
                 <Col span={singleColumn ? 24 : 12} key={`${f.nodeId}::${f.param}`} style={{ marginBottom: 4, position: 'relative' }}>
                   {renderInputConnector?.(f)}
                   <div style={{ marginBottom: 2, fontSize: 12, color: invalidKeys?.has(fileKey(f)) ? '#ff4d4f' : '#555' }}>

@@ -20,20 +20,39 @@ export class RunsService implements OnModuleInit {
 
   registerCancelHandler(provider: string, handler: (runId: string) => Promise<unknown>) { this.cancelHandlers.set(provider, handler); }
 
-  async begin(input: Partial<GenerationRun> & Pick<GenerationRun, 'provider' | 'inputSnapshot'>) {
+  async begin(input: Partial<GenerationRun> & Pick<GenerationRun, 'provider' | 'inputSnapshot'>): Promise<{ run: GenerationRun; replay: boolean }> {
     if (input.idempotencyKey) {
       const existing = await this.runs.findOne({ where: { idempotencyKey: input.idempotencyKey } });
       if (existing) {
-        if (stableStringify(existing.inputSnapshot) !== stableStringify(redact(input.inputSnapshot))) throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT', message: '幂等键已用于不同运行输入' });
+        const same = existing.requestSnapshot != null
+          ? stableStringify(existing.requestSnapshot) === stableStringify(redact(input.requestSnapshot))
+          : stableStringify(existing.inputSnapshot) === stableStringify(redact(input.inputSnapshot));
+        if (!same || existing.provider !== input.provider) throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT', message: '幂等键已用于不同运行输入' });
         return { run: existing, replay: true };
       }
     }
     const now = Date.now();
     const run = this.runs.create({ status: 'queued', canvasId: null, nodeId: null, shotId: null, parentRunId: null, providerRunId: null, capabilityId: null, capabilityVersion: null, inputAssetIds: [], outputAssetIds: [], outputText: null, outputParts: null, actorType: 'human', actorId: 'web', attemptCount: 1, idempotencyKey: null, error: null, queuedAt: now, startedAt: null, finishedAt: null, ...input, inputSnapshot: redact(input.inputSnapshot) });
-    return { run: await this.runs.save(run), replay: false };
+    run.requestSnapshot = input.requestSnapshot == null ? null : redact(input.requestSnapshot);
+    try { return { run: await this.runs.save(run), replay: false }; }
+    catch (error) {
+      // A concurrent identical request may have won the unique-key insert.
+      if (input.idempotencyKey && await this.runs.findOne({ where: { idempotencyKey: input.idempotencyKey } })) return this.begin(input);
+      throw error;
+    }
+  }
+
+  async claimComfyTakeoverRetry(run: GenerationRun) {
+    const result = await this.runs.createQueryBuilder().update().set({
+      status: 'queued', error: () => 'NULL', finishedAt: null, attemptCount: run.attemptCount + 1,
+    }).where('id = :id AND status = :status AND provider_run_id IS NULL AND attempt_count = :attempt', {
+      id: run.id, status: 'failed', attempt: run.attemptCount,
+    }).execute();
+    return { claimed: result.affected === 1, run: await this.get(run.id) };
   }
 
   async patch(id: string, patch: Partial<GenerationRun>) {
+    if (patch.inputSnapshot !== undefined) patch = { ...patch, inputSnapshot: redact(patch.inputSnapshot) };
     await this.runs.update(id, patch as any);
     return this.get(id);
   }

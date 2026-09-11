@@ -74,6 +74,7 @@ export class Codex2ApiService {
 
   async forwardMultipart(path: string, files: UploadFile[], fields: Record<string, unknown>, timeoutMs = 300_000) {
     if (!files.length) throw new BadRequestException('请选择要上传的图片');
+    if (files.length > 16) throw new BadRequestException('参考图片最多 16 张');
     const form = new FormData();
     for (const file of files) {
       form.append('image', new Blob([Uint8Array.from(file.buffer)], { type: file.mimetype }), file.originalname);

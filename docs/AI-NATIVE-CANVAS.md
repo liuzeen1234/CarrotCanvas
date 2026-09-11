@@ -533,6 +533,13 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-11：将 Issue #19 的稳定多图引用协议扩展到 ComfyUI 工作流卡片。MiniMax H3 使用单个画布入口承载最多 9 张参考图，并在提交时把稳定 `@` 引用编译为当前 `<Picture N>`；Z-Image Turbo 通用图生图采用相同计数、缩略图、预览和移除交互，但按实际单图工作流保持 1 张。后端按工作流 API JSON/类别校验真实上限，并统一保护 formValues 中仍活动的引用；Run 快照记录原提示词与图片映射。复用 canonical graph 节点 data 和现有 Run JSON 字段，无数据库迁移。
+
+- 2026-09-11：同步更新仓库与用户级 carrot-canvas Skill 的 ComfyUI 冷启动指引。在线 schema 不再是所有 Run 的硬性前置；明确正常 Run 由调度器启动、外部进程才需接管确认、辅助 schema/asset 接口不启动，以及离线新参考素材自动回灌尚未实现。提交示例留出冷启动时间，超时仍先核对原 Run 和幂等键；不要求人工打开 Desktop，不以空任务预热。仅更新操作文档，阶段状态不变。
+
+- 2026-09-11：修复 ComfyUI Run 在 `/object_info` 先于计算调度器执行时无法冷启动的问题。现在先基础校验、持久 Run、计算 acquire/Provider 健康准备，再进行动态 schema/参数准备与提交。新增 nullable requestSnapshot 分离原始幂等身份与最终 inputSnapshot，补并发重复提交和接管重试条件领取；提交前失败、完成回调与启动残留清理均接入既有租约边界。辅助 schema/asset 转发接口不启动 Provider，离线上传引用素材尚不属于本次 Run 自动准备能力。Phase 0A–1B 状态保持完成，Phase 2/3 范围不变；完整协议及旧 Run 快照兼容边界见 COMFYUI-INTEGRATION.md 的 2026-09-11 修复说明。
+
+- 2026-09-11：实现 Issue #19 Codex2API 多图输入与稳定引用。图生图/图像理解允许单端口最多 16 条图片入线并与持久上传资产统一排序；`@` 引用绑定稳定 edge/asset referenceId，提交时才转换为当前序号，避免中间图片删除或重排造成目标漂移。UI 提供计数、缩略图、预览、拖动排序和移除，后端 graph operations/replace_graph 统一保护仍被引用的边与来源节点，旧悬空引用可见、标红并禁止生成。Run inputSnapshot 冻结原始提示词、实际提示词和顺序映射；复用既有 graph JSON、revision/lease、Operation Log、Checkpoint 和 Run 字段，无数据库迁移。`@` 提示词输入框复用画布的 IME 本地草稿机制，中文拼音组合完成后才写回节点，避免自动保存重渲染打断输入。同步更新仓库与当前安装的 `carrot-canvas` Skill，约束 Agent 使用稳定引用与有序多图提交协议。
 - 2026-09-10：画布所有现有卡片类型统一支持用户填写卡片名称与备注，字段随节点 data 经既有 lease/revision/语义化 `update_node` 流程持久化；卡片标题优先展示自定义名称。图片、视频、音频的当前产物、结果卡片、输入资产、节点历史候选与画布生成流水均在对应媒体附近显示完整且可复制的 `assetId`，便于人工在对话、接口和历史记录之间准确引用产物。同步更新仓库 `carrot-canvas` Skill，指导外部 AI 使用 `data.cardName` / `data.note` 并在交付与选片时报告完整 `assetId`。本次不改变资产 ID、Run、候选或 revision 合同。
 
 - 2026-09-10：修复 Issue #15 移动端通过局域网 HTTP 访问时申请编辑权限永久停留在“申请中”。根因为非安全上下文没有 `crypto.randomUUID()`，human holder ID 在请求发出前即抛错且轮询吞掉异常；现统一提供基于 `crypto.getRandomValues()` 的 LAN HTTP 兼容 UUID（极旧浏览器有最终回退），覆盖控制权、保存、节点创建及各类 Run 幂等键。首次自动 acquire 失败会持续重试，轮询错误会显示具体状态；acquire 成功后立即保存 lease token 并维持续租，最新 canonical graph、生成历史或 Run adopt 短暂失败时保持写入禁用并每 2 秒重试，同步完成后才开放编辑。前端生产构建和 dev server 热更新通过，源码已无直接 `crypto.randomUUID()` 调用；3100 健康检查与 8000 页面访问正常，待用户在实际移动端刷新复验。
