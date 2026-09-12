@@ -29,7 +29,14 @@ export interface CheckpointDto extends LeaseProof { name: string; description?: 
 const DEFAULT_CANVAS_NAME = '未命名画布';
 const LEASE_TTL_MS = 45_000;
 const SERVER_INSTANCE_ID = randomUUID();
-const WORKFLOW_REFERENCE_IMAGES_HANDLE = 'input:image:reference-group:images';
+const WORKFLOW_REFERENCE_HANDLES = {
+  images: { handle: 'input:image:reference-group:images', kind: 'image', max: 9, label: '参考图片' },
+  videos: { handle: 'input:reference-group:videos', kind: 'video', max: 3, label: '参考视频' },
+  videoAudios: { handle: 'input:reference-group:videoAudios', kind: 'audio', max: 3, label: '视频配音' },
+  audios: { handle: 'input:reference-group:audios', kind: 'audio', max: 3, label: '参考音频' },
+} as const;
+const LEGACY_WORKFLOW_REFERENCE_IMAGES_HANDLE = 'input:image:reference-group:images';
+const referenceGroupForHandle = (handle: string) => Object.entries(WORKFLOW_REFERENCE_HANDLES).find(([, spec]) => spec.handle === handle || (handle === LEGACY_WORKFLOW_REFERENCE_IMAGES_HANDLE && spec.kind === 'image'));
 
 @Injectable()
 export class CanvasService implements OnModuleInit {
@@ -176,6 +183,7 @@ function handleKind(handle: string, source: boolean): string | null {
   if (!source && ['emotion-audio-target', 'reference-audio-target'].includes(handle)) return 'audio';
   const suffix = source ? '-source' : '-target';
   if (handle.endsWith(suffix)) return handle.slice(0, -suffix.length);
+  if (!source && referenceGroupForHandle(handle)) return referenceGroupForHandle(handle)![1].kind;
   if (!source && handle.startsWith('input:')) return handle.startsWith('input:text:') ? 'text' : handle.startsWith('input:video:') ? 'video' : handle.startsWith('input:audio:') ? 'audio' : 'image';
   return null;
 }
@@ -214,12 +222,15 @@ function validateGraph(graph: CanvasGraph) {
     const multiImageTarget = targetNode.type === 'codex-capability'
       && ['edit', 'analyze'].includes(String(targetNode.data.capability))
       && edge.targetHandle === 'image-target';
-    const workflowReferenceTarget = targetNode.type === 'txt2img' && edge.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE;
+    const referenceGroup = targetNode.type === 'txt2img' ? referenceGroupForHandle(edge.targetHandle) : undefined;
+    const workflowReferenceTarget = !!referenceGroup;
     if (multiImageTarget || workflowReferenceTarget) {
       const incomingCount = graph.edges.filter((item) => item.target === edge.target && item.targetHandle === edge.targetHandle).length;
-      const uploads = Array.isArray(targetNode.data.referenceImages) ? targetNode.data.referenceImages.length : 0;
-      const max = multiImageTarget ? 16 : 9;
-      if (incomingCount + uploads > max) bad('MAX_INCOMING_EXCEEDED', `参考图片最多 ${max} 张`);
+      const groupKey = referenceGroup?.[0];
+      const groupedUploads = groupKey && targetNode.data.referenceMedia && typeof targetNode.data.referenceMedia === 'object' && Array.isArray((targetNode.data.referenceMedia as any)[groupKey]) ? (targetNode.data.referenceMedia as any)[groupKey].length : 0;
+      const uploads = groupedUploads + (groupKey === 'images' || multiImageTarget ? (Array.isArray(targetNode.data.referenceImages) ? targetNode.data.referenceImages.length : 0) : 0);
+      const max = multiImageTarget ? 16 : referenceGroup![1].max;
+      if (incomingCount + uploads > max) bad('MAX_INCOMING_EXCEEDED', `${multiImageTarget ? '参考图片' : referenceGroup![1].label}最多 ${max} 个`);
     } else {
       if (inputs.has(inputKey)) bad('MAX_INCOMING_EXCEEDED', '同一输入端口最多一条入线');
       inputs.add(inputKey);
@@ -237,18 +248,18 @@ function nodePromptText(node: CanvasNode) {
 }
 function activeImageReferences(node: CanvasNode): PromptImageReference[] {
   const prompt = nodePromptText(node);
-  const refs = Array.isArray(node.data.promptImageReferences) ? node.data.promptImageReferences as PromptImageReference[] : [];
+  const refs = [...(Array.isArray(node.data.promptImageReferences) ? node.data.promptImageReferences as PromptImageReference[] : []), ...(Array.isArray(node.data.promptMediaReferences) ? node.data.promptMediaReferences as PromptImageReference[] : [])];
   return refs.filter((ref) => typeof ref.token === 'string' && prompt.includes(ref.token));
 }
 function referenceResolved(graph: CanvasGraph, target: CanvasNode, ref: PromptImageReference) {
-  if (typeof ref.edgeId === 'string' && ref.edgeId) return graph.edges.some((edge) => edge.id === ref.edgeId && edge.target === target.id && ['image-target', WORKFLOW_REFERENCE_IMAGES_HANDLE].includes(edge.targetHandle));
+  if (typeof ref.edgeId === 'string' && ref.edgeId) return graph.edges.some((edge) => edge.id === ref.edgeId && edge.target === target.id && (edge.targetHandle === 'image-target' || !!referenceGroupForHandle(edge.targetHandle)));
   if (typeof ref.referenceId === 'string' && ref.referenceId.startsWith('field:')) {
-    const key = ref.referenceId.slice('field:'.length);
+    const key = ref.referenceId.slice('field:'.length).replace(/^(images|videos|videoAudios|audios):/, '');
     const values = target.data.formValues && typeof target.data.formValues === 'object' ? target.data.formValues as Record<string, unknown> : {};
     return typeof values[key] === 'string' && !!String(values[key]).trim();
   }
-  if (typeof ref.referenceId === 'string') return Array.isArray(target.data.referenceImages)
-    && target.data.referenceImages.some((item: any) => item?.referenceId === ref.referenceId && typeof item?.assetId === 'string');
+  if (typeof ref.referenceId === 'string') return (Array.isArray(target.data.referenceImages) && target.data.referenceImages.some((item: any) => item?.referenceId === ref.referenceId && typeof item?.assetId === 'string'))
+    || (target.data.referenceMedia && typeof target.data.referenceMedia === 'object' && Object.values(target.data.referenceMedia as Record<string, unknown>).some((items) => Array.isArray(items) && items.some((item: any) => item?.referenceId === ref.referenceId && typeof item?.assetId === 'string')));
   return false;
 }
 
@@ -288,33 +299,39 @@ async function validateWorkflowHandles(graph: CanvasGraph, workflows: Repository
   const workflowIds = [...new Set(graph.nodes.filter((node) => node.type === 'txt2img').map((node) => String(node.data.workflowId)))];
   if (!workflowIds.length) return;
   const configured = new Map((await workflows.findByIds(workflowIds)).map((workflow) => [workflow.id, workflow]));
-  const referenceLimitFor = (workflow: Workflow) => {
+  const referenceLimitsFor = (workflow: Workflow): Partial<Record<keyof typeof WORKFLOW_REFERENCE_HANDLES, number>> => {
     let api: Record<string, any> = {};
     try { api = typeof workflow.apiJson === 'string' ? JSON.parse(workflow.apiJson) : workflow.apiJson as any; } catch { /* normal handle validation reports malformed workflows elsewhere */ }
     const apiNodes = Object.values(api);
-    if (apiNodes.some((item: any) => item?.class_type === 'MiniMaxH3ReferenceToVideo')) return 9;
-    return workflow.category === 'img2img' && /z[- ]?image/i.test(workflow.name) ? 1 : 0;
+    if (apiNodes.some((item: any) => ['MiniMaxH3ReferenceToVideo', 'MiniMaxH3ImageToVideo'].includes(item?.class_type))) return { images: 9, videos: 3, videoAudios: 3, audios: 3 };
+    return workflow.category === 'img2img' && /z[- ]?image/i.test(workflow.name) ? { images: 1 } : {};
   };
   for (const node of graph.nodes.filter((item) => item.type === 'txt2img')) {
     const workflow = configured.get(String(node.data.workflowId));
     if (!workflow) continue;
-    const limit = referenceLimitFor(workflow);
-    const count = graph.edges.filter((item) => item.target === node.id && item.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE).length + (Array.isArray(node.data.referenceImages) ? node.data.referenceImages.length : 0);
-    if (count && !limit) bad('HANDLE_NOT_FOUND', `工作流 ${workflow.id} 不支持统一参考图输入`);
-    if (count > limit) bad('MAX_INCOMING_EXCEEDED', `${workflow.name} 参考图片最多 ${limit} 张`);
+    const limits = referenceLimitsFor(workflow);
+    for (const [groupKey, spec] of Object.entries(WORKFLOW_REFERENCE_HANDLES)) {
+      const legacyHandles = groupKey === 'images' ? [spec.handle, LEGACY_WORKFLOW_REFERENCE_IMAGES_HANDLE] : [spec.handle];
+      const connected = graph.edges.filter((item) => item.target === node.id && legacyHandles.includes(item.targetHandle)).length;
+      const grouped = node.data.referenceMedia && typeof node.data.referenceMedia === 'object' && Array.isArray((node.data.referenceMedia as any)[groupKey]) ? (node.data.referenceMedia as any)[groupKey].length : 0;
+      const uploads = grouped + (groupKey === 'images' && Array.isArray(node.data.referenceImages) ? node.data.referenceImages.length : 0);
+      const limit = limits[groupKey as keyof typeof WORKFLOW_REFERENCE_HANDLES] || 0;
+      if (connected + uploads && !limit) bad('HANDLE_NOT_FOUND', `工作流 ${workflow.id} 不支持${spec.label}输入`);
+      if (connected + uploads > limit) bad('MAX_INCOMING_EXCEEDED', `${workflow.name} ${spec.label}最多 ${limit} 个`);
+    }
   }
   for (const edge of graph.edges.filter((item) => item.targetHandle.startsWith('input:'))) {
     const node = nodes.get(edge.target)!; const workflow = configured.get(String(node.data.workflowId));
     // 已删除的工作流允许作为历史节点继续存在；若工作流存在，其端口必须精确匹配 inputConfig。
     if (!workflow) continue;
-    const isReferenceGroup = edge.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE;
-    const referenceLimit = referenceLimitFor(workflow);
-    const exists = isReferenceGroup ? referenceLimit > 0 : workflow.inputConfig?.fields?.some((field) => edge.targetHandle === (field.kind === 'image' ? `input:${field.nodeId}:${field.param}` : `input:${field.kind}:${field.nodeId}:${field.param}`));
+    const referenceGroup = referenceGroupForHandle(edge.targetHandle);
+    const referenceLimit = referenceGroup ? referenceLimitsFor(workflow)[referenceGroup[0] as keyof typeof WORKFLOW_REFERENCE_HANDLES] || 0 : 0;
+    const exists = referenceGroup ? referenceLimit > 0 : workflow.inputConfig?.fields?.some((field) => edge.targetHandle === (field.kind === 'image' ? `input:${field.nodeId}:${field.param}` : `input:${field.kind}:${field.nodeId}:${field.param}`));
     if (!exists) bad('HANDLE_NOT_FOUND', `工作流 ${workflow.id} 未声明输入端口 ${edge.targetHandle}`);
-    if (isReferenceGroup) {
+    if (referenceGroup) {
       const target = graph.nodes.find((item) => item.id === edge.target)!;
-      const count = graph.edges.filter((item) => item.target === target.id && item.targetHandle === WORKFLOW_REFERENCE_IMAGES_HANDLE).length + (Array.isArray(target.data.referenceImages) ? target.data.referenceImages.length : 0);
-      if (count > referenceLimit) bad('MAX_INCOMING_EXCEEDED', `${workflow.name} 参考图片最多 ${referenceLimit} 张`);
+      const count = graph.edges.filter((item) => item.target === target.id && referenceGroupForHandle(item.targetHandle)?.[0] === referenceGroup[0]).length;
+      if (count > referenceLimit) bad('MAX_INCOMING_EXCEEDED', `${workflow.name} ${referenceGroup[1].label}最多 ${referenceLimit} 个`);
     }
   }
 }

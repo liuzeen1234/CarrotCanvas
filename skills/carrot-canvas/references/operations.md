@@ -56,7 +56,9 @@ export default async function (s) {
 - 每个正式媒体产物以 `assetId` 唯一标识。节点 `lastAssets`、Run 的 `outputAssetIds`、候选组选择和下载命令必须使用同一个完整 `assetId`；不要用文件名、数组序号或卡片名称代替。向用户交付或请求选择时明确列出 `assetId`，界面会在当前产物、结果、输入资产、节点历史和生成流水附近展示并允许复制。
 - 常规 source 为 `text-source`、`image-source`、`video-source`、`audio-source`；正负提示词为 `text-positive-source` / `text-negative-source`。Codex 输入为 `text-target`，edit/analyze 可接 `image-target`。
 - 工作流 target 从实时 `inputConfig.fields` 构造：image 为 `input:${nodeId}:${param}`，其余为 `input:${kind}:${nodeId}:${param}`。不要按固定冒号段数拆 ID。媒体类型必须匹配；除上述 Codex edit/analyze `image-target` 外，单个输入最多一条边。不允许有向环路。
-- MiniMax H3 全能参考工作流额外提供统一图片句柄 `input:image:reference-group:images`，最多 9 条入线；顺序和稳定引用复用 `referenceImageOrder` / `promptImageReferences`，提交时依次映射至 `ref_images.ref_image_0..8`，token 编译为 `<Picture N>`。Z-Image Turbo 通用图生图也提供该句柄，但实际工作流仅有一个图片 latent 输入，最多 1 条。后端会按 workflow API JSON/类别拒绝越界或不支持该句柄的工作流。
+- MiniMax H3 高质量图生视频保留原 `img2vid` 工作流身份，并提供四个多入线句柄：`input:image:reference-group:images`（图片 9）、`input:reference-group:videos`（视频 3）、`input:reference-group:videoAudios`（视频配音 3）、`input:reference-group:audios`（独立音频 3）。原工作流的单张 `first_frame` 图片会投影为参考图第 1 项，不再作为独立图片控件或身份存在。旧“全能参考”分类已从画布入口下线，不要创建该分类节点或把它改名后充当图生视频。
+- 四组素材分别保存在 `referenceMedia[group]` 与 `referenceMediaOrder[group]`；旧图片字段 `referenceImages`、`referenceImageOrder`、`promptImageReferences` 仅用于兼容已有画布。连接素材的稳定 `referenceId` 为 edge ID，卡片上传素材为 `asset:<assetId>`。图片、视频、独立音频的 token 绑定写入 `promptMediaReferences`，其中包含 `group`；提交时根据各组当前顺序编译为 `<Picture N>`、`<Video N>`、`<Audio N>`。视频配音不生成 token，按顺序与参考视频配对，不能出现第 N 路配音但缺少第 N 个视频。
+- 移除或断开素材前，先从提示词删除相应 token，并同步清除 `promptMediaReferences` 绑定；后端会阻止制造活动引用悬空。运行请求保存 `originalPrompt`、兼容字段 `imageReferenceMap`，以及含 `images/videos/videoAudios/audios` 四组的 `referenceMaps`。原 `MiniMaxH3ImageToVideo` API 在提交阶段转换为 `MiniMaxH3ReferenceToVideo`，Agent 不应自行改写持久化工作流或用全能参考工作流替代它。Z-Image Turbo 通用图生图沿用图片句柄，但最多 1 条。
 
 ### Codex 多图与稳定引用
 

@@ -243,6 +243,25 @@ describe('Phase 0A canvas control (SQLite integration)', () => {
     expect(released.canvas.graph.edges).toHaveLength(8);
   });
 
+  it('MiniMax H3 图生视频卡片接受三组多媒体输入并保护视频 @ 引用', async () => {
+    const workflows = db.getRepository(Workflow);
+    const workflow = await workflows.save(workflows.create({ name: 'MiniMax H3 高质量图生视频', category: 'img2vid', apiJson: JSON.stringify({ '136': { class_type: 'MiniMaxH3ImageToVideo', inputs: { first_frame: ['137', 0] } } }), exposureConfig: null, fieldConfig: null, thumbnailPath: null, description: null, tags: null, inputConfig: { version: 1, fields: [{ nodeId: '137', param: 'image', kind: 'image' }] } }));
+    const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'agent', holderId: 'h3-media' });
+    const videoSources = Array.from({ length: 4 }, (_, index) => ({ id: `video-${index}`, type: 'result' as const, position: { x: 0, y: index * 10 }, data: { kind: 'video' } }));
+    const token = '@动作参考·stable1';
+    const first = await service.applyOperations(canvas.id, { ...proof(lease, 0, 'h3-media-three'), operations: [
+      ...videoSources.map((node) => ({ type: 'create_node' as const, node })),
+      { type: 'create_node', node: { id: 'audio', type: 'result', position: { x: 0, y: 100 }, data: { kind: 'audio' } } },
+      { type: 'create_node', node: { id: 'h3-media', type: 'txt2img', position: { x: 300, y: 0 }, data: { workflowId: workflow.id, formValues: { '138::value': `使用 ${token}` }, promptMediaReferences: [{ referenceId: 'video-edge-0', group: 'videos', edgeId: 'video-edge-0', sourceNodeId: 'video-0', token, displayName: '动作参考' }] } } },
+      ...videoSources.slice(0, 3).map((node, index) => ({ type: 'connect' as const, edge: { id: `video-edge-${index}`, source: node.id, sourceHandle: 'video-source', target: 'h3-media', targetHandle: 'input:reference-group:videos' } })),
+      { type: 'connect', edge: { id: 'soundtrack-edge', source: 'audio', sourceHandle: 'audio-source', target: 'h3-media', targetHandle: 'input:reference-group:videoAudios' } },
+      { type: 'connect', edge: { id: 'audio-edge', source: 'audio', sourceHandle: 'audio-source', target: 'h3-media', targetHandle: 'input:reference-group:audios' } },
+    ] });
+    expect(first.canvas.graph.edges).toHaveLength(5);
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'h3-media-four'), operations: [{ type: 'connect', edge: { id: 'video-edge-3', source: 'video-3', sourceHandle: 'video-source', target: 'h3-media', targetHandle: 'input:reference-group:videos' } }] })).rejects.toMatchObject({ response: { code: 'MAX_INCOMING_EXCEEDED' } });
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'h3-video-ref-block'), operations: [{ type: 'disconnect', edgeId: 'video-edge-0' }] })).rejects.toMatchObject({ response: { code: 'IMAGE_REFERENCE_IN_USE' } });
+  });
+
   it('Z-Image 统一参考图端口保持真实的一张上限', async () => {
     const workflows = db.getRepository(Workflow);
     const workflow = await workflows.save(workflows.create({ name: 'Z-Image Turbo 通用高质量图生图', category: 'img2img', apiJson: '{}', exposureConfig: null, fieldConfig: null, thumbnailPath: null, description: null, tags: null, inputConfig: { version: 1, fields: [{ nodeId: '7', param: 'image', kind: 'image' }] } }));

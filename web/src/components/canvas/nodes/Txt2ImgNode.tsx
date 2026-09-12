@@ -2,13 +2,13 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Alert, Button, Popconfirm, Progress, Space, Spin, Tag, Upload, message } from 'antd';
-import { CloseCircleFilled, DeleteOutlined, DownloadOutlined, PauseCircleOutlined, PlayCircleFilled, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
+import { AudioOutlined, CloseCircleFilled, DeleteOutlined, DownloadOutlined, PauseCircleOutlined, PlayCircleFilled, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { request } from 'umi';
 import { ComfyUIAPI, RunStateData, SchemaField, applyFormValues, fileKey, splitByExposure } from '@/components/comfyui/types';
 import { ComfySchemaForm } from '@/components/comfyui/ComfySchemaForm';
 import { useComfyRun } from '@/components/comfyui/useComfyRun';
 import { CanvasNodeDataContext } from '../context';
-import { Txt2ImgNodeData, resultSourceHandle, workflowInputHandle, workflowOutputKind, workflowReferenceImagesHandle } from './types';
+import { Txt2ImgNodeData, resultSourceHandle, workflowInputHandle, workflowOutputKind, workflowReferenceHandle, type WorkflowReferenceGroup } from './types';
 import NodeOutputHistory from '../NodeOutputHistory';
 import { RunElapsed } from '../RunTiming';
 import CanvasMediaPreview, { type CanvasMediaItem } from '../CanvasMediaPreview';
@@ -17,25 +17,54 @@ import { ImeSafeMentions } from '../ImeSafeInput';
 
 const isEmpty = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 
+type MediaKind = 'image' | 'video' | 'audio';
+type ReferenceItem = { referenceId: string; edgeId?: string; sourceNodeId?: string; displayName: string; assetId: string; url: string; kind: MediaKind; filename?: string };
+type ReferenceGroupConfig = { key: WorkflowReferenceGroup; label: string; kind: MediaKind; max: number; tag: 'Picture' | 'Video' | 'Audio' | null; slots: Array<{ nodeId: string; param: string; kind: MediaKind }> };
+
 function referenceConfig(workflow: ComfyUIAPI | null) {
   if (!workflow) return null;
   const api = workflow.apiJson as Record<string, any>;
-  const h3 = Object.entries(api).find(([, node]) => node?.class_type === 'MiniMaxH3ReferenceToVideo');
+  const h3 = Object.entries(api).find(([, node]) => ['MiniMaxH3ReferenceToVideo', 'MiniMaxH3ImageToVideo'].includes(node?.class_type));
   if (h3) {
     const [nodeId, node] = h3;
-    const slots = Array.from({ length: 9 }, (_, index) => {
-      const param = `ref_images.ref_image_${index}`;
-      const value = node.inputs?.[param];
-      if (Array.isArray(value)) return workflow.inputConfig?.fields.find((field) => field.kind === 'image' && field.nodeId === String(value[0])) || null;
-      return workflow.inputConfig?.fields.find((field) => field.kind === 'image' && field.nodeId === nodeId && field.param === param) || null;
-    }).filter(Boolean) as Array<{ nodeId: string; param: string; kind: 'image' }>;
+    const upgradesImageToVideo = node.class_type === 'MiniMaxH3ImageToVideo';
+    const findUpstreamField = (value: unknown, kind: MediaKind, visited = new Set<string>()): { nodeId: string; param: string; kind: MediaKind } | null => {
+      if (!Array.isArray(value) || typeof value[0] !== 'string' || visited.has(value[0])) return null;
+      const sourceId = value[0]; visited.add(sourceId);
+      const direct = workflow.inputConfig?.fields.find((field) => field.kind === kind && field.nodeId === sourceId);
+      if (direct) return direct as { nodeId: string; param: string; kind: MediaKind };
+      const source = api[sourceId];
+      for (const upstream of Object.values(source?.inputs || {})) {
+        const field = findUpstreamField(upstream, kind, visited);
+        if (field) return field;
+      }
+      return null;
+    };
+    const specs: Array<Omit<ReferenceGroupConfig, 'slots'>> = [
+      { key: 'images', label: '参考图', kind: 'image', max: 9, tag: 'Picture' },
+      { key: 'videos', label: '参考视频', kind: 'video', max: 3, tag: 'Video' },
+      { key: 'videoAudios', label: '视频配音', kind: 'audio', max: 3, tag: null },
+      { key: 'audios', label: '参考音频', kind: 'audio', max: 3, tag: 'Audio' },
+    ];
+    const prefixes: Record<WorkflowReferenceGroup, string> = { images: 'ref_images.ref_image_', videos: 'ref_videos.ref_video_', videoAudios: 'ref_video_audios.ref_video_audio_', audios: 'ref_audios.ref_audio_' };
+    const groups = specs.map((spec) => ({ ...spec, slots: Array.from({ length: spec.max }, (_, index) => {
+      const param = `${prefixes[spec.key]}${index}`; const value = upgradesImageToVideo && spec.key === 'images' && index === 0 ? node.inputs?.first_frame : node.inputs?.[param];
+      if (Array.isArray(value)) {
+        const field = findUpstreamField(value, spec.kind);
+        if (field) return field;
+      }
+      return workflow.inputConfig?.fields.find((field) => field.kind === spec.kind && field.nodeId === nodeId && field.param === param)
+        || { nodeId, param, kind: spec.kind };
+    }) })) as ReferenceGroupConfig[];
     const promptLink = node.inputs?.prompt;
-    const promptField = Array.isArray(promptLink) ? workflow.inputConfig?.fields.find((field) => field.kind === 'text' && field.nodeId === String(promptLink[0])) : null;
-    return { max: 9, slots, promptKey: promptField ? `${promptField.nodeId}::${promptField.param}` : null, tag: 'Picture' };
+    const promptField = Array.isArray(promptLink)
+      ? findUpstreamField(promptLink, 'text')
+      : workflow.inputConfig?.fields.find((field) => field.kind === 'text' && field.nodeId === nodeId && field.param === 'prompt');
+    return { groups, promptKey: promptField ? `${promptField.nodeId}::${promptField.param}` : null, upgradeNodeId: upgradesImageToVideo ? nodeId : null };
   }
   if (workflow.category === 'img2img' && /z[- ]?image/i.test(workflow.name)) {
     const slot = workflow.inputConfig?.fields.find((field) => field.kind === 'image');
-    return slot ? { max: 1, slots: [slot], promptKey: null, tag: null } : null;
+    return slot ? { groups: [{ key: 'images', label: '参考图', kind: 'image', max: 1, slots: [slot], tag: 'Picture' } as ReferenceGroupConfig], promptKey: null } : null;
   }
   return null;
 }
@@ -47,7 +76,7 @@ export default function Txt2ImgNode(props: NodeProps) {
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const [referencePreviewIndex, setReferencePreviewIndex] = useState<number | null>(null);
+  const [referencePreview, setReferencePreview] = useState<{ group: WorkflowReferenceGroup; index: number } | null>(null);
   const [missingKeys, setMissingKeys] = useState<Set<string>>(new Set());
   const [historyVersion, setHistoryVersion] = useState(0);
   const initializedRef = useRef(false);
@@ -111,61 +140,69 @@ export default function Txt2ImgNode(props: NodeProps) {
   ), [workflow]);
 
   const refConfig = useMemo(() => referenceConfig(workflow), [workflow]);
-  const legacyConnectedReferences = refConfig ? refConfig.slots.flatMap((field) => getUpstreamAssets(nodeId, workflowInputHandle(field.nodeId, field.param, 'image'), 'image')) : [];
-  const connectedReferences = refConfig ? [...legacyConnectedReferences, ...getUpstreamAssets(nodeId, workflowReferenceImagesHandle(), 'image')] : [];
-  const embeddedReferences = refConfig ? refConfig.slots.flatMap((field, index) => {
-    if (getUpstreamAssets(nodeId, workflowInputHandle(field.nodeId, field.param, 'image'), 'image').length) return [];
-    const key = `${field.nodeId}::${field.param}`;
-    const filename = String(run.formValues[key] ?? data.formValues?.[key] ?? '').trim();
-    if (!filename) return [];
-    const normalized = filename.replace(/\\/g, '/'); const slash = normalized.lastIndexOf('/');
-    const query = new URLSearchParams({ filename: slash >= 0 ? normalized.slice(slash + 1) : normalized, type: 'input' });
-    if (slash >= 0) query.set('subfolder', normalized.slice(0, slash));
-    return [{ referenceId: `field:${key}`, edgeId: '', sourceNodeId: '', displayName: normalized.split('/').at(-1) || `参考图 ${index + 1}`, assetId: '', url: `/api/comfyui/view?${query.toString()}`, kind: 'image', filename }];
-  }) : [];
-  const uploadedReferences = data.referenceImages || [];
-  const referenceOrder = data.referenceImageOrder || [];
-  const references = useMemo(() => [...connectedReferences, ...embeddedReferences, ...uploadedReferences].sort((a, b) => {
-    const ai = referenceOrder.indexOf(a.referenceId), bi = referenceOrder.indexOf(b.referenceId);
-    return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
-  }), [connectedReferences, embeddedReferences, uploadedReferences, referenceOrder]);
+  const referenceGroups = (refConfig?.groups || []).map((config) => {
+    const legacy = config.slots.flatMap((field) => getUpstreamAssets(nodeId, workflowInputHandle(field.nodeId, field.param, config.kind), config.kind));
+    const connected = [...legacy, ...getUpstreamAssets(nodeId, workflowReferenceHandle(config.key), config.kind)] as ReferenceItem[];
+    const embedded = config.slots.flatMap((field, index): ReferenceItem[] => {
+      if (getUpstreamAssets(nodeId, workflowInputHandle(field.nodeId, field.param, config.kind), config.kind).length) return [];
+      const key = `${field.nodeId}::${field.param}`; const filename = String(run.formValues[key] ?? data.formValues?.[key] ?? '').trim();
+      if (!filename) return [];
+      const normalized = filename.replace(/\\/g, '/'); const slash = normalized.lastIndexOf('/');
+      const query = new URLSearchParams({ filename: slash >= 0 ? normalized.slice(slash + 1) : normalized, type: 'input' });
+      if (slash >= 0) query.set('subfolder', normalized.slice(0, slash));
+      return [{ referenceId: `field:${config.key}:${key}`, displayName: normalized.split('/').at(-1) || `${config.label} ${index + 1}`, assetId: '', url: `/api/comfyui/view?${query.toString()}`, kind: config.kind, filename }];
+    });
+    const legacyUploads = config.key === 'images' ? (data.referenceImages || []) : [];
+    const uploaded = [...legacyUploads, ...(data.referenceMedia?.[config.key] || [])] as ReferenceItem[];
+    const legacyOrder = config.key === 'images' ? (data.referenceImageOrder || []) : [];
+    const order = data.referenceMediaOrder?.[config.key] || legacyOrder;
+    const references = [...connected, ...embedded, ...uploaded].filter((item, index, all) => all.findIndex((candidate) => candidate.referenceId === item.referenceId) === index).sort((a, b) => {
+      const ai = order.indexOf(a.referenceId), bi = order.indexOf(b.referenceId);
+      return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+    });
+    return { config, connected, uploaded, order, references };
+  });
+  const references = referenceGroups.flatMap((group) => group.references);
   const referencePrompt = refConfig?.promptKey ? String(run.formValues[refConfig.promptKey] ?? data.formValues?.[refConfig.promptKey] ?? '') : '';
-  const activeBindings = (data.promptImageReferences || []).filter((binding) => referencePrompt.includes(binding.token));
+  const allBindings = [...(data.promptMediaReferences || []), ...(data.promptImageReferences || []).map((binding) => ({ ...binding, group: 'images' as WorkflowReferenceGroup }))];
+  const activeBindings = allBindings.filter((binding) => referencePrompt.includes(binding.token));
   const missingBindings = activeBindings.filter((binding) => !references.some((item) => item.referenceId === binding.referenceId));
   const hiddenReferenceKeys = useMemo(() => new Set([
-    ...(refConfig?.slots || []).map((field) => `${field.nodeId}::${field.param}`),
+    ...(refConfig?.groups || []).flatMap((group) => group.slots.map((field) => `${field.nodeId}::${field.param}`)),
     ...(refConfig?.promptKey ? [refConfig.promptKey] : []),
   ]), [refConfig]);
 
   const updateReferencePrompt = (prompt: string) => {
     if (!refConfig?.promptKey) return;
     run.handleFormChange(refConfig.promptKey, prompt);
-    updateNodeData(nodeId, { promptImageReferences: (data.promptImageReferences || []).filter((binding) => prompt.includes(binding.token)) });
+    updateNodeData(nodeId, { promptMediaReferences: allBindings.filter((binding) => prompt.includes(binding.token)), promptImageReferences: [] });
   };
-  const removeReference = (referenceId: string) => {
+  const updateGroup = (key: WorkflowReferenceGroup, patch: Record<string, unknown>) => updateNodeData(nodeId, patch);
+  const removeReference = (groupKey: WorkflowReferenceGroup, referenceId: string) => {
     const binding = activeBindings.find((item) => item.referenceId === referenceId);
     if (binding) { message.error(`“${binding.displayName}”仍被提示词引用，请先删除 ${binding.token}`); return; }
-    const connected = connectedReferences.find((item) => item.referenceId === referenceId);
-    if (connected) disconnectEdge(connected.edgeId);
-    else if (referenceId.startsWith('field:')) run.handleFormChange(referenceId.slice('field:'.length), '');
-    else updateNodeData(nodeId, { referenceImages: uploadedReferences.filter((item) => item.referenceId !== referenceId) });
-    updateNodeData(nodeId, { referenceImageOrder: referenceOrder.filter((id) => id !== referenceId) });
+    const group = referenceGroups.find((item) => item.config.key === groupKey)!; const connected = group.connected.find((item) => item.referenceId === referenceId);
+    if (connected?.edgeId) disconnectEdge(connected.edgeId);
+    else if (referenceId.startsWith(`field:${groupKey}:`)) run.handleFormChange(referenceId.slice(`field:${groupKey}:`.length), '');
+    else updateGroup(groupKey, { referenceMedia: { ...(data.referenceMedia || {}), [groupKey]: group.uploaded.filter((item) => item.referenceId !== referenceId) }, ...(groupKey === 'images' ? { referenceImages: [] } : {}) });
+    updateGroup(groupKey, { referenceMediaOrder: { ...(data.referenceMediaOrder || {}), [groupKey]: group.order.filter((id) => id !== referenceId) }, ...(groupKey === 'images' ? { referenceImageOrder: [] } : {}) });
   };
-  const moveReference = (fromId: string, toId: string) => {
-    const order = references.map((item) => item.referenceId); const from = order.indexOf(fromId), to = order.indexOf(toId);
+  const moveReference = (groupKey: WorkflowReferenceGroup, fromId: string, toId: string) => {
+    const group = referenceGroups.find((item) => item.config.key === groupKey)!; const order = group.references.map((item) => item.referenceId); const from = order.indexOf(fromId), to = order.indexOf(toId);
     if (from < 0 || to < 0 || from === to) return;
-    const [moved] = order.splice(from, 1); order.splice(to, 0, moved); updateNodeData(nodeId, { referenceImageOrder: order });
+    const [moved] = order.splice(from, 1); order.splice(to, 0, moved); updateGroup(groupKey, { referenceMediaOrder: { ...(data.referenceMediaOrder || {}), [groupKey]: order }, ...(groupKey === 'images' ? { referenceImageOrder: [] } : {}) });
   };
-  const uploadReference = async (file: File) => {
+  const uploadReference = async (groupKey: WorkflowReferenceGroup, file: File) => {
     if (!canvasId || !control || !refConfig) { message.error('当前画布不可写'); return false; }
-    if (references.length >= refConfig.max) { message.error(`参考图片最多 ${refConfig.max} 张`); return false; }
-    const form = new FormData(); form.append('file', file); form.append('kind', 'image'); form.append('canvasId', canvasId); form.append('nodeId', nodeId);
+    const group = referenceGroups.find((item) => item.config.key === groupKey)!;
+    if (group.references.length >= group.config.max) { message.error(`${group.config.label}最多 ${group.config.max} 个`); return false; }
+    const form = new FormData(); form.append('file', file); form.append('kind', group.config.kind); form.append('canvasId', canvasId); form.append('nodeId', nodeId);
     form.append('leaseToken', control.leaseToken); form.append('leaseEpoch', String(control.leaseEpoch)); form.append('expectedRevision', String(control.expectedRevision));
     try {
       const response = await fetch('/api/comfyui/upload/media', { method: 'POST', body: form });
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.message || '上传失败');
       const { asset } = await response.json(); const referenceId = `asset:${asset.assetId}`;
-      updateNodeData(nodeId, { referenceImages: [...uploadedReferences, { referenceId, ...asset, displayName: asset.filename || file.name }], referenceImageOrder: [...referenceOrder.filter((id) => references.some((item) => item.referenceId === id)), referenceId] });
+      updateGroup(groupKey, { referenceMedia: { ...(data.referenceMedia || {}), [groupKey]: [...group.uploaded, { referenceId, ...asset, kind: group.config.kind, displayName: asset.filename || file.name }] }, referenceMediaOrder: { ...(data.referenceMediaOrder || {}), [groupKey]: [...group.order.filter((id) => group.references.some((item) => item.referenceId === id)), referenceId] }, ...(groupKey === 'images' ? { referenceImages: [], referenceImageOrder: [] } : {}) });
     } catch (error: any) { message.error(error?.message || '上传失败'); }
     return false;
   };
@@ -195,27 +232,32 @@ export default function Txt2ImgNode(props: NodeProps) {
     }
     setMissingKeys(missing);
     if (missing.size) { message.warning(`请先填写 ${missing.size} 个必填参数`); return; }
-    if (refConfig && references.length === 0) { message.warning('请先添加至少一张参考图片'); return; }
-    if (missingBindings.length) { message.error('提示词中存在已缺失的图片引用，请先解除或重新连接'); return; }
+    if (refConfig && references.length === 0) { message.warning('请先添加至少一个参考素材'); return; }
+    if (missingBindings.length) { message.error('提示词中存在已缺失的素材引用，请先解除或重新连接'); return; }
+    const videoCount = referenceGroups.find((group) => group.config.key === 'videos')?.references.length || 0;
+    const videoAudioCount = referenceGroups.find((group) => group.config.key === 'videoAudios')?.references.length || 0;
+    if (videoAudioCount > videoCount) { message.error(`第 ${videoCount + 1} 路视频配音缺少对应的参考视频`); return; }
     try {
       const resolvedValues = { ...run.formValues };
       const inputAssetIds = new Set<string>();
       if (refConfig) {
-        for (const slot of refConfig.slots) resolvedValues[`${slot.nodeId}::${slot.param}`] = '';
-        for (const [index, reference] of references.entries()) {
-          const slot = refConfig.slots[index];
-          if (!slot) throw new Error(`参考图片超过工作流上限 ${refConfig.max} 张`);
-          if (reference.assetId) {
-            const uploaded = await request<{ file: { name: string } }>('/api/comfyui/upload/asset', { method: 'POST', data: { canvasId, assetId: reference.assetId } });
-            resolvedValues[`${slot.nodeId}::${slot.param}`] = uploaded.file.name;
-            inputAssetIds.add(reference.assetId);
-          } else resolvedValues[`${slot.nodeId}::${slot.param}`] = reference.filename || '';
+        for (const group of referenceGroups) {
+          for (const slot of group.config.slots) resolvedValues[`${slot.nodeId}::${slot.param}`] = '';
+          for (const [index, reference] of group.references.entries()) {
+            const slot = group.config.slots[index];
+            if (!slot) throw new Error(`${group.config.label}超过工作流上限 ${group.config.max} 个`);
+            if (reference.assetId) {
+              const uploaded = await request<{ file: { name: string } }>('/api/comfyui/upload/asset', { method: 'POST', data: { canvasId, assetId: reference.assetId } });
+              resolvedValues[`${slot.nodeId}::${slot.param}`] = uploaded.file.name;
+              inputAssetIds.add(reference.assetId);
+            } else resolvedValues[`${slot.nodeId}::${slot.param}`] = reference.filename || '';
+          }
         }
         if (refConfig.promptKey) {
           let compiled = referencePrompt;
           for (const binding of activeBindings) {
-            const index = references.findIndex((item) => item.referenceId === binding.referenceId);
-            if (index >= 0) compiled = compiled.split(binding.token).join(`<${refConfig.tag} ${index + 1}>`);
+            const group = referenceGroups.find((item) => item.config.key === binding.group); const index = group?.references.findIndex((item) => item.referenceId === binding.referenceId) ?? -1;
+            if (group?.config.tag && index >= 0) compiled = compiled.split(binding.token).join(`<${group.config.tag} ${index + 1}>`);
           }
           resolvedValues[refConfig.promptKey] = compiled;
         }
@@ -241,9 +283,18 @@ export default function Txt2ImgNode(props: NodeProps) {
         });
         resolvedValues[`${input.nodeId}::${input.param}`] = uploaded.file.name;
       }
-      await run.submit(applyFormValues(workflow.apiJson, resolvedValues), new Set((workflow.inputConfig?.fields ?? []).filter(f => f.kind === 'text' && upstreamTextFor(f).connected).map(fileKey)), [...inputAssetIds], refConfig ? {
+      const compiledApi = applyFormValues(workflow.apiJson, resolvedValues) as Record<string, any>;
+      if (refConfig?.upgradeNodeId) {
+        const h3Node = compiledApi[refConfig.upgradeNodeId];
+        h3Node.class_type = 'MiniMaxH3ReferenceToVideo';
+        h3Node.inputs['ref_images.ref_image_0'] = h3Node.inputs.first_frame;
+        delete h3Node.inputs.first_frame;
+        h3Node.inputs.ref_image_size ??= 'match';
+      }
+      await run.submit(compiledApi, new Set((workflow.inputConfig?.fields ?? []).filter(f => f.kind === 'text' && upstreamTextFor(f).connected).map(fileKey)), [...inputAssetIds], refConfig ? {
         originalPrompt: referencePrompt,
-        imageReferenceMap: references.map((item, index) => ({ referenceId: item.referenceId, assetId: item.assetId || null, position: index + 1, displayName: item.displayName, token: activeBindings.find((binding) => binding.referenceId === item.referenceId)?.token || null })),
+        imageReferenceMap: referenceGroups.find((group) => group.config.key === 'images')?.references.map((item, index) => ({ referenceId: item.referenceId, assetId: item.assetId || null, position: index + 1, displayName: item.displayName, token: activeBindings.find((binding) => binding.referenceId === item.referenceId)?.token || null })) || [],
+        referenceMaps: Object.fromEntries(referenceGroups.map((group) => [group.config.key, group.references.map((item, index) => ({ referenceId: item.referenceId, assetId: item.assetId || null, position: index + 1, displayName: item.displayName, token: activeBindings.find((binding) => binding.referenceId === item.referenceId)?.token || null }))])),
       } : undefined);
     }
     catch (error: any) { message.error(error?.response?.data?.message || error?.message || '提交运行失败'); }
@@ -279,7 +330,7 @@ export default function Txt2ImgNode(props: NodeProps) {
 
   return <div className={`canvas-node canvas-node--txt2img${props.selected ? ' selected' : ''}${missingBindings.length ? ' canvas-node--reference-error' : ''}`}>
     <div className="canvas-node__header">
-      <span className="canvas-node__type" style={{ background: workflow?.category === 'img2img' ? '#52c41a' : '#1677ff' }}>{workflow?.categoryLabel || '工作流'}</span>
+      <span className="canvas-node__type" style={{ background: workflow?.category === 'img2img' ? '#52c41a' : '#1677ff' }}>{refConfig?.groups.length === 4 ? '图生视频' : workflow?.categoryLabel || '工作流'}</span>
       <span className="canvas-node__bind" title={data.cardName || data.workflowName}>{data.cardName || data.workflowName || '未绑定工作流'}</span>
       <RunElapsed status={visibleRunState?.status} queuedAt={visibleRunState?.queuedAt} startedAt={visibleRunState?.startedAt} />
       {run.running
@@ -294,20 +345,22 @@ export default function Txt2ImgNode(props: NodeProps) {
     <div className="canvas-node__body canvas-node__form-body nodrag">
       <NodeCardFields name={data.cardName} note={data.note} readOnly={readOnly} onChange={(patch) => updateNodeData(nodeId, patch)} />
       {refConfig ? <>
-        <div className="canvas-reference-summary" style={{ position: 'relative' }}>
-          <Handle type="target" position={Position.Left} id={workflowReferenceImagesHandle()} className="canvas-handle--image" style={{ left: -15 }} title={`参考图片输入（最多 ${refConfig.max} 张）`} />
-          <strong>参考图 {references.length} / {refConfig.max}</strong>
-          <Upload disabled={readOnly || references.length >= refConfig.max} accept="image/*" multiple showUploadList={false} beforeUpload={uploadReference}><Button size="small" disabled={readOnly || references.length >= refConfig.max} icon={<UploadOutlined />}>添加图片</Button></Upload>
-        </div>
-        <div className="canvas-reference-grid">{references.map((item, index) => <div key={item.referenceId} className="canvas-reference-thumb" draggable={!readOnly} onDragStart={(event) => event.dataTransfer.setData('text/reference-id', item.referenceId)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); moveReference(event.dataTransfer.getData('text/reference-id'), item.referenceId); }}>
-          <button type="button" className="canvas-reference-thumb__preview" onClick={() => setReferencePreviewIndex(index)} aria-label={`预览第 ${index + 1} 张参考图`}><img src={item.url} alt={item.displayName} /><span>{index + 1}</span></button>
-          <button type="button" className="canvas-reference-thumb__remove" disabled={readOnly} onClick={() => removeReference(item.referenceId)} aria-label={`移除${item.displayName}`}><CloseCircleFilled /></button>
-          <div title={item.displayName}>{item.displayName}</div>
-        </div>)}</div>
-        {refConfig.promptKey ? <ImeSafeMentions autoSize={{ minRows: 3, maxRows: 8 }} value={referencePrompt} onChange={updateReferencePrompt} disabled={readOnly} placeholder="输入提示词；键入 @ 引用某张参考图" options={references.map((item) => ({ key: item.referenceId, value: `${item.displayName.replace(/\s+/g, '_')}·${item.referenceId.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`, label: <span><img src={item.url} className="canvas-reference-mention-image" />{item.displayName}</span>, reference: item }))} onSelect={(option: any) => {
+        {referenceGroups.map(({ config, references: groupReferences }) => <div key={config.key} className="canvas-reference-group">
+          <div className="canvas-reference-summary" style={{ position: 'relative' }}>
+            <Handle type="target" position={Position.Left} id={workflowReferenceHandle(config.key)} className={`canvas-handle--${config.kind}`} style={{ left: -15 }} title={`${config.label}输入（最多 ${config.max} 个）`} />
+            <strong>{config.label} {groupReferences.length} / {config.max}</strong>
+            <Upload disabled={readOnly || groupReferences.length >= config.max} accept={`${config.kind}/*`} multiple showUploadList={false} beforeUpload={(file) => uploadReference(config.key, file)}><Button size="small" disabled={readOnly || groupReferences.length >= config.max} icon={<UploadOutlined />}>添加</Button></Upload>
+          </div>
+          <div className="canvas-reference-grid">{groupReferences.map((item, index) => <div key={item.referenceId} className="canvas-reference-thumb" draggable={!readOnly} onDragStart={(event) => event.dataTransfer.setData('text/reference-id', item.referenceId)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); moveReference(config.key, event.dataTransfer.getData('text/reference-id'), item.referenceId); }}>
+            <button type="button" className="canvas-reference-thumb__preview" onClick={() => setReferencePreview({ group: config.key, index })} aria-label={`${config.label}第 ${index + 1} 个`}>{item.kind === 'video' ? <video src={item.url} muted playsInline preload="metadata" /> : item.kind === 'image' ? <img src={item.url} alt={item.displayName} /> : <AudioOutlined />}<span>{index + 1}</span></button>
+            <button type="button" className="canvas-reference-thumb__remove" disabled={readOnly} onClick={() => removeReference(config.key, item.referenceId)} aria-label={`移除${item.displayName}`}><CloseCircleFilled /></button>
+            <div title={item.displayName}>{item.displayName}</div>
+          </div>)}</div>
+        </div>)}
+        {refConfig.promptKey ? <ImeSafeMentions autoSize={{ minRows: 3, maxRows: 8 }} value={referencePrompt} onChange={updateReferencePrompt} disabled={readOnly} placeholder="输入提示词；键入 @ 引用图片、视频或独立音频" options={referenceGroups.filter(({ config }) => !!config.tag).flatMap(({ config, references: groupReferences }) => groupReferences.map((item) => ({ key: `${config.key}:${item.referenceId}`, value: `${item.displayName.replace(/\s+/g, '_')}·${item.referenceId.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`, label: <span>{config.label} · {item.displayName}</span>, reference: item, group: config.key })))} onSelect={(option: any) => {
           const reference = option.reference; const token = `@${option.value}`;
-          if (!reference || (data.promptImageReferences || []).some((item) => item.token === token)) return;
-          updateNodeData(nodeId, { promptImageReferences: [...(data.promptImageReferences || []), { referenceId: reference.referenceId, sourceNodeId: reference.sourceNodeId, edgeId: reference.edgeId, token, displayName: reference.displayName }] });
+          if (!reference || allBindings.some((item) => item.token === token)) return;
+          updateNodeData(nodeId, { promptMediaReferences: [...allBindings, { referenceId: reference.referenceId, group: option.group, sourceNodeId: reference.sourceNodeId, edgeId: reference.edgeId, token, displayName: reference.displayName }], promptImageReferences: [] });
         }} /> : null}
         {missingBindings.length ? <Alert type="error" showIcon message={`缺少 ${missingBindings.length} 个提示词引用`} description={missingBindings.map((item) => item.token).join('、')} /> : null}
       </> : null}
@@ -325,7 +378,7 @@ export default function Txt2ImgNode(props: NodeProps) {
       <NodeOutputHistory canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} onObserveAsset={(asset) => observeNodeData(nodeId, { lastAssets: [asset] })} onRestoreSeeds={(values) => run.setFormValues((previous) => ({ ...previous, ...values }))} />
     </div>
     <CanvasMediaPreview open={previewIndex !== null} items={(data.lastAssets ?? []).filter((asset): asset is CanvasMediaItem => asset.kind === 'image' || asset.kind === 'video')} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
-    <CanvasMediaPreview open={referencePreviewIndex !== null} items={references.map((item): CanvasMediaItem => ({ assetId: item.assetId, url: item.url, kind: 'image' }))} index={referencePreviewIndex ?? 0} onIndexChange={setReferencePreviewIndex} onClose={() => setReferencePreviewIndex(null)} />
+    <CanvasMediaPreview open={referencePreview !== null} items={(referenceGroups.find((group) => group.config.key === referencePreview?.group)?.references || []).map((item): CanvasMediaItem => ({ assetId: item.assetId, url: item.url, kind: item.kind, filename: item.filename }))} index={referencePreview?.index ?? 0} onIndexChange={(index) => setReferencePreview((current) => current ? { ...current, index } : null)} onClose={() => setReferencePreview(null)} />
     <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={`${outputKind === 'video' ? '视频' : '图片'}输出`} />
   </div>;
 }
