@@ -34,8 +34,11 @@ export const resultTargetHandle = (kind: string) => `${kind}-target`;
 export const promptPartSourceHandle = (part: 'positive' | 'negative') => `text-${part}-source`;
 /** Codex2API 能力卡片当前只有一个可连接文本字段：提示词。 */
 export const capabilityPromptHandle = () => resultTargetHandle('text');
-/** 支持多参考图的 ComfyUI 工作流统一入口；运行时再按顺序映射到实际槽位。 */
-export const workflowReferenceImagesHandle = () => 'input:image:reference-group:images';
+export type WorkflowReferenceGroup = 'images' | 'videos' | 'videoAudios' | 'audios';
+/** 支持多参考素材的 ComfyUI 工作流统一入口；运行时再按顺序映射到实际槽位。 */
+export const workflowReferenceHandle = (group: WorkflowReferenceGroup) => group === 'images' ? 'input:image:reference-group:images' : `input:reference-group:${group}`;
+/** 旧画布和已发布代码仍使用此名称。 */
+export const workflowReferenceImagesHandle = () => workflowReferenceHandle('images');
 /** 图片端点保留旧 id 兼容已保存画布；其他类型在 id 中携带 kind 供连线校验。 */
 export const workflowInputHandle = (nodeId: string, param: string, kind: string = 'image') =>
   kind === 'image' ? `input:${nodeId}:${param}` : `input:${kind}:${nodeId}:${param}`;
@@ -57,6 +60,9 @@ export interface Txt2ImgNodeData extends NodeCardMetadata {
   referenceImages?: Array<{ referenceId: string; assetId: string; url: string; kind: 'image'; filename?: string; displayName: string }>;
   referenceImageOrder?: string[];
   promptImageReferences?: Array<{ referenceId: string; sourceNodeId?: string; edgeId?: string; token: string; displayName: string }>;
+  referenceMedia?: Partial<Record<WorkflowReferenceGroup, Array<{ referenceId: string; assetId: string; url: string; kind: 'image' | 'video' | 'audio'; filename?: string; displayName: string }>>>;
+  referenceMediaOrder?: Partial<Record<WorkflowReferenceGroup, string[]>>;
+  promptMediaReferences?: Array<{ referenceId: string; group: WorkflowReferenceGroup; sourceNodeId?: string; edgeId?: string; token: string; displayName: string }>;
   /** 最近一次成功运行的平台资产引用（C6 写入） */
   lastAssets?: { assetId: string; url: string; kind: string }[];
   [key: string]: unknown;

@@ -27,7 +27,7 @@ import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, DragOutlined, Envi
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
-import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, workflowReferenceImagesHandle, type CodexCapability } from '@/components/canvas/nodes/types';
+import { capabilityPromptHandle, NODE_TYPE_CODEX, NODE_TYPE_RESULT, NODE_TYPE_TXT2IMG, CANVAS_NODE_WIDTH, createCodexCapabilityNode, createResultNode, createTxt2ImgNode, createTtsNode, resultSourceHandle, resultTargetHandle, workflowInputHandle, workflowReferenceHandle, type CodexCapability, type WorkflowReferenceGroup } from '@/components/canvas/nodes/types';
 import CanvasContextMenu, { type CanvasContextMenuState } from '@/components/canvas/CanvasContextMenu';
 import { RunDuration } from '@/components/canvas/RunTiming';
 import { AssetIdLabel } from '@/components/canvas/nodes/NodeCardFields';
@@ -772,13 +772,17 @@ function CanvasEditorInner() {
     };
     if (reachesSource(conn.target)) return false;
     const targetNode = nodesRef.current.find((node) => node.id === conn.target);
-    const workflowReferenceLimit = targetNode?.type === NODE_TYPE_TXT2IMG && t === workflowReferenceImagesHandle()
-      ? (/MiniMax H3/i.test(String((targetNode.data as any)?.workflowName)) ? 9 : /Z-Image/i.test(String((targetNode.data as any)?.workflowName)) ? 1 : 0) : 0;
-    const multiImageTarget = sourceKind === 'image' && ((t === 'image-target' && targetNode?.type === NODE_TYPE_CODEX
-      && ['edit', 'analyze'].includes(String((targetNode.data as any)?.capability))) || workflowReferenceLimit > 0);
-    if (multiImageTarget) {
+    const referenceGroup = (['images', 'videos', 'videoAudios', 'audios'] as WorkflowReferenceGroup[]).find((group) => t === workflowReferenceHandle(group));
+    const expectedReferenceKind = referenceGroup === 'images' ? 'image' : referenceGroup === 'videos' ? 'video' : referenceGroup ? 'audio' : null;
+    const workflowReferenceLimit = targetNode?.type === NODE_TYPE_TXT2IMG && referenceGroup
+      ? (/MiniMax H3/i.test(String((targetNode.data as any)?.workflowName)) ? (referenceGroup === 'images' ? 9 : 3) : /Z-Image/i.test(String((targetNode.data as any)?.workflowName)) && referenceGroup === 'images' ? 1 : 0) : 0;
+    const multiReferenceTarget = (sourceKind === 'image' && t === 'image-target' && targetNode?.type === NODE_TYPE_CODEX
+      && ['edit', 'analyze'].includes(String((targetNode.data as any)?.capability))) || (!!workflowReferenceLimit && sourceKind === expectedReferenceKind);
+    if (multiReferenceTarget) {
       const connected = edgesRef.current.filter((edge) => edge.target === conn.target && edge.targetHandle === t).length;
-      const uploaded = Array.isArray((targetNode.data as any)?.referenceImages) ? (targetNode.data as any).referenceImages.length : 0;
+      const uploaded = referenceGroup
+        ? (((targetNode.data as any)?.referenceMedia?.[referenceGroup]?.length || 0) + (referenceGroup === 'images' ? ((targetNode.data as any)?.referenceImages?.length || 0) : 0))
+        : ((targetNode.data as any)?.referenceImages?.length || 0);
       return connected + uploaded < (workflowReferenceLimit || 16);
     }
     if (t.endsWith('-target')) return t === `${sourceKind}-target`;
@@ -798,15 +802,16 @@ function CanvasEditorInner() {
       if (!canWrite) return;
       pendingConnectionRef.current = null;
       const target = nodesRef.current.find((node) => node.id === conn.target);
+      const referenceGroup = (['images', 'videos', 'videoAudios', 'audios'] as WorkflowReferenceGroup[]).find((group) => conn.targetHandle === workflowReferenceHandle(group));
       const multiImageTarget = (conn.targetHandle === 'image-target' && target?.type === NODE_TYPE_CODEX
         && ['edit', 'analyze'].includes(String((target.data as any)?.capability)))
-        || (conn.targetHandle === workflowReferenceImagesHandle() && target?.type === NODE_TYPE_TXT2IMG);
+        || (!!referenceGroup && target?.type === NODE_TYPE_TXT2IMG);
       const edge = { ...conn, id: `edge-${createClientUuid()}` } as Edge;
       setEdges((eds) => addEdge(edge, multiImageTarget ? eds : eds.filter((item) =>
         !(item.target === conn.target && item.targetHandle === conn.targetHandle),
       )));
       if (multiImageTarget && conn.target) setNodes((items) => items.map((node) => node.id === conn.target ? {
-        ...node, data: { ...node.data, referenceImageOrder: [...(((node.data as any).referenceImageOrder || []) as string[]), edge.id] },
+        ...node, data: referenceGroup ? { ...node.data, referenceMediaOrder: { ...((node.data as any).referenceMediaOrder || {}), [referenceGroup]: [...((((node.data as any).referenceMediaOrder?.[referenceGroup]) || (referenceGroup === 'images' ? (node.data as any).referenceImageOrder : []) || []) as string[]), edge.id] } } : { ...node.data, referenceImageOrder: [...(((node.data as any).referenceImageOrder || []) as string[]), edge.id] },
       } : node));
     },
     [canWrite],

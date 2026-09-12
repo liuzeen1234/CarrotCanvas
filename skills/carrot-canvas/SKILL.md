@@ -55,7 +55,7 @@ node <绝对脚本路径> operations <canvasId> <JSON文件绝对路径>
 
 Codex2API 图片编辑与图像理解的 `image-target` 可按明确顺序接入最多 16 张参考图。多图提示词必须把 `@` token 绑定到稳定的 edge/asset `referenceId`，不能把“图 1/图 2”序号当作身份；增删或重排图片后，在提交时按当前顺序重新编译提示词。仍被提示词引用的图片必须先解除 token 与绑定再断线或删除，详细数据结构、原子操作顺序和 Run 快照字段见节点与操作约定。
 
-ComfyUI 的 MiniMax H3 全能参考卡使用统一 `input:image:reference-group:images` 入口，最多 9 张图片，稳定 `@` 引用在提交时编译为 `<Picture N>`；Z-Image Turbo 通用图生图使用同一入口但最多 1 张。Agent 必须读取实时 workflow API JSON/inputConfig 确认能力，不能因为统一 UI 而假定所有 ComfyUI 工作流都支持多图。
+ComfyUI 的 MiniMax H3 高质量图生视频卡提供四组多参考入口：图片最多 9 张、视频最多 3 个、视频配音最多 3 路、独立音频最多 3 路。图片、视频和独立音频使用稳定 `@` 引用，提交时分别编译为 `<Picture N>`、`<Video N>`、`<Audio N>`；视频配音按当前位置与同序号参考视频配对。旧“全能参考”分类已从画布入口下线，不要创建或改绑到该工作流。Z-Image Turbo 通用图生图仅支持 1 张参考图。精确句柄、节点数据与提交转换见节点与操作约定；Agent 必须读取实时 workflow API JSON/inputConfig 确认能力，不能因为统一 UI 而假定其他 ComfyUI 工作流支持多媒体参考。
 
 运行提交必须带 canvasId/nodeId、当前 proof 与稳定幂等键，通过平台记录 Run，不能绕过平台直调 provider 冒充画布生成。采用 [运行与媒体约定](references/operations.md#运行与媒体)；生成等待也保持生命周期，不能靠 TTL 正常释放。接手时检查已有 Run 的 Handoff，必要时 adopt 原 Run，禁止以重新提交代替接手。取消前读取 `capabilities.cancel`；TTS 支持 speech 片段边界取消，其他 provider 以实时能力为准。
 

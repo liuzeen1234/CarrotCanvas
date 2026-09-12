@@ -34,7 +34,7 @@ export interface CanvasContextMenuProps {
 }
 
 /** 当前画布已支持的工作流分类。 */
-const ENABLED_CATEGORIES = new Set(['txt2img', 'img2img', 'txt2vid', 'img2vid', 'reference']);
+const ENABLED_CATEGORIES = new Set(['txt2img', 'img2img', 'txt2vid', 'img2vid']);
 
 export default function CanvasContextMenu({ state, onClose, onPick, onPickCapability, onPickTts, onPickInput }: CanvasContextMenuProps) {
   const [workflows, setWorkflows] = useState<ComfyUIAPI[]>([]);
@@ -90,10 +90,11 @@ export default function CanvasContextMenu({ state, onClose, onPick, onPickCapabi
   /** 按分类分组 */
   const byCategory = useMemo(() => {
     const map = new Map<string, ComfyUIAPI[]>();
-    for (const w of workflows) {
-      const arr = map.get(w.category) ?? [];
-      arr.push(w);
-      map.set(w.category, arr);
+    for (const workflow of workflows) {
+      if (workflow.category === 'reference') continue;
+      const arr = map.get(workflow.category) ?? [];
+      arr.push(workflow);
+      map.set(workflow.category, arr);
     }
     return map;
   }, [workflows]);
@@ -118,9 +119,10 @@ export default function CanvasContextMenu({ state, onClose, onPick, onPickCapabi
       ],
     }, { type: 'divider' }] : [];
     const ttsItems: MenuProps['items'] = !state?.connection || ['audio', 'text'].includes(state.connection.kind) ? [{ key: 'tts', label: 'AI 配音（本地）' }, { type: 'divider' }] : [];
-    return [...(!state?.connection ? [{key:'inputs',label:'输入节点',children:[{key:'in:image',label:'图片'},{key:'in:video',label:'视频'},{key:'in:audio',label:'音频'},{key:'in:text',label:'文本 / 参数'}]}] : []), ...ttsItems, ...capabilityItems, ...WORKFLOW_CATEGORIES.map((cat) => {
+    return [...(!state?.connection ? [{key:'inputs',label:'输入节点',children:[{key:'in:image',label:'图片'},{key:'in:video',label:'视频'},{key:'in:audio',label:'音频'},{key:'in:text',label:'文本 / 参数'}]}] : []), ...ttsItems, ...capabilityItems, ...WORKFLOW_CATEGORIES.filter((cat) => cat.value !== 'reference').map((cat) => {
       const list = (byCategory.get(cat.value) ?? []).filter((workflow) =>
-        !state?.connection || workflow.inputConfig?.fields?.some((field) => field.kind === state.connection!.kind),
+        !state?.connection || workflow.inputConfig?.fields?.some((field) => field.kind === state.connection!.kind)
+          || (workflow.category === 'img2vid' && /MiniMax H3/i.test(workflow.name) && ['image', 'video', 'audio'].includes(state.connection.kind)),
       );
       const enabled = ENABLED_CATEGORIES.has(cat.value);
       if (!enabled) {

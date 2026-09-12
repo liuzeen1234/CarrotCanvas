@@ -6,7 +6,7 @@ import './CanvasMediaPreview.css';
 export interface CanvasMediaItem {
   assetId: string;
   url: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   filename?: string;
 }
 
@@ -19,14 +19,15 @@ export default function CanvasMediaPreview({ open, items, index, onIndexChange, 
 }) {
   const item = items[index];
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null);
   const [videoMode, setVideoMode] = useState<'actual' | 'fit'>('actual');
-  const downloadName = useMemo(() => item?.filename || (item?.kind === 'video' ? 'canvas-video.mp4' : 'canvas-image.png'), [item]);
+  const downloadName = useMemo(() => item?.filename || (item?.kind === 'video' ? 'canvas-video.mp4' : item?.kind === 'audio' ? 'canvas-audio.wav' : 'canvas-image.png'), [item]);
 
   useEffect(() => {
     setVideoSize(null);
     setVideoMode('actual');
-    return () => { videoRef.current?.pause(); };
+    return () => { videoRef.current?.pause(); audioRef.current?.pause(); };
   }, [open, index]);
 
   useEffect(() => {
@@ -40,8 +41,8 @@ export default function CanvasMediaPreview({ open, items, index, onIndexChange, 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [index, items.length, onIndexChange, open]);
 
-  const close = () => { videoRef.current?.pause(); onClose(); };
-  const move = (nextIndex: number) => { videoRef.current?.pause(); onIndexChange(nextIndex); };
+  const close = () => { videoRef.current?.pause(); audioRef.current?.pause(); onClose(); };
+  const move = (nextIndex: number) => { videoRef.current?.pause(); audioRef.current?.pause(); onIndexChange(nextIndex); };
 
   return <Modal
     className="canvas-media-preview"
@@ -51,7 +52,7 @@ export default function CanvasMediaPreview({ open, items, index, onIndexChange, 
     centered
     width="calc(100vw - 48px)"
     destroyOnClose
-    title={item ? `${item.kind === 'video' ? '视频' : '图片'}预览` : '媒体预览'}
+    title={item ? `${item.kind === 'video' ? '视频' : item.kind === 'audio' ? '音频' : '图片'}预览` : '媒体预览'}
     styles={{ body: { padding: 0 } }}
   >
     {item ? <>
@@ -85,7 +86,9 @@ export default function CanvasMediaPreview({ open, items, index, onIndexChange, 
               onLoadedMetadata={(event) => setVideoSize({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })}
               style={videoMode === 'actual' && videoSize ? { width: videoSize.width, height: videoSize.height } : undefined}
             />
-          : <img key={item.assetId} src={item.url} alt={item.filename || '生成图片'} />}
+          : item.kind === 'audio'
+            ? <audio key={item.assetId} ref={audioRef} src={item.url} controls preload="metadata" />
+            : <img key={item.assetId} src={item.url} alt={item.filename || '生成图片'} />}
       </div>
     </> : null}
   </Modal>;

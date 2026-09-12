@@ -64,6 +64,7 @@ interface RunBody {
   parentRunId?: string;
   originalPrompt?: string;
   imageReferenceMap?: Array<Record<string, unknown>>;
+  referenceMaps?: Record<string, Array<Record<string, unknown>>>;
 }
 
 @Controller('comfyui')
@@ -232,10 +233,10 @@ export class ComfyUIController {
       provider: 'comfyui', canvasId: body.canvasId ?? null, nodeId: body.nodeId ?? null,
       shotId: body.shotId ?? null, parentRunId: body.parentRunId ?? null,
       capabilityId: workflow.id, capabilityVersion: workflow.updatedAt.toISOString(),
-      inputSnapshot: body.originalPrompt || body.imageReferenceMap ? { ...apiJson, __carrotReferenceInput: { originalPrompt: body.originalPrompt ?? '', imageReferenceMap: body.imageReferenceMap ?? [] } } : apiJson, inputAssetIds: body.inputAssetIds ?? [],
+      inputSnapshot: body.originalPrompt || body.imageReferenceMap || body.referenceMaps ? { ...apiJson, __carrotReferenceInput: { originalPrompt: body.originalPrompt ?? '', imageReferenceMap: body.imageReferenceMap ?? [], referenceMaps: body.referenceMaps ?? {} } } : apiJson, inputAssetIds: body.inputAssetIds ?? [],
       requestSnapshot: { apiJson, workflowId: body.workflowId, canvasId: body.canvasId ?? null,
         nodeId: body.nodeId ?? null, inputAssetIds: body.inputAssetIds ?? [],
-        ...(body.originalPrompt ? { originalPrompt: body.originalPrompt } : {}), ...(body.imageReferenceMap ? { imageReferenceMap: body.imageReferenceMap } : {}),
+        ...(body.originalPrompt ? { originalPrompt: body.originalPrompt } : {}), ...(body.imageReferenceMap ? { imageReferenceMap: body.imageReferenceMap } : {}), ...(body.referenceMaps ? { referenceMaps: body.referenceMaps } : {}),
         shotId: body.shotId ?? null, parentRunId: body.parentRunId ?? null },
       actorType: body.actorType ?? 'human', actorId: body.actorId ?? 'web',
       idempotencyKey: body.idempotencyKey ?? null,
