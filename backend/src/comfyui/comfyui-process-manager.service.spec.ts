@@ -44,6 +44,21 @@ describe('ComfyUIProcessManagerService', () => {
     if (!alive) expect(settings.set).toHaveBeenCalledWith('comfyui-managed-process', null);
   });
 
+  it('records the Python process that actually owns 8188 after startup', async () => {
+    const service = new ComfyUIProcessManagerService(settings, client);
+    const child = Object.assign(new EventEmitter(), { pid: 901, exitCode: null });
+    jest.spyOn(childProcess, 'spawn').mockReturnValue(child as any);
+    jest.spyOn(service as any, 'inspectPort').mockResolvedValue(owner(902));
+    jest.spyOn(service, 'inspect').mockResolvedValue(snapshot(902));
+
+    await (service as any).start({ executable: process.execPath, args: [], cwd: process.cwd() });
+
+    const [, savedValue] = settings.set.mock.calls.at(-1)!;
+    expect(JSON.parse(savedValue)).toMatchObject({
+      pid: 902, rootPid: 901, executable: owner(902).path, startedAt: expect.any(Number),
+    });
+  });
+
   it('never kills an external 8188 owner without explicit takeover', async () => {
     const service = new ComfyUIProcessManagerService(settings, client);
     jest.spyOn(service, 'inspect').mockResolvedValue(snapshot(101, [102]));

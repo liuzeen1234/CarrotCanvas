@@ -13,6 +13,7 @@
 - ComfyUI 运行也必须先取得相同的持久化 FIFO 租约。调度器托管的 ComfyUI 切出时等待队列清空，再按进程树退出，并在每次尝试前后记录端口所有者、working set/private bytes、Comfy allocator 与 `nvidia-smi` 整卡显存。
 - 8188 若属于非调度器 PID，或检测到 ComfyUI Desktop，返回 `COMFYUI_TAKEOVER_REQUIRED` 并锁住后续队列。页面必须由用户确认后才关闭 Desktop/相关进程、保存启动参数并改由调度器启动纯后端；未知外部进程以后仍会再次询问。
 - 连续运行同一 Provider 时允许模型驻留，避免重复加载；切换 Provider 时严格串行执行 `release(old) → prepare(new)`。
+- ComfyUI 是驻留服务特例：已启用托管自启动时随 CarrotCanvas 后端异步健康检查并通过调度器预热；切换到 TTS 时优先通过官方 `/free` 卸载模型并验证 allocator，验证成功后保留 8188 API 进程，失败才结束托管进程树。调度器仍只允许一个 resident Provider，保留的空载 ComfyUI 进程不代表持有计算租约。
 - 租约写入 SQLite `local_compute_leases`。启动时旧 `gpu_resource_leases` 历史单向兼容迁移；后端重启时把未完成租约标记为 `abandoned`，不把陈旧状态当作仍在占用。
 - 三个 TTS worker 内部对 load、infer、unload 加互斥锁，平台之外的误调用也不会在同一 worker 内并发改动模型。Qwen3-TTS 的 CustomVoice 与 VoiceDesign 在同一 worker 内互斥换载，切换前释放上一模型。
 - 任一旧 Provider 连续 3 次仍未完全退出，调度器进入 fail-closed 锁定态，持久化原因与三次观测，拒绝继续启动下一个 Provider。
@@ -37,7 +38,7 @@
 
 - `GET /api/local-compute-scheduler/status`：当前租约、驻留 Provider 与等待队列；旧 `/api/gpu-scheduler/status` 暂作兼容入口。
 - `GET /api/tts/providers`：三个 worker 的在线及模型加载状态；Qwen3-TTS 额外报告当前 `modelVariant`。
-- `GET /api/comfyui/process-status`：8188 所有者、Desktop 进程、进程内存及显存观测。
+- `GET /api/comfyui/process-status`：8188 所有者、Desktop 进程、进程内存及显存观测；`managed` 明确表示当前监听进程是否被识别为 CarrotCanvas 托管实例。
 - `POST /api/comfyui/takeover/confirmation`：针对当前端口所有者和 Desktop 进程集合签发 5 分钟有效、一次性使用的确认令牌，并返回供页面或 AI 对话展示的快照。
 - `POST /api/comfyui/takeover`：只接受显式 `confirm=true` 与有效确认令牌；执行前重新核验进程快照，关闭 Desktop 后保存并启动调度器托管的 ComfyUI 后端，同时解除因该冲突产生的队列锁。
 - `POST /api/tts/runs`：受 canvas lease/revision 保护的配音运行；结果保存为画布 audio asset 和持久化 GenerationRun。

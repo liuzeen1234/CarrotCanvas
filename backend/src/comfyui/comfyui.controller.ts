@@ -82,7 +82,10 @@ export class ComfyUIController {
   ) {}
 
   @Get('process-status')
-  processStatus() { return this.comfyProcesses.inspect(); }
+  async processStatus() {
+    const inspection = await this.comfyProcesses.inspect();
+    return { ...inspection, managed: await this.comfyProcesses.isManagedRunning(inspection) };
+  }
 
   @Post('takeover/confirmation')
   takeoverConfirmation() { return this.comfyProcesses.requestTakeoverConfirmation(); }

@@ -133,6 +133,11 @@ export class ComfyUIProcessManagerService {
     return { port: 8188, portOwner, desktopProcesses, allocator, globalGpuMemoryUsedBytes };
   }
 
+  async isManagedRunning(inspection?: Awaited<ReturnType<ComfyUIProcessManagerService['inspect']>>) {
+    const current = inspection ?? await this.inspect();
+    return !!current.portOwner && await this.isManagedProcess(current.portOwner);
+  }
+
   private async start(launch: LaunchSpec) {
     if (!existsSync(launch.executable) || !existsSync(launch.cwd)) throw new Error('保存的 ComfyUI 启动路径已不存在');
     const logs = resolve(__dirname, '..', '..', 'data', 'comfyui-managed-logs');
@@ -144,11 +149,26 @@ export class ComfyUIProcessManagerService {
     child.once('error', (error) => { spawnError = error; });
     child.once('exit', () => { if (this.child === child) this.child = null; });
     try {
-    await this.settings.set('comfyui-managed-process', JSON.stringify({ pid: child.pid, executable: launch.executable, startedAt: Date.now() }));
+    const startedAt = Date.now();
+    await this.settings.set('comfyui-managed-process', JSON.stringify({ pid: child.pid, rootPid: child.pid, executable: launch.executable, startedAt }));
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError;
-      try { await this.client.getSystemStats(); return this.inspect(); }
+      try {
+        await this.client.getSystemStats();
+        const listener = await this.inspectPort(8188);
+        if (!listener) { await delay(250); continue; }
+        // Python virtual environments can launch a second interpreter that owns
+        // the socket. Persist the actual listener identity, otherwise the next
+        // run incorrectly treats our own child as an external ComfyUI process.
+        await this.settings.set('comfyui-managed-process', JSON.stringify({
+          pid: listener.pid,
+          rootPid: child.pid,
+          executable: listener.path ?? launch.executable,
+          startedAt,
+        }));
+        return this.inspect();
+      }
       catch { if (child.exitCode !== null) throw new Error(`托管 ComfyUI 提前退出，exitCode=${child.exitCode}`); await delay(500); }
     }
     throw new Error('托管 ComfyUI 在 120 秒内未通过健康检查');

@@ -27,7 +27,17 @@ export class ComfyUIGpuProviderService implements OnModuleInit {
     if ((queue.queue_running as unknown[])?.length || (queue.queue_pending as unknown[])?.length) {
       throw new Error('ComfyUI 队列在 120 秒内未空闲，拒绝切换本机重型计算 Provider');
     }
-    await this.processes.releaseManaged();
+    // Keep the lightweight ComfyUI API process available for canvas schema and
+    // previews. Models and execution caches are what contend with the other
+    // local providers, so release those first and verify CUDA has drained.
+    // If ComfyUI cannot prove that state, fall back to the existing process-tree
+    // shutdown so another provider is never started on an uncertain GPU state.
+    try {
+      await this.client.freeMemory();
+      await this.client.waitForModelsUnloaded();
+    } catch {
+      await this.processes.releaseManaged();
+    }
   }
 }
 

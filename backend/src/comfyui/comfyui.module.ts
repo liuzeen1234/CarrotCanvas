@@ -12,6 +12,7 @@ import { ComfyUIController } from './comfyui.controller';
 import { RunsModule } from '../runs/runs.module';
 import { ComfyUIGpuProviderService } from './comfyui-gpu-provider.service';
 import { ComfyUIProcessManagerService } from './comfyui-process-manager.service';
+import { ComfyUIStartupService } from './comfyui-startup.service';
 
 @Module({
   imports: [SettingsModule, WorkflowsModule, CanvasModule, AssetsModule, RunsModule],
@@ -24,6 +25,7 @@ import { ComfyUIProcessManagerService } from './comfyui-process-manager.service'
     ComfyUIAssetCaptureService,
     ComfyUIGpuProviderService,
     ComfyUIProcessManagerService,
+    ComfyUIStartupService,
   ],
   exports: [ComfyUIClientService, ComfyUIRunnerService, ComfyUIProcessManagerService],
 })

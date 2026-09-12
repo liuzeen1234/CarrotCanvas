@@ -5,6 +5,14 @@
 
 ## 1. 背景与目标
 
+### 2026-09-12：随 CarrotCanvas 启动预热与驻留服务
+
+已确认交由 CarrotCanvas 托管（`comfyui-always-managed=true`）且保存了启动配置时，后端启动后会异步检查 8188：托管服务离线则通过本机重型计算 FIFO 租约启动并等待健康检查；托管服务已经在线则重新纳入调度器的 resident 状态。检查不会阻塞 `/api/health`，也不会自动接管或关闭外部 ComfyUI Desktop；发现外部进程时保持原有显式确认边界。
+
+托管启动会先记录创建的根 Python PID；健康检查成功后再解析 8188 的实际监听进程，并持久化监听 PID、实际解释器路径及根 PID。兼容虚拟环境启动器派生 standalone Python 的结构，后续运行和后端重启不会把自身启动的监听进程误判为外部 ComfyUI。
+
+跨 Provider 切换时，ComfyUI 先等待队列清空，再调用官方 `/free` 卸载模型与执行缓存，并等待 CUDA allocator 降至安全阈值。验证成功后保留 8188 服务，使画布 schema、工作流浏览和后续 ComfyUI 运行保持可用；释放失败或无法验证时回退为结束托管进程树，继续遵守 fail-closed 调度原则。ComfyUI 服务进程在线不等同于模型驻留，调度器的 resident Provider 仍表示当前可占用重型计算资源的 Provider。
+
 ### 2026-09-11：离线生成的调度启动顺序（已修复）
 
 `POST /api/comfyui/runs` 先执行不依赖 8188 的工作流、画布权限与 API JSON 结构校验，再建立持久 Run 和申请本机重型计算租约。调度器负责释放旧 Provider、按已保存启动配置启动 ComfyUI 并等待健康检查；取得租约后才读取 `/object_info`、分析 schema、执行 `prepareComfyInputs`、建立 WS 和提交 `/prompt`。不得用手动打开 Desktop 或绕过调度器启动 8188 作为生成前置步骤。
