@@ -1,3 +1,4 @@
+import { ViewportImage, ViewportVideo, ViewportAudio } from './ViewportMedia';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Space, Tag, Typography, message } from 'antd';
 import { CheckOutlined, CopyOutlined, DownloadOutlined, PlayCircleFilled, UndoOutlined } from '@ant-design/icons';
@@ -84,7 +85,7 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeCo
       {runs.flatMap((run) => kind === 'text' ? [<button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span><RunDuration timestamps={run} />{seedActions(run)}{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button>] : run.outputAssetIds.map((assetId) => {
         const current = run.candidateGroup?.selectedAssetId === assetId;
         return <div key={assetId} className={`canvas-node-history__media${current ? ' is-current' : ''}`}>
-          {kind === 'audio' ? <audio controls src={`/api/assets/${assetId}`} style={{ width: '100%' }} /> : <button type="button" className="canvas-media-trigger canvas-media-trigger--history" onClick={() => setPreviewIndex(mediaItems.findIndex((item) => item.assetId === assetId))} aria-label={`放大预览${kind === 'video' ? '视频' : '图片'}`}>{kind === 'video' ? <><video src={`/api/assets/${assetId}`} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <img src={`/api/assets/${assetId}`} alt="历史图片产物" />}</button>}
+          {kind === 'audio' ? <ViewportAudio controls src={`/api/assets/${assetId}`} style={{ width: '100%' }} /> : <button type="button" className="canvas-media-trigger canvas-media-trigger--history" onClick={() => setPreviewIndex(mediaItems.findIndex((item) => item.assetId === assetId))} aria-label={`放大预览${kind === 'video' ? '视频' : '图片'}`}>{kind === 'video' ? <><ViewportVideo src={`/api/assets/${assetId}`} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <ViewportImage src={`/api/assets/${assetId}`} alt="历史图片产物" />}</button>}
           <AssetIdLabel assetId={assetId} />
           <RunDuration timestamps={run} />
           {seedActions(run)}

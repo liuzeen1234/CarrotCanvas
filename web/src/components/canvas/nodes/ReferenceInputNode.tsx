@@ -1,3 +1,4 @@
+import { ViewportImage, ViewportVideo, ViewportAudio } from '../ViewportMedia';
 import { useContext, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Button, Upload, message } from 'antd';
@@ -20,7 +21,7 @@ export default function ReferenceInputNode({ id, data }: NodeProps) {
     <div className="canvas-node__body nodrag">
       <NodeCardFields name={String(data.cardName ?? '')} note={String(data.note ?? '')} readOnly={readOnly} onChange={(patch) => updateNodeData(id, patch)} />
       {kind === 'text' ? <ImeSafeTextArea value={String(data.lastText ?? '')} disabled={readOnly} onChange={lastText => updateNodeData(id,{lastText})} autoSize={{minRows:3}} placeholder="提示词、数字、true / false 或下拉选项值" /> : <>
-        {asset ? kind === 'video' ? <video src={asset.url} controls style={{width:'100%'}} /> : kind === 'audio' ? <audio src={asset.url} controls style={{width:'100%'}} /> : <img loading="lazy" decoding="async" src={asset.url} alt={asset.filename} style={{width:'100%'}} /> : null}
+        {asset ? kind === 'video' ? <ViewportVideo src={asset.url} controls style={{width:'100%'}} /> : kind === 'audio' ? <ViewportAudio src={asset.url} controls style={{width:'100%'}} /> : <ViewportImage loading="lazy" decoding="async" src={asset.url} alt={asset.filename} style={{width:'100%'}} /> : null}
         {asset?.filename ? <div className="canvas-reference-input__filename" title={asset.filename}>{asset.filename}</div> : null}
         <AssetIdLabel assetId={asset?.assetId} />
         <Upload accept={`${kind}/*`} showUploadList={false} disabled={readOnly || uploading} customRequest={async ({file,onSuccess,onError}) => {
