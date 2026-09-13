@@ -116,8 +116,14 @@ export class RunsService implements OnModuleInit {
     for (const key of ['canvasId', 'nodeId', 'shotId', 'status', 'provider'] as const) if (query[key]) (where as any)[key] = query[key];
     const page = Math.max(1, Number(query.page) || 1); const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
     const [runs, total] = await this.runs.findAndCount({ where, order: { createdAt: 'DESC' }, skip: (page - 1) * pageSize, take: pageSize });
+    const outputIds = [...new Set(runs.flatMap(run => run.outputAssetIds))];
+    const outputAssets = new Map((outputIds.length ? await this.assets.find({ where: { id: In(outputIds) } }) : []).map(asset => [asset.id, asset]));
     const items = await Promise.all(runs.map(async (run) => ({
       ...run,
+      outputAssets: run.outputAssetIds.flatMap(id => {
+        const asset = outputAssets.get(id);
+        return asset ? [{ assetId: asset.id, kind: asset.kind, filename: asset.originName, mime: asset.mime }] : [];
+      }),
       candidateGroup: run.canvasId ? await this.group(run.canvasId, run.nodeId, run.shotId) : null,
       capabilities: this.capabilities(run),
       latestHandoff: (await this.handoffs.findOne({ where: { runId: run.id }, order: { createdAt: 'DESC' } })) ?? null,

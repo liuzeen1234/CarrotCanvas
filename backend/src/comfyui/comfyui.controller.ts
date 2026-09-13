@@ -268,6 +268,8 @@ export class ComfyUIController {
       onComplete: async (finished) => {
         let completionError: unknown = finished.error ? new Error(finished.error) : undefined;
         try {
+          // Fast audio runs can finish between polls; completion must persist their real start.
+          if (finished.startedAt != null) await this.persistentRuns.patch(begun.run.id, { startedAt: finished.startedAt });
           if (body.canvasId && !finished.error && finished.status !== 'interrupted') await this.capture.captureRunOutputs(finished, body.canvasId, body.nodeId ?? null, workflow.id);
           const ids = finished.outputs.flatMap((output) => output.assetId ? [output.assetId] : []);
           const status = finished.status === 'interrupted' ? 'cancelled' : finished.error ? 'failed' : 'succeeded';
@@ -306,6 +308,7 @@ export class ComfyUIController {
     }
     const persistent = await this.persistentRuns.getByProviderRunId(promptId);
     if (persistent && run.status === 'running' && persistent.status !== 'running') await this.persistentRuns.patch(persistent.id, { status: 'running', startedAt: run.startedAt ?? Date.now() });
+    else if (persistent && persistent.startedAt == null && run.startedAt != null) await this.persistentRuns.patch(persistent.id, { startedAt: run.startedAt });
     return { run: { ...run, runId: persistent?.id } };
   }
 
@@ -317,6 +320,7 @@ export class ComfyUIController {
       let persistent = await this.persistentRuns.getByProviderRunId(run.promptId);
       if (persistent) {
         if (run.status === 'running' && persistent.status !== 'running') persistent = await this.persistentRuns.patch(persistent.id, { status: 'running', startedAt: run.startedAt ?? Date.now() });
+        else if (persistent.startedAt == null && run.startedAt != null) persistent = await this.persistentRuns.patch(persistent.id, { startedAt: run.startedAt });
         if (run.status === 'pending' && persistent.status !== 'queued') persistent = await this.persistentRuns.patch(persistent.id, { status: 'queued' });
       }
       return { ...run, runId: persistent?.id };
@@ -529,6 +533,7 @@ export class ComfyUIController {
       if (n?.class_type) types.add(n.class_type);
     }
     const has = (kw: RegExp) => [...types].some((t) => kw.test(t));
+    if (has(/^SaveAudio(?:Advanced|MP3|Opus)?$/) && !has(/SaveVideo|VideoCombine|SaveImage/)) return 'txt2audio';
     if (has(/Video|SaveAnimated|SaveWEBM|Minimax|Hunyuan|Mochi|Wan\d|LTX/)) {
       if (has(/LoadImage|LoadImagePath|LoadVideo/)) return 'img2vid';
       return 'txt2vid';

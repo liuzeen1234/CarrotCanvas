@@ -49,7 +49,7 @@ export default async function (s) {
 
 - 所有现有画布节点的 `data` 均可带 `cardName?: string` 与 `note?: string`。`cardName` 是人工可读的卡片标题，`note` 是用途、内容或上下文备注；两者随 canonical graph 持久化，但不替代稳定 `node.id`，也不应覆盖 `workflowName`、提示词或其他运行字段。创建节点时可直接填写；更新既有节点用 `update_node.dataPatch` 浅合并并保留其他 data。
 
-- ComfyUI 节点统一 `type: 'txt2img'`，即使工作流生成视频也不改类型；data 含 `workflowId, workflowName, formValues`。formValues 键为 `${nodeId}::${param}`；nodeId 是 ComfyUI 图内 ID，可能带冒号。显示分类等字段参照选定工作流或已有有效节点。
+- ComfyUI 节点统一 `type: 'txt2img'`，即使工作流生成视频或音频也不改类型；data 含 `workflowId, workflowName, formValues`。formValues 键为 `${nodeId}::${param}`；nodeId 是 ComfyUI 图内 ID，可能带冒号。显示分类等字段参照选定工作流或已有有效节点。`txt2audio` 工作流输出为 `audio-source`，不能用 `image-source`；音效参数、结果连接与验收见 [audio.md](audio.md)。
 - Codex2API 节点 `type: 'codex-capability'`；data 含 `capability: text|image|edit|analyze, prompt, model`，可有 `outputMode` 和 `lastAssets/lastText/lastTextParts`。模型从 `/codex2api/models` 发现。edit/analyze 的单个 `image-target` 最多接 16 条边；同一 target 的多条 `connect` 操作必须使用不同 edge ID，并按预期图片顺序写入。其他 target 仍最多一条边。
 - AI 配音卡 `type: 'tts'`；data 为 `{provider:'cosyvoice3'|'indextts2'|'qwen3tts', voiceMode:'preset'|'custom'|'design', presetVoiceId?, language?, text, referenceText, instruction, speed, lastAssets?}`。`custom` 的 `audio-target` 是音色参考，`emotion-audio-target` 是 IndexTTS2 可选情绪参考，`text-target` 是可选上游配音文本，输出为 `audio-source`。Qwen3-TTS 支持无需参考音频的 `preset` 与 `design`；预设列表实时读取 `/tts/voices`，文字设计音色必须填写 `instruction`。不得把本地音频路径直接写进节点，自定义参考需先用 `s.uploadMedia` 得到当前画布 audio asset。
 - 输入/结果卡 `type: 'result'`；data 含 `kind: text|image|video|audio`，输入模式 `inputMode:true`，文字放 `lastText`，媒体放 `lastAssets:[{assetId,url,kind,filename?}]`；媒体引用用平台资产而非其他项目本地路径。
@@ -57,17 +57,16 @@ export default async function (s) {
 - 常规 source 为 `text-source`、`image-source`、`video-source`、`audio-source`；正负提示词为 `text-positive-source` / `text-negative-source`。Codex 输入为 `text-target`，edit/analyze 可接 `image-target`。
 - 工作流 target 从实时 `inputConfig.fields` 构造：image 为 `input:${nodeId}:${param}`，其余为 `input:${kind}:${nodeId}:${param}`。不要按固定冒号段数拆 ID。媒体类型必须匹配；除上述 Codex edit/analyze `image-target` 外，单个输入最多一条边。不允许有向环路。
 - MiniMax H3 高质量图生视频保留原 `img2vid` 工作流身份，并提供四个多入线句柄：`input:image:reference-group:images`（图片 9）、`input:reference-group:videos`（视频 3）、`input:reference-group:videoAudios`（视频配音 3）、`input:reference-group:audios`（独立音频 3）。原工作流的单张 `first_frame` 图片会投影为参考图第 1 项，不再作为独立图片控件或身份存在。旧“全能参考”分类已从画布入口下线，不要创建该分类节点或把它改名后充当图生视频。
-- 四组素材分别保存在 `referenceMedia[group]` 与 `referenceMediaOrder[group]`；旧图片字段 `referenceImages`、`referenceImageOrder`、`promptImageReferences` 仅用于兼容已有画布。连接素材的稳定 `referenceId` 为 edge ID，卡片上传素材为 `asset:<assetId>`。图片、视频、独立音频的 token 绑定写入 `promptMediaReferences`，其中包含 `group`；提交时根据各组当前顺序编译为 `<Picture N>`、`<Video N>`、`<Audio N>`。视频配音不生成 token，按顺序与参考视频配对，不能出现第 N 路配音但缺少第 N 个视频。
+- 四组的 `referenceMedia[group]` 只存直接上传到卡片的素材；连线素材通过 `edges` 获取，不复制进数组。`referenceMediaOrder[group]` 排序仍覆盖连线和上传。旧图片字段 `referenceImages`、`referenceImageOrder`、`promptImageReferences` 仅用于兼容已有画布。连接素材的稳定 `referenceId` 为 edge ID，卡片上传素材为 `asset:<assetId>`。图片、视频、独立音频的 token 绑定写入 `promptMediaReferences`，其中包含 `group`；提交时根据各组当前顺序编译为 `<Picture N>`、`<Video N>`、`<Audio N>`。视频配音不生成 token，按顺序与参考视频配对，不能出现第 N 路配音但缺少第 N 个视频。
 - 移除或断开素材前，先从提示词删除相应 token，并同步清除 `promptMediaReferences` 绑定；后端会阻止制造活动引用悬空。运行请求保存 `originalPrompt`、兼容字段 `imageReferenceMap`，以及含 `images/videos/videoAudios/audios` 四组的 `referenceMaps`。原 `MiniMaxH3ImageToVideo` API 在提交阶段转换为 `MiniMaxH3ReferenceToVideo`，Agent 不应自行改写持久化工作流或用全能参考工作流替代它。Z-Image Turbo 通用图生图沿用图片句柄，但最多 1 条。
 
 ### Codex 多图与稳定引用
 
-Codex edit/analyze 的参考图顺序和提示词引用保存在目标节点 data 中；它们随既有 canonical graph JSON 持久化，不需要单独数据库表或迁移：
+Codex edit/analyze 的直接上传图片、全部参考图顺序和提示词绑定保存在目标节点 data 中；连线图片只保存在图的 edges 与上游节点资产中。它们随 canonical graph JSON 持久化，不需要单独数据库表或迁移。以下是角色图连线 + 服装图上传的混合示例：图中已有 `edge-ref-character`，从 `character-source` 的 `image-source` 接到目标的 `image-target`；角色资产在来源节点 `lastAssets` 中，不能再复制进目标的 `referenceImages`。
 
 ```js
 {
   referenceImages: [
-    { referenceId: 'edge-ref-character', assetId: 'asset-id', url: '/api/assets/asset-id', kind: 'image', displayName: '角色图' },
     { referenceId: 'asset:uploaded-asset-id', assetId: 'uploaded-asset-id', url: '/api/assets/uploaded-asset-id', kind: 'image', displayName: '服装图' },
   ],
   referenceImageOrder: ['edge-ref-character', 'asset:uploaded-asset-id'],
@@ -77,11 +76,55 @@ Codex edit/analyze 的参考图顺序和提示词引用保存在目标节点 dat
 }
 ```
 
-- 连线图片的稳定 `referenceId` 是 edge ID；直接上传到卡片的图片使用 `asset:<assetId>`。不要用数组下标、文件名、卡片名或“图 N”作为稳定身份。
+- `referenceImages` 只存直接上传图片；连线图片从目标 `image-target` 的 edges 解析。连线图片的稳定 `referenceId` 是 `edge.id`；直接上传到卡片的图片使用 `asset:<assetId>`。不要用数组下标、文件名、卡片名或“图 N”作为稳定身份。解析来源时与编辑器一致：取对应媒体类型的当前 `lastAssets`，非输入模式的结果卡先沿其输入连线找到实际产出来源；来源无图片时停止提交，不用旧数组副本兜底。
 - `referenceImageOrder` 列出全部 referenceId，决定缩略图、提交文件和 provider 输入的顺序。新增图片追加到末尾；拖动排序只改此数组；移除中间图片后不要重命名其他 referenceId。
 - 提示词里的 token 必须唯一，并在 `promptImageReferences` 中绑定相同 referenceId。提交时才按 `referenceImageOrder` 的当前位置把 token 编译为 `第 N 张输入图片（displayName）`。这样移除或重排未引用图片后，引用仍指向原资产。
 - 解除引用须在同一 `update_node` 中同时删除 prompt token 和对应 `promptImageReferences` 条目，然后才能 `disconnect` 或删除来源节点。后端会拒绝任何新造成活动引用悬空的 operations/replace_graph；可以在同一原子批次删除引用目标卡及其来源。
 - 读取旧画布发现引用的 edge/asset 已不存在时，停止生成并报告缺失 referenceId；修复来源，或同时清除 token、绑定和顺序项后再运行。不要猜测替代图片。
+
+#### 提交时组装与一致性
+
+Agent 必须自行解析引用，后端不会从画布替你组装文件。与 `CodexCapabilityNode.tsx` 当前实现一致：先连线、后上传，按 `referenceId` 留第一项，再排序。排序未列出的项保持组装顺序并追加到末尾；重复排序 ID 不会生成额外文件。
+
+```js
+// connected 由当前 edges + 上游当前图片资产解析，referenceId=edge.id。
+// uploaded 是 data.referenceImages；允许读取旧副本，但连线优先。
+const order = data.referenceImageOrder || [];
+const references = [...connected, ...uploaded]
+  .filter((item, index, all) => all.findIndex(candidate => candidate.referenceId === item.referenceId) === index)
+  .sort((a, b) => {
+    const ai = order.indexOf(a.referenceId), bi = order.indexOf(b.referenceId);
+    return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+  });
+const inputAssetIds = references.map(item => item.assetId);
+const imageReferenceMap = references.map((item, index) => ({
+  referenceId: item.referenceId, assetId: item.assetId, position: index + 1,
+  displayName: item.displayName,
+}));
+```
+
+确认每项有有效图片资产和可读取文件，活动 token 的 `referenceId` 都能解析，最终引用数不超过 16；不要静默丢弃缺失文件。按此唯一 `references` 列表顺序获取 Blob、append multipart `image`、生成 `inputAssetIds` 与 `imageReferenceMap`，并把绑定 token 编译为该项的 `第 N 张输入图片（displayName）`。原 token 提示词保存为 `originalPrompt`；映射可附 token 用于审计。上传引用和连线引用即使指向同一 `assetId`，只要 `referenceId` 不同，仍是两个合法输入；两条不同 edge 同理。不得按 assetId 合并它们，Codex 的同序 inputAssetIds 可含重复资产 ID。
+
+#### ComfyUI 经实现核对的边界
+
+`Txt2ImgNode.tsx` 每组实际组装顺序是：旧单槽连线 + 多参考组连线（connected）→ 未连线槽位的 `formValues` 文件（embedded）→ 旧 `referenceImages`（仅 images）+ `referenceMedia[group]`（uploaded）。按 `referenceId` 留第一项，再按 `referenceMediaOrder[group]`（未设置时 images 回退 `referenceImageOrder`）排序。因此连线副本只显示/提交一次，但兼容读取不会自动清理 canonical 存储，也不能假定上传/重排会消除旧副本。
+
+文件型兼容引用使用 `field:<group>:<comfyNodeId>::<param>`，来自已有 formValues，不应伪装为上传 asset 或复制进 referenceMedia；同槽有连线时不再投影文件。Agent 必须读取真实 workflow 配置验证槽位。提交时按组内最终列表逐槽写文件名、构造 `referenceMaps`（images 同时保存 `imageReferenceMap`）、编译标签；不同 referenceId 的同资产引用仍占不同槽位。当前 ComfyUI 实现用 `Set` 收集 `inputAssetIds`，它只是去重的资产血缘（文件型引用没有平台 assetId），不保证与槽位一一对应；不要把 Codex 同序数组合同误写成 ComfyUI 当前实现。此说明核对自 `editor.tsx#getUpstreamAssets`、`Txt2ImgNode.tsx` 的组装/上传/重排/提交及 `comfyui.controller.ts` 的快照保存。
+
+#### 旧重复数据的受控清理
+
+通过正常 `run`/session 取得租约并 refresh，基于最新 revision 用 `update_node.dataPatch` 清理目标数组中与当前连线 referenceId 相同的副本，上传数组内同 referenceId 也只保留首项。只删可确认的副本，不按 assetId 清理；未知身份或已断开的旧 edge 引用先报告并核对，不能猜成上传引用。ComfyUI 对各组及兼容 referenceImages 做同样核对，保留合法 field 文件配置。不要直接改 SQLite、绕过 lease 或用整图覆盖。
+
+```js
+const connectedIds = new Set(connected.map(item => item.referenceId));
+const cleanedUploads = (data.referenceImages || []).filter((item, index, all) =>
+  !connectedIds.has(item.referenceId)
+  && all.findIndex(candidate => candidate.referenceId === item.referenceId) === index);
+await s.operations([{ type: 'update_node', nodeId,
+  dataPatch: { referenceImages: cleanedUploads } }], '清理参考图连线副本');
+```
+
+ComfyUI 的 dataPatch 仅修改待清理数组；修改 `referenceMedia` 时必须展开原对象以保留其他组。清理不 disconnect、不删来源或资产，不改 `referenceImageOrder/referenceMediaOrder`、prompt、绑定、formValues、lastAssets/lastText/lastTextParts、Run 或候选产物。完成后 refresh，确认数组只保留直接上传引用，连线、完整排序、token 绑定和产物均保持；重新组装后的引用、顺序及提示词编号应与清理前一致。正常退出主动释放租约，无需生成验证。
 
 ## 运行与媒体
 
@@ -113,7 +156,7 @@ if (run.status !== 'succeeded') throw new Error(`Run ${runId}: ${run.status}`);
 
 Codex2API：使用 `/codex2api/chat/completions`（`stream:false, model, messages`）、`/codex2api/images/generations`（model/prompt 等实时服务支持参数）。同样传 canvasId/nodeId/inputAssetIds/幂等键，用 `s.write(...,{timeoutMs:660000,providerRun:true})`；返回 `runId`，之后读取持久 Run。图片编辑为 multipart `image` 文件数组，不能把本地路径塞进 JSON；按 `referenceImageOrder` 依次 append 最多 16 个 `image` Blob，并 set canvasId/nodeId/model、编译后的 `prompt`、原始 token 提示词 `originalPrompt`、JSON 字符串 `imageReferenceMap`（每项含 referenceId、position、displayName、token）和同序 `inputAssetIds`，再经同一 `s.write` 提交 `/codex2api/images/edits`。图像理解同样按此顺序构造消息图片并保存映射；内部映射字段用于 Run 审计，不转发 provider。
 
-运行成功不保证 canonical graph 中 lastAssets 已更新：按真实 `/runs/<id>` 的 `outputAssetIds`、`outputText`、`outputParts` 生成 `update_node`，媒体类型优先取提交结果的产物信息，或请求 `/assets/<id>` 检查 Content-Type（这是二进制流，不是元数据 JSON）；URL 为 `/api/assets/<assetId>`。更新 `lastAssets` 或 `lastText/lastTextParts` 前读当前节点，保留无关配置。若已交接，由新持有者完成图同步。
+运行成功不保证 canonical graph 中 lastAssets 已更新：按真实 `/runs/<id>` 的 `outputAssetIds`、`outputText`、`outputParts` 生成 `update_node`，媒体类型优先取提交结果的产物信息、历史列表的 `outputAssets`（真实资产的 assetId/kind/filename/mime），或请求 `/assets/<id>` 检查 Content-Type（这是二进制流，不是元数据 JSON）；不要仅凭工作流分类推断所有产物类型。URL 为 `/api/assets/<assetId>`。更新 `lastAssets` 或 `lastText/lastTextParts` 前读当前节点，保留无关配置。若已交接，由新持有者完成图同步。
 
 媒体导入：`s.uploadMedia` 在画布上下文中只保存平台资产，不依赖 ComfyUI 在线。`s.write('POST','/comfyui/upload/asset',{canvasId:s.canvasId,assetId})` 是在线回灌接口，不申请生成租约、不启动或切换 Provider；离线时会失败。须校验画布归属，依据返回 file.name/subfolder 和已确认的字段类型填入 API JSON；不复用其他画布的 assetId。`inputAssetIds` 只记录血缘，不会在 Run 中自动上传文件。如果本次生成必须回灌新素材且 ComfyUI 离线，保留平台资产并明确报告“当前 Run 接口尚未支持租约内自动回灌”，不能宣称冷启动生成已具备这一能力，也不能让用户手动打开 Desktop 来掩盖缺口。视频归一化和大小限制以当前接口为准。
 

@@ -4,6 +4,12 @@ describe('ComfyUISchemaService seed detection', () => {
   const service = new ComfyUISchemaService();
   const int = (extra: Record<string, unknown> = {}) => ['INT', { min: 0, max: 0xffffffffffffffff, ...extra }];
 
+  it('CustomCombo 使用工作流中的官方类别而非空节点定义', () => {
+    const result = service.analyze({ '43': { class_type: 'CustomCombo', inputs: { choice: 'SFX', option1: 'Music', option2: 'Instrument', option3: 'SFX', option4: 'One-shot', option5: '' } } }, { CustomCombo: { input: { required: { choice: ['COMBO', { options: [] }] } } } });
+    expect(result.groups[0].fields[0].options).toEqual(['Music', 'Instrument', 'SFX', 'One-shot']);
+    expect(result.groups[0].fields[0].control).toBe('select');
+  });
+
   it('识别 KSampler seed 与 RandomNoise noise_seed', () => {
     const result = service.analyze({
       '1': { class_type: 'KSampler', inputs: { seed: 42 } },

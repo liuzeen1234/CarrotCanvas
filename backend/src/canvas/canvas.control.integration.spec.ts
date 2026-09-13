@@ -26,6 +26,16 @@ describe('Phase 0A canvas control (SQLite integration)', () => {
   const proof = (lease: any, revision = 0, key = 'op-1') => ({ leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: revision, idempotencyKey: key, actorType: 'agent' as const, actorId: lease.holderId });
   const leaseProof = (lease: any) => ({ leaseToken: lease.leaseToken, leaseEpoch: lease.epoch });
 
+  it('本地音效工作流通过既有生成节点输出音频，拒绝伪造图片输出', async () => {
+    const repo = db.getRepository(Workflow);
+    const workflow = await repo.save(repo.create({ name: 'Stable Audio 3 Medium', category: 'txt2audio', apiJson: '{}', inputConfig: null }));
+    const canvas = await create(); const lease = await service.acquire(canvas.id, { holderType: 'agent', holderId: 'audio-test' });
+    const operations: any[] = [{ type: 'create_node', node: { id: 'sfx', type: 'txt2img', position: { x: 0, y: 0 }, data: { workflowId: workflow.id, formValues: {} } } }, { type: 'create_node', node: { id: 'audio-out', type: 'result', position: { x: 400, y: 0 }, data: { kind: 'audio' } } }, { type: 'connect', edge: { id: 'audio-edge', source: 'sfx', sourceHandle: 'audio-source', target: 'audio-out', targetHandle: 'audio-target' } }];
+    const result = await service.applyOperations(canvas.id, { ...proof(lease, 0, 'sfx-create'), operations });
+    expect(result.canvas.graph.edges[0].sourceHandle).toBe('audio-source');
+    await expect(service.applyOperations(canvas.id, { ...proof(lease, 1, 'sfx-bad-output'), operations: [{ type: 'create_node', node: { id: 'image-out', type: 'result', position: { x: 400, y: 400 }, data: { kind: 'image' } } }, { type: 'connect', edge: { id: 'wrong', source: 'sfx', sourceHandle: 'image-source', target: 'image-out', targetHandle: 'image-target' } }] })).rejects.toMatchObject({ response: { code: 'HANDLE_NOT_FOUND' } });
+  });
+
   it('单写者、交接、新 epoch 和旧 lease 拒绝', async () => {
     const canvas = await create();
     const first = await service.acquire(canvas.id, { holderType: 'agent', holderId: 'agent-a' });

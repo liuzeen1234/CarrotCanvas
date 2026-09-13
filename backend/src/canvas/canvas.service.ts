@@ -200,7 +200,7 @@ function validateGraph(graph: CanvasGraph) {
     const sourceKind = handleKind(edge.sourceHandle, true), targetKind = handleKind(edge.targetHandle, false);
     if (!sourceKind || !targetKind) bad('HANDLE_NOT_FOUND', `连线 ${edge.id} 句柄不合法`);
     const sourceNode = nodes.get(edge.source)!, targetNode = nodes.get(edge.target)!;
-    const allowedSource = sourceNode.type === 'txt2img' ? ['image', 'video'] : sourceNode.type === 'result' ? [String(sourceNode.data.kind ?? 'image')] : sourceNode.type === 'tts' ? ['audio'] : ['text', 'analyze'].includes(String(sourceNode.data.capability)) ? ['text'] : ['image'];
+    const allowedSource = sourceNode.type === 'txt2img' ? ['image', 'video', 'audio'] : sourceNode.type === 'result' ? [String(sourceNode.data.kind ?? 'image')] : sourceNode.type === 'tts' ? ['audio'] : ['text', 'analyze'].includes(String(sourceNode.data.capability)) ? ['text'] : ['image'];
     if (!allowedSource.includes(sourceKind)) bad('HANDLE_NOT_FOUND', `源节点 ${edge.source} 不存在 ${edge.sourceHandle}`);
     if (edge.targetHandle.endsWith('-target')) {
       const acceptsTarget = targetNode.type === 'result'
@@ -299,6 +299,15 @@ async function validateWorkflowHandles(graph: CanvasGraph, workflows: Repository
   const workflowIds = [...new Set(graph.nodes.filter((node) => node.type === 'txt2img').map((node) => String(node.data.workflowId)))];
   if (!workflowIds.length) return;
   const configured = new Map((await workflows.findByIds(workflowIds)).map((workflow) => [workflow.id, workflow]));
+  for (const edge of graph.edges) {
+    const source = nodes.get(edge.source);
+    if (source?.type !== 'txt2img') continue;
+    const workflow = configured.get(String(source.data.workflowId));
+    if (!workflow) continue;
+    if ((edge.sourceHandle === 'audio-source') !== (workflow.category === 'txt2audio')) {
+      bad('HANDLE_NOT_FOUND', `工作流 ${workflow.id} 不存在 ${edge.sourceHandle}`);
+    }
+  }
   const referenceLimitsFor = (workflow: Workflow): Partial<Record<keyof typeof WORKFLOW_REFERENCE_HANDLES, number>> => {
     let api: Record<string, any> = {};
     try { api = typeof workflow.apiJson === 'string' ? JSON.parse(workflow.apiJson) : workflow.apiJson as any; } catch { /* normal handle validation reports malformed workflows elsewhere */ }

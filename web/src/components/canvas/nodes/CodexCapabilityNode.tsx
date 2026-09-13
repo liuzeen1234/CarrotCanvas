@@ -18,7 +18,7 @@ const MAX_REFERENCE_IMAGES = 16;
 export default function CodexCapabilityNode(props: NodeProps) {
   const data = props.data as CodexCapabilityNodeData;
   const { canvasId, control, readOnly, updateNodeData, observeNodeData, deleteNode, getNodeRunState, getUpstreamAssets, disconnectEdge, getUpstreamText, generationHistoryVersion } = useContext(CanvasNodeDataContext);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [preview, setPreview] = useState<{ kind: 'reference' | 'output'; index: number } | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [liveText, setLiveText] = useState('');
   const [historyVersion, setHistoryVersion] = useState(0);
   const [localStartedAt, setLocalStartedAt] = useState<number | null>(null);
@@ -29,9 +29,9 @@ export default function CodexCapabilityNode(props: NodeProps) {
   const promptPairMode = supportsPromptMode && (data.outputMode === 'image-prompts' || data.outputMode === 'video-prompts');
   const reversePromptMode = data.capability === 'analyze' && data.outputMode === 'image-prompts';
   const connectedReferences = needsImage ? getUpstreamAssets(props.id, resultTargetHandle('image'), 'image') : [];
-  const uploadedReferences = data.referenceImages || [];
+  const uploadedReferences = (data.referenceImages || []).filter((item) => !connectedReferences.some((connected) => connected.referenceId === item.referenceId));
   const referenceOrder = data.referenceImageOrder || [];
-  const references = useMemo(() => [...connectedReferences, ...uploadedReferences].sort((a, b) => {
+  const references = useMemo(() => [...connectedReferences, ...uploadedReferences].filter((item, index, all) => all.findIndex((candidate) => candidate.referenceId === item.referenceId) === index).sort((a, b) => {
     const ai = referenceOrder.indexOf(a.referenceId), bi = referenceOrder.indexOf(b.referenceId);
     return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
   }), [connectedReferences, uploadedReferences, referenceOrder]);
@@ -138,7 +138,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
       {needsImage ? <>
         <div className="canvas-reference-summary"><Typography.Text strong>参考图 {references.length} / {MAX_REFERENCE_IMAGES}</Typography.Text><Upload disabled={readOnly || references.length >= MAX_REFERENCE_IMAGES} accept="image/*" multiple showUploadList={false} beforeUpload={uploadReference}><Button size="small" disabled={readOnly || references.length >= MAX_REFERENCE_IMAGES} icon={<UploadOutlined />}>添加图片</Button></Upload></div>
         <div className="canvas-reference-grid">{references.map((item, index) => <div key={item.referenceId} className="canvas-reference-thumb" draggable={!readOnly} onDragStart={(event) => event.dataTransfer.setData('text/reference-id', item.referenceId)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); moveReference(event.dataTransfer.getData('text/reference-id'), item.referenceId); }}>
-          <button type="button" className="canvas-reference-thumb__preview" onClick={() => setPreviewIndex(index)} aria-label={`预览第 ${index + 1} 张参考图`}><img src={item.url} alt={item.displayName} /><span>{index + 1}</span></button>
+          <button type="button" className="canvas-reference-thumb__preview" onClick={() => setPreview({ kind: 'reference', index })} aria-label={`预览第 ${index + 1} 张参考图`}><img loading="lazy" decoding="async" src={item.url} alt={item.displayName} /><span>{index + 1}</span></button>
           <button type="button" className="canvas-reference-thumb__remove" disabled={readOnly} onClick={() => removeReference(item.referenceId)} aria-label={`移除${item.displayName}`}><CloseCircleFilled /></button>
           <div title={item.displayName}>{item.displayName}</div>
         </div>)}</div>
@@ -151,7 +151,7 @@ export default function CodexCapabilityNode(props: NodeProps) {
       <div style={{ position: 'relative' }}>
         <Handle type="target" position={Position.Left} id={capabilityPromptHandle()} className="canvas-handle--text" style={{ left: -15 }} title="提示词文本输入" />
         {textTransformMode ? <Typography.Text type="secondary">加工要求</Typography.Text> : null}
-        {needsImage ? <ImeSafeMentions autoSize={{ minRows: 3, maxRows: 8 }} value={data.prompt} onChange={updatePrompt} disabled={readOnly} placeholder="输入提示词；键入 @ 引用某张参考图" options={references.map((item) => ({ key: item.referenceId, value: `${item.displayName.replace(/\s+/g, '_')}·${item.referenceId.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`, label: <span><img src={item.url} className="canvas-reference-mention-image" />{item.displayName}</span>, reference: item }))} onSelect={(option: any) => {
+        {needsImage ? <ImeSafeMentions autoSize={{ minRows: 3, maxRows: 8 }} value={data.prompt} onChange={updatePrompt} disabled={readOnly} placeholder="输入提示词；键入 @ 引用某张参考图" options={references.map((item) => ({ key: item.referenceId, value: `${item.displayName.replace(/\s+/g, '_')}·${item.referenceId.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`, label: <span><img loading="lazy" decoding="async" src={item.url} className="canvas-reference-mention-image" />{item.displayName}</span>, reference: item }))} onSelect={(option: any) => {
           const reference = option.reference; const token = `@${option.value}`;
           if (!reference || (data.promptImageReferences || []).some((item) => item.token === token)) return;
           update({ promptImageReferences: [...(data.promptImageReferences || []), { referenceId: reference.referenceId, sourceNodeId: reference.sourceNodeId, edgeId: reference.edgeId, token, displayName: reference.displayName }] });
@@ -166,10 +166,10 @@ export default function CodexCapabilityNode(props: NodeProps) {
       {data.capability === 'image' || data.capability === 'edit' ? <Space.Compact block><Select disabled={readOnly} size="small" value={data.size} options={['1024x1024','1536x1024','1024x1536'].map((value) => ({ value, label: value }))} onChange={(size) => update({ size })} style={{ width: '60%' }} /><Select disabled={readOnly} size="small" value={data.responseFormat} options={[{ value: 'url', label: 'URL' },{ value: 'b64_json', label: 'Base64' }]} onChange={(responseFormat) => update({ responseFormat })} style={{ width: '40%' }} /></Space.Compact> : null}
       {busy ? <div><Progress percent={70} status="active" showInfo={false} /><Tag color="processing">{data.capability === 'text' ? '正在生成文字' : reversePromptMode ? '正在反推图片提示词' : data.capability === 'analyze' ? '正在理解图片' : data.capability === 'edit' ? '正在编辑图片' : '正在生成图片'}</Tag></div> : null}{error ? <Alert type="error" showIcon message={error} /> : null}
       {displayedText ? <div className="canvas-codex-text">{displayedText}</div> : null}
-      {images.map((item, index) => <div key={`${item.url}-${index}`}><button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(index)} aria-label="放大预览图片"><img src={item.url} alt="生成图片" /></button><AssetIdLabel assetId={item.assetId} /><Button size="small" block icon={<DownloadOutlined />} href={item.assetId ? `/api/assets/${item.assetId}/download` : item.url} download>下载</Button></div>)}
+      {images.map((item, index) => <div key={`${item.url}-${index}`}><button type="button" className="canvas-media-trigger" onClick={() => setPreview({ kind: 'output', index })} aria-label="放大预览图片"><img loading="lazy" decoding="async" src={item.url} alt="生成图片" /></button><AssetIdLabel assetId={item.assetId} /><Button size="small" block icon={<DownloadOutlined />} href={item.assetId ? `/api/assets/${item.assetId}/download` : item.url} download>下载</Button></div>)}
       <NodeOutputHistory canvasId={canvasId} nodeId={props.id} kind={outputKind} promptModeContext={data.capability} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => update({ lastAssets: [asset] })} onSelectText={(text, parts) => { setLiveText(''); update({ lastText: text, lastTextParts: parts || undefined }); }} onObserveAsset={(asset) => observeNodeData(props.id, { lastAssets: [asset] })} onObserveText={(text, parts) => { setLiveText(''); observeNodeData(props.id, { lastText: text, lastTextParts: parts || undefined }); }} />
     </Space></div>
-    <CanvasMediaPreview open={previewIndex !== null} items={(needsImage ? references : images).map((item): CanvasMediaItem => ({ assetId: item.assetId || '', url: item.url, kind: 'image' }))} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
+    <CanvasMediaPreview open={preview !== null} items={(preview?.kind === 'reference' ? references : images).map((item): CanvasMediaItem => ({ assetId: item.assetId || '', url: item.url, kind: 'image' }))} index={preview?.index ?? 0} onIndexChange={(index) => setPreview((current) => current ? { ...current, index } : null)} onClose={() => setPreview(null)} />
     <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={promptPairMode ? '合并提示词输出' : `${outputKind === 'image' ? '图片' : '文本'}输出`} style={promptPairMode ? { top: '62%' } : undefined} />
     {promptPairMode ? <><Handle type="source" position={Position.Right} id={promptPartSourceHandle('positive')} className="canvas-handle--text" title="正向提示词输出" style={{ top: '72%' }} /><Handle type="source" position={Position.Right} id={promptPartSourceHandle('negative')} className="canvas-handle--text" title="负向提示词输出" style={{ top: '82%' }} /></> : null}
   </div>;

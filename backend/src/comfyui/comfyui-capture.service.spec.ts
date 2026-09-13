@@ -49,6 +49,14 @@ function makeAssets(over: any = {}) {
 }
 
 describe('ComfyUIAssetCaptureService', () => {
+  it('无损 FLAC 输出按音频捕获，保留 MIME、文件名和候选', async () => {
+    const client = makeClient({ fetchViewFile: jest.fn(async () => ({ buffer: Buffer.from('fLaC'), mime: 'application/octet-stream' })) });
+    const assets = makeAssets(); const svc = new ComfyUIAssetCaptureService(client as any, assets as any);
+    const run = makeRun([makeOutput({ filename: 'stable_audio_3_00001_.flac', kind: 'audio' })]);
+    await svc.captureRunOutputs(run, 'canvas-audio', 'sfx', 'stable-audio');
+    expect(assets.saveGenerated).toHaveBeenCalledWith(expect.objectContaining({ kind: 'audio', mime: 'audio/flac', originName: 'stable_audio_3_00001_.flac' }));
+    expect(run.outputs[0].assetId).toBeTruthy(); expect(assets.deleteGeneratedByNode).not.toHaveBeenCalled();
+  });
   it('全部输出捕获成功 → 回填 assetId/assetUrl，并保留旧候选', async () => {
     const client = makeClient();
     const assets = makeAssets();

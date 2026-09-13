@@ -1,0 +1,23 @@
+{
+  "method": "Observed through native browser accessibility actions and read-only audio DOM inspection",
+  "canvasId": "da1993e3-12d0-41c6-a335-22cb96072dab",
+  "createdWorkflowNodeViaContextMenu": true,
+  "filledPromptDurationSeedAndOneShotViaUI": true,
+  "confirmedAndRanFinalWorkflowViaUI": true,
+  "uiRunId": "414b3ee5-becc-4198-af30-362a7820dfb2",
+  "uiAssetId": "618da775-5018-4ee3-a182-03a9f37087c9",
+  "uiDownloadEventObserved": true,
+  "onlineFormLoadFailures": 0,
+  "resultAudioPlayers": 4,
+  "historyAudioPlayersAfterBackendRestart": 13,
+  "allHistoryPlayersReadyState": 4,
+  "allHistoryPlayersDecodeErrors": null,
+  "completePlayback": [
+    {"assetId":"976cbbb7-a5d2-404b-b929-1e8c60a86e78","duration":24.984671,"currentTime":24.984671,"ended":true,"readyState":4,"error":null},
+    {"assetId":"52abf2a6-a492-4d42-b0b0-b3919b824163","duration":3.993832,"currentTime":3.993832,"ended":true,"readyState":4,"error":null},
+    {"assetId":"48ba81c3-a4cd-4b15-8302-e66cb93f010c","duration":3.993832,"currentTime":3.993832,"ended":true,"readyState":4,"error":null},
+    {"assetId":"618da775-5018-4ee3-a182-03a9f37087c9","duration":3.993832,"currentTime":3.993832,"ended":true,"readyState":4,"error":null}
+  ],
+  "humanSemanticListeningRequired": true,
+  "caveat": "Playback and decoding work; agent cannot receive playback sound. This is NOT certification of acoustic source, speech/music absence, action count, or foley quality."
+}

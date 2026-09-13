@@ -147,6 +147,10 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-13（Skill 存储边界核对）：referenceMedia[group] 只存直接上传素材，连线从 edges/上游资产解析；组内排序和绑定覆盖两类引用。Txt2ImgNode 当前按 connected → embedded formValues 文件 → uploaded（含旧图片数组）组装，按 referenceId 去重且连线优先，然后排序。兼容读取不自动清理 canonical 旧副本；正常租约下 update_node 只清理数组，保留 edges、排序、绑定、formValues 和产物。不同 referenceId 的同资产素材保留独立槽位与映射，inputAssetIds 的 Set 仅用于资产血缘。协议说明同步进 carrot-canvas Skill；不改运行引擎，不执行生成，阶段状态不变。
+
+- 2026-09-12（Stable Audio 3 Medium 本地音效接入）：保存官方普通 Medium 原模板与默认关闭本地扩写的 FLAC 副本；新增 `txt2audio` 分类和画布菜单，通用工作流卡片及工具箱支持音频播放器，CustomCombo 从实际工作流提取官方选项。实测后在副本增加显式时长 conditioning 和编码前 −3 dB，修复 latent 时长取整尾部静音和瞬态削波；快速完成 Run 在 completion 中持久化开始时间，生成流水按持久资产类型展示音频/视频。独立 ComfyUI、三组平台生成及真实 UI 运行/播放/下载通过；后端 157 项测试及前后端构建通过。平台仍沿用现有 runner、FIFO、资产、GenerationRun 与候选历史；未升级全局依赖或修改已有图像/视频工作流。模型完整性、Run/asset 和人工听感边界见 [STABLE-AUDIO-INTEGRATION.md](./STABLE-AUDIO-INTEGRATION.md)。
+
 - 2026-09-12（MiniMax H3 图生视频统一多媒体参考卡片）：保留原“MiniMax H3 高质量图生视频”的工作流 ID、名称、`img2vid` 分类和卡片入口，在提交阶段把其 `MiniMaxH3ImageToVideo` 节点兼容升级为 `MiniMaxH3ReferenceToVideo` 协议；“全能参考”分类仅从画布入口下线，不作为图生视频工作流的替身。卡片用四个紧凑的多连线入口管理参考图片 `9`、参考视频 `3`、视频配音 `3` 和独立参考音频 `3`；每组支持上传、计数、缩略展示、拖动排序和单项移除。图片、视频、独立音频可用稳定 `@名称·ID` 引用，提交时才按各组当前顺序编译为 `<Picture N>`、`<Video N>`、`<Audio N>`；视频配音按位置与参考视频配对，不生成提示词 token。被提示词引用的素材不可移除，上游丢失时卡片标红并禁止运行。Run 快照新增四组 `referenceMaps`，保留原 `imageReferenceMap` 兼容旧记录；节点数据继续存于画布 graph JSON，无数据库迁移。
 
 - 2026-09-11（统一参考图入口与稳定引用）：画布内 MiniMax H3 全能参考工作流将 9 个图片槽位收拢为单个可接多线的参考图入口，按官方 `MiniMaxH3ReferenceToVideo` autogrow 上限保持 9 张，并支持有序缩略图、预览、拖动排序、移除与稳定 `@` 绑定；提交时把 token 按当前顺序编译为 `<Picture N>`，实际图片依次映射回 `ref_image_0..8`，Run 快照保存原提示词和顺序映射。Z-Image Turbo 通用图生图沿用相同卡片交互，但其实际工作流只有单个 `LoadImage → VAEEncode` 输入，严格保持 1 张上限。旧画布的独立图片端口和工作流内置文件会投影进新缩略图列表，不要求数据库迁移。

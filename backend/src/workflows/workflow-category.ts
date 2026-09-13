@@ -1,5 +1,6 @@
 export const WORKFLOW_CATEGORIES = [
   { value: 'txt2img', label: '文生图' },
+  { value: 'txt2audio', label: '音效生成（本地）' },
   { value: 'img2img', label: '图生图' },
   { value: 'txt2vid', label: '文生视频' },
   { value: 'img2vid', label: '图生视频' },

@@ -74,6 +74,16 @@ describe('ComfyUI run cold start (real persistence, scheduler and runner)', () =
   afterEach(async () => { runner.onModuleDestroy(); await db.destroy(); });
 
   async function complete() { await (runner as any).finishSuccess(runner.listRuns()[0]); }
+  it('persists real execution start for a fast run that completes without status polling', async () => {
+    const submitted = await controller.run(body());
+    const startTime = Date.now() - 25;
+    runner.listRuns()[0].startedAt = startTime;
+    await complete();
+    const saved = await runs.get(submitted.run.runId);
+    expect(saved.status).toBe('succeeded');
+    expect(saved.startedAt).toBe(startTime);
+    expect(saved.finishedAt! - saved.startedAt!).toBeLessThan(1000);
+  });
   async function expectFailure() {
     const [run] = await db.getRepository(GenerationRun).find();
     expect(run.status).toBe('failed');

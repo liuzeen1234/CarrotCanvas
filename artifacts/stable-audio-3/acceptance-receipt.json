@@ -1,0 +1,58 @@
+{
+  "checkedAt": "2026-09-12T15:22:41.598Z",
+  "canvasId": "da1993e3-12d0-41c6-a335-22cb96072dab",
+  "assets": [
+    {
+      "runId": "1903943d-7108-4ee6-ad29-80e15f6483e1",
+      "assetId": "976cbbb7-a5d2-404b-b929-1e8c60a86e78",
+      "filename": "office-hvac-final.flac",
+      "bytes": 2211266,
+      "sha256": "e247c9e38032d673dda5c6b5f075e1d40841ee6bb2c133897003b830ee2a00d3",
+      "mime": "audio/x-flac",
+      "rangeVerified": true,
+      "storageRelativePath": "generated/976cbbb7-a5d2-404b-b929-1e8c60a86e78__office-hvac-final_00001.flac",
+      "canvasId": "da1993e3-12d0-41c6-a335-22cb96072dab"
+    },
+    {
+      "runId": "02a84b86-0dbf-4e14-9391-af8e9b26c756",
+      "assetId": "52abf2a6-a492-4d42-b0b0-b3919b824163",
+      "filename": "paper-turn-final.flac",
+      "bytes": 231242,
+      "sha256": "f2f2080039c54e3f0768a1f04c145c7a130f6ae2f67aa181e7125d6f7f0436c9",
+      "mime": "audio/x-flac",
+      "rangeVerified": true,
+      "storageRelativePath": "generated/52abf2a6-a492-4d42-b0b0-b3919b824163__paper-turn-final_00001.flac",
+      "canvasId": "da1993e3-12d0-41c6-a335-22cb96072dab"
+    },
+    {
+      "runId": "eb7bf9ec-9d15-4768-bf8e-db8c0ef61dd5",
+      "assetId": "48ba81c3-a4cd-4b15-8302-e66cb93f010c",
+      "filename": "drawer-close-final.flac",
+      "bytes": 250333,
+      "sha256": "1e151d05d088d22b6d42c6d381b5c41191ec85dfcca071dd55c252b36824f24d",
+      "mime": "audio/x-flac",
+      "rangeVerified": true,
+      "storageRelativePath": "generated/48ba81c3-a4cd-4b15-8302-e66cb93f010c__drawer-close-final_00001.flac",
+      "canvasId": "da1993e3-12d0-41c6-a335-22cb96072dab"
+    },
+    {
+      "runId": "414b3ee5-becc-4198-af30-362a7820dfb2",
+      "assetId": "618da775-5018-4ee3-a182-03a9f37087c9",
+      "filename": "canvas-ui-drawer-final.flac",
+      "bytes": 195520,
+      "sha256": "6c0ce82f566ccca63a38fd9d59cb0e634a0ff4bb6ad06228c274e7a8d8bfec07",
+      "mime": "audio/x-flac",
+      "rangeVerified": true,
+      "storageRelativePath": "generated/618da775-5018-4ee3-a182-03a9f37087c9__stable_audio_3_medium_00002.flac",
+      "canvasId": "da1993e3-12d0-41c6-a335-22cb96072dab"
+    }
+  ],
+  "historyRuns": 13,
+  "nodes": 8,
+  "edges": 4,
+  "officialOriginalUnchanged": true,
+  "allInferenceLocal": true,
+  "semanticListeningAvailable": false,
+  "technicalQA": "passed",
+  "perceptualQA": "requires human listening"
+}

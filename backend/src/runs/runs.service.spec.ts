@@ -60,6 +60,13 @@ describe('RunsService persistence', () => {
     expect(listed.items[0]).toMatchObject({ id: begun.run.id, queuedAt: begun.run.queuedAt, startedAt, finishedAt: finished.finishedAt });
   });
 
+  it('lists actual audio asset metadata without inferring media kind from workflow name', async () => {
+    await (service as any).assets.save({ id: 'flac-id', canvasId: 'c1', nodeId: 'n1', kind: 'audio', source: 'generated', relPath: 'c1/test.flac', originName: 'test.flac', mime: 'audio/flac' });
+    const begun = await service.begin({ provider: 'comfyui', canvasId: 'c1', nodeId: 'n1', inputSnapshot: {} });
+    await service.finish(begun.run.id, 'succeeded', ['flac-id']);
+    expect((await service.list({ canvasId: 'c1' })).items[0].outputAssets).toEqual([{ assetId: 'flac-id', kind: 'audio', filename: 'test.flac', mime: 'audio/flac' }]);
+  });
+
   it('marks unfinished runs needs_attention during restart reconciliation', async () => {
     const begun = await service.begin({ provider: 'comfyui', inputSnapshot: {} });
     await service.patch(begun.run.id, { status: 'running' });

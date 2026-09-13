@@ -1,7 +1,7 @@
 # AI 原生画布与人机接力
 
 > 状态：Phase 1B 已实现并通过行为级验收；当前需求范围已完成，Phase 2 及后续阶段暂不实施
-> 最后更新：2026-09-10
+> 最后更新：2026-09-13
 > GitHub Issue：[Issue #1](https://github.com/liuzeen1234/CarrotCanvas/issues/1)
 
 本文是 AI 原生画布控制、人机接力、生成历史与自主视频生产的仓库内唯一设计入口。Issue 用于讨论和追踪；本文记录已拍板决策、实施边界、阶段状态和后续 AI 会话必须遵守的约束。当前交付边界止于 Phase 1B；Phase 2、Phase 3 及其最终 Skill/成片闭环验收仅保留为未来参考，不属于当前需求、Issue #1 完成条件或 `v1.0.0` 发布范围。
@@ -533,6 +533,12 @@ Phase 0A 推荐的新会话指令：
 
 ## 11. 变更记录
 
+- 2026-09-13（Skill 参考图存储合同）：更新 SKILL.md 与 operations.md，Codex referenceImages 只存直接上传图片，连线从 edges 解析；两类引用仍统一排序和绑定。修正混合示例，明确提交按 referenceId 去重、连线优先与同序文件/资产/映射/提示词合同，不按 assetId 合并合法引用。核对 ComfyUI referenceMedia 相同存储边界及 formValues 文件/旧字段兼容，说明其 inputAssetIds 是资产血缘集合。旧副本通过正常 lease + update_node 清理并保留连线、排序、绑定和产物。验证证据见 artifacts/reference-contract/；仅维护文档与无费用验证，保留既有 CodexCapabilityNode.tsx 修复，Phase 0A–1B 状态与 Phase 2/3 范围不变。
+
+- 2026-09-13：修复 Codex 图片编辑/理解卡片的连线与存储参考图重复合并，按稳定 referenceId 去重并优先使用实时连线资产；参考图与当前产物预览使用独立来源标记，避免点击产物却打开参考图。展示预览不修改 canonical revision；既有重复数据可通过受租约保护的 update_node 清理。Skill 示例需另行同步，referenceImages 只保存直接上传图片。
+
+- 2026-09-12：更新仓库与用户级 carrot-canvas Skill 的音效生成指引，按需读取 audio 参考文档，覆盖通用 txt2img 节点承载 txt2audio、真实音频端口、参数快照、平台运行、无损下载及技术/人工听感验收边界；部署路径与测试实例不固定在 Skill 中。本次仅维护 Skill，阶段状态不变，不重新执行生成或冒充新的 provider/UI 验收。
+
 - 2026-09-11：将 Issue #19 的稳定多图引用协议扩展到 ComfyUI 工作流卡片。MiniMax H3 使用单个画布入口承载最多 9 张参考图，并在提交时把稳定 `@` 引用编译为当前 `<Picture N>`；Z-Image Turbo 通用图生图采用相同计数、缩略图、预览和移除交互，但按实际单图工作流保持 1 张。后端按工作流 API JSON/类别校验真实上限，并统一保护 formValues 中仍活动的引用；Run 快照记录原提示词与图片映射。复用 canonical graph 节点 data 和现有 Run JSON 字段，无数据库迁移。
 
 - 2026-09-11：同步更新仓库与用户级 carrot-canvas Skill 的 ComfyUI 冷启动指引。在线 schema 不再是所有 Run 的硬性前置；明确正常 Run 由调度器启动、外部进程才需接管确认、辅助 schema/asset 接口不启动，以及离线新参考素材自动回灌尚未实现。提交示例留出冷启动时间，超时仍先核对原 Run 和幂等键；不要求人工打开 Desktop，不以空任务预热。仅更新操作文档，阶段状态不变。
@@ -604,3 +610,4 @@ Phase 0A 推荐的新会话指令：
 - 2026-09-08（现有画布能力扩展，阶段状态不变）：MiniMax H3 全能参考在画布开放 46 个 typed 输入，包含完整 9 图 / 3 视频 / 3 对应配音 / 3 独立音频槽位以及可经文本连线输入的标量参数。新增 result.inputMode 输入节点（图片/视频/音频上传、文字字面量），沿用 create_node/update_node/connect 与 canonical revision/lease，未引入 Phase 2/3。带 canvasId 的媒体上传先后校验控制权，保存平台 upload 资产；多媒体回灌校验画布归属，运行提交冻结转换后的实际图与 inputAssetIds。真实示例画布 73b899eb-e086-4d54-a309-bc36c5b3c56d 经受控 operations 创建 5 节点 / 4 连线，随后正常释放 AI lease；Chrome 验证端点、媒体预览和文本同步，后端测试/构建及前端生产构建通过，详细证据见 COMFYUI-INTEGRATION.md。
 
 - 2026-09-09（输入节点易读性，阶段状态不变）：图片、视频和音频输入节点在媒体预览下展示上传文件的原始文件名，并新增可选备注输入；备注作为节点 data 随 canonical graph、revision 和既有语义化 update_node 流程持久化，文字输入节点行为不变。
+- 2026-09-12（Stable Audio 3 音效工作流，阶段状态不变）：通用 ComfyUI 工作流节点增加 `txt2audio` 分类、真实 `audio-source` 类型、FLAC 播放与下载；音频资产和候选沿用现有 Run / lineage / 历史，不新增 Phase 2/3 或数据库领域。Agent 测试通过正常 lease/revision 语义操作和平台运行提交，在专用验收画布留下参数、Run 与资产 ID；真实生成及人工听感边界见 [STABLE-AUDIO-INTEGRATION.md](./STABLE-AUDIO-INTEGRATION.md)。

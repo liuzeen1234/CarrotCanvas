@@ -34,7 +34,7 @@ export interface CanvasContextMenuProps {
 }
 
 /** 当前画布已支持的工作流分类。 */
-const ENABLED_CATEGORIES = new Set(['txt2img', 'img2img', 'txt2vid', 'img2vid']);
+const ENABLED_CATEGORIES = new Set(['txt2img', 'txt2audio', 'img2img', 'txt2vid', 'img2vid']);
 
 export default function CanvasContextMenu({ state, onClose, onPick, onPickCapability, onPickTts, onPickInput }: CanvasContextMenuProps) {
   const [workflows, setWorkflows] = useState<ComfyUIAPI[]>([]);

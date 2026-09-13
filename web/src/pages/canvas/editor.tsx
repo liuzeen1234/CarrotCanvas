@@ -33,6 +33,7 @@ import { RunDuration } from '@/components/canvas/RunTiming';
 import { AssetIdLabel } from '@/components/canvas/nodes/NodeCardFields';
 import { ComfyUIAPI, extractSeedValues, type RunStateData } from '@/components/comfyui/types';
 import SystemResourceMonitor from '@/components/canvas/SystemResourceMonitor';
+import RunAssetPreview, { type RunOutputAsset } from '@/components/canvas/RunAssetPreview';
 import { createClientUuid } from '@/utils/uuid';
 import './editor.css';
 
@@ -58,7 +59,7 @@ interface CanvasControlHolder { holderType: 'human' | 'agent'; holderId: string;
 interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: string | null; }
 interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
 interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
-interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
+interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputAssets?: RunOutputAsset[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
 
 const sourceHandleKind = (handle: string) => handle === 'text-positive-source' || handle === 'text-negative-source'
   ? 'text'
@@ -182,6 +183,18 @@ function CanvasEditorInner() {
   nodesRef.current = nodes;
   edgesRef.current = edges;
   viewportRef.current = viewport;
+  // 连线读取只依赖节点身份/内容，不依赖位置、选中状态或尺寸。
+  // 保持这一投影的引用稳定，避免移动一张卡片使所有 Context 消费者重渲染。
+  const contentNodesRef = useRef(nodes);
+  const contentNodes = useMemo(() => {
+    const previous = contentNodesRef.current;
+    if (previous.length === nodes.length && nodes.every((node, index) => {
+      const old = previous[index];
+      return old.id === node.id && old.type === node.type && old.data === node.data;
+    })) return previous;
+    contentNodesRef.current = nodes;
+    return nodes;
+  }, [nodes]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef(false);
   const pendingSaveRef = useRef<{ graph: ReturnType<typeof createPersistedGraph>; snapshot: string } | null>(null);
@@ -671,6 +684,8 @@ function CanvasEditorInner() {
   /** 节点、连线或视口变化后 800ms 防抖保存。 */
   useEffect(() => {
     if (!ready || !id || !canWrite) return;
+    // 拖拽的中间帧不序列化整张画布；松手的最终位置仍进入正常保存流程。
+    if (nodes.some((node) => node.dragging)) return;
     const graph = createPersistedGraph(nodes, edges, viewport);
     const snapshot = JSON.stringify(graph);
     if (snapshot === lastSavedSnapshotRef.current) return;
@@ -712,6 +727,10 @@ function CanvasEditorInner() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      if (!changes.some((change) => change.type === 'remove')) {
+        setNodes((nds) => applyNodeChanges(canWrite ? changes : changes.filter((change) => change.type === 'select' || change.type === 'dimensions'), nds));
+        return;
+      }
       const deleting = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
       const protectedSources = new Set(nodesRef.current.flatMap((node) => {
         if (deleting.has(node.id)) return [];
@@ -728,6 +747,10 @@ function CanvasEditorInner() {
   );
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      if (!changes.some((change) => change.type === 'remove')) {
+        setEdges((eds) => applyEdgeChanges(canWrite ? changes : changes.filter((change) => change.type === 'select'), eds));
+        return;
+      }
       const protectedEdges = new Set(nodesRef.current.flatMap((node) => {
         if (node.selected) return [];
         const prompt = [String((node.data as any)?.prompt || ''), ...Object.values((node.data as any)?.formValues || {}).filter((value) => typeof value === 'string')].join('\n');
@@ -939,6 +962,7 @@ function CanvasEditorInner() {
   const getNodeRunState = useCallback((nodeId: string) => nodeRuns[nodeId] ?? null, [nodeRuns]);
 
   const getResultState = useCallback((resultNodeId: string): CanvasResultState => {
+    const nodes = contentNodes;
     const resultNode = nodes.find((item) => item.id === resultNodeId);
     const rawKind = (resultNode?.data as any)?.kind;
     const kind = rawKind === 'video' || rawKind === 'audio' ? rawKind : 'image';
@@ -954,9 +978,10 @@ function CanvasEditorInner() {
     }
     const assets = ((source?.data as any)?.lastAssets ?? []) as CanvasResultState['assets'];
     return { run: nodeRuns[edge.source] ?? null, assets };
-  }, [edges, nodes, nodeRuns]);
+  }, [edges, contentNodes, nodeRuns]);
 
   const getUpstreamAsset = useCallback((targetNodeId: string, targetHandle: string, kind: string) => {
+    const nodes = contentNodes;
     const edge = edges.find((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
     if (!edge) return null;
     let source = nodes.find((item) => item.id === edge.source);
@@ -968,9 +993,10 @@ function CanvasEditorInner() {
     }
     const assets = ((source?.data as any)?.lastAssets ?? []) as CanvasResultState['assets'];
     return assets.find((asset) => asset.kind === kind) ?? null;
-  }, [edges, nodes]);
+  }, [edges, contentNodes]);
 
   const getUpstreamAssets = useCallback((targetNodeId: string, targetHandle: string, kind: string) => {
+    const nodes = contentNodes;
     const target = nodes.find((item) => item.id === targetNodeId);
     const matching = edges.filter((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
     const order = Array.isArray((target?.data as any)?.referenceImageOrder) ? (target?.data as any).referenceImageOrder as string[] : [];
@@ -989,16 +1015,17 @@ function CanvasEditorInner() {
       if (!asset) return [];
       return [{ ...asset, referenceId: edge.id, edgeId: edge.id, sourceNodeId: edge.source, displayName: String((source?.data as any)?.cardName || asset.filename || `参考图 ${index + 1}`) }];
     });
-  }, [edges, nodes]);
+  }, [edges, contentNodes]);
 
   const getUpstreamText = useCallback((targetNodeId: string, targetHandle: string) => {
+    const nodes = contentNodes;
     const edge = edges.find((item) => item.target === targetNodeId && item.targetHandle === targetHandle);
     if (!edge) return { connected: false, text: '' };
     const source = nodes.find((item) => item.id === edge.source);
     const sourceData = (source?.data ?? {}) as any;
     const part = edge.sourceHandle === 'text-positive-source' ? 'positive' : edge.sourceHandle === 'text-negative-source' ? 'negative' : null;
     return { connected: true, text: String(part ? sourceData.lastTextParts?.[part] ?? '' : sourceData.lastText ?? '') };
-  }, [edges, nodes]);
+  }, [edges, contentNodes]);
 
   const handleMoveEnd = useCallback((_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
     setViewport(nextViewport);
@@ -1163,6 +1190,25 @@ function CanvasEditorInner() {
   }, [canWrite, menu, screenToFlowPosition]);
 
   const nodeCount = nodes.length;
+  const nodeDataApi = useMemo(() => ({
+    canvasId: id,
+    readOnly: !canWrite,
+    control: lease ? { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: revisionRef.current } : undefined,
+    updateNodeData: handleUpdateNodeData,
+    observeNodeData: handleObserveNodeData,
+    deleteNode: handleDeleteNode,
+    ensureResultNode,
+    setNodeRunState,
+    getNodeRunState,
+    getResultState,
+    getUpstreamAsset,
+    getUpstreamAssets,
+    disconnectEdge: deleteEdge,
+    getUpstreamText,
+    generationHistoryVersion,
+  }), [id, canWrite, lease, revisionRef.current, handleUpdateNodeData, handleObserveNodeData, handleDeleteNode,
+    ensureResultNode, setNodeRunState, getNodeRunState, getResultState, getUpstreamAsset,
+    getUpstreamAssets, deleteEdge, getUpstreamText, generationHistoryVersion]);
   const selectedEdge = edges.find((edge) => edge.selected);
   const saveTag = useMemo(() => {
     switch (saveStatus) {
@@ -1237,23 +1283,7 @@ function CanvasEditorInner() {
             <Text type="danger">{loadError}</Text>
           </div>
         ) : doc && ready ? (
-          <CanvasNodeDataContext.Provider value={{
-            canvasId: id,
-            readOnly: !canWrite,
-            control: lease ? { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: revisionRef.current } : undefined,
-            updateNodeData: handleUpdateNodeData,
-            observeNodeData: handleObserveNodeData,
-            deleteNode: handleDeleteNode,
-            ensureResultNode,
-            setNodeRunState,
-            getNodeRunState,
-            getResultState,
-            getUpstreamAsset,
-            getUpstreamAssets,
-            disconnectEdge: deleteEdge,
-            getUpstreamText,
-            generationHistoryVersion,
-          }}>
+          <CanvasNodeDataContext.Provider value={nodeDataApi}>
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -1476,7 +1506,7 @@ function CanvasEditorInner() {
                 {Object.entries(extractSeedValues(run.inputSnapshot)).length ? <div style={{ marginTop: 6 }}><Text type="secondary">seed：{Object.entries(extractSeedValues(run.inputSnapshot)).map(([key, value]) => `${key.split('::').pop()}=${value}`).join(' · ')}</Text><Button size="small" type="text" onClick={() => void navigator.clipboard.writeText(Object.values(extractSeedValues(run.inputSnapshot)).join(', ')).then(() => message.success('seed 已复制'))}>复制</Button></div> : null}
                 {run.error?.message ? <div style={{ color: '#ff4d4f', marginTop: 4 }}>{run.error.message}</div> : null}
                 {run.outputText ? <Typography.Paragraph style={{ marginTop: 10, whiteSpace: 'pre-wrap' }} ellipsis={{ rows: 4, expandable: true, symbol: '展开全文' }}>{run.outputText}</Typography.Paragraph> : null}
-                {run.outputAssetIds.length ? <Image.PreviewGroup><Space wrap style={{ marginTop: 10 }}>{run.outputAssetIds.map((assetId) => <div key={assetId} style={{ width: 210 }}><Image src={`/api/assets/${assetId}`} alt="生成产物" width={112} height={84} style={{ objectFit: 'cover', borderRadius: 6 }} preview={{ mask: '放大预览' }} /><AssetIdLabel assetId={assetId} /><Button size="small" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download onClick={(event) => event.stopPropagation()}>下载</Button></div>)}</Space></Image.PreviewGroup> : null}
+                {run.outputAssetIds.length ? <Image.PreviewGroup><Space wrap style={{ marginTop: 10 }}>{run.outputAssetIds.map((assetId) => <RunAssetPreview key={assetId} assetId={assetId} asset={run.outputAssets?.find(asset => asset.assetId === assetId)} />)}</Space></Image.PreviewGroup> : null}
               </div>
             </List.Item>
           )} />

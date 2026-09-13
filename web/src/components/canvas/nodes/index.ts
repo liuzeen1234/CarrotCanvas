@@ -5,6 +5,7 @@
  * 生成节点由菜单落点创建即绑定所选工作流。
  */
 import { NodeTypes } from '@xyflow/react';
+import { memo } from 'react';
 import Txt2ImgNode from './Txt2ImgNode';
 import ResultNode from './ResultNode';
 import CodexCapabilityNode from './CodexCapabilityNode';
@@ -14,8 +15,8 @@ import './nodes.css';
 
 /** React Flow 节点类型注册表 */
 export const canvasNodeTypes: NodeTypes = {
-  [NODE_TYPE_TXT2IMG]: Txt2ImgNode,
-  [NODE_TYPE_RESULT]: ResultNode,
-  [NODE_TYPE_CODEX]: CodexCapabilityNode,
-  [NODE_TYPE_TTS]: TtsNode,
+  [NODE_TYPE_TXT2IMG]: memo(Txt2ImgNode),
+  [NODE_TYPE_RESULT]: memo(ResultNode),
+  [NODE_TYPE_CODEX]: memo(CodexCapabilityNode),
+  [NODE_TYPE_TTS]: memo(TtsNode),
 };

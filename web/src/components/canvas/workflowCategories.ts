@@ -4,6 +4,7 @@
  */
 export const WORKFLOW_CATEGORIES = [
   { value: 'txt2img', label: '文生图' },
+  { value: 'txt2audio', label: '音效生成（本地）' },
   { value: 'img2img', label: '图生图' },
   { value: 'txt2vid', label: '文生视频' },
   { value: 'img2vid', label: '图生视频' },
@@ -16,6 +17,7 @@ export type WorkflowCategoryValue = (typeof WORKFLOW_CATEGORIES)[number]['value'
 /** 分类颜色（与设置页保持一致） */
 export const CATEGORY_COLORS: Record<string, string> = {
   txt2img: 'blue',
+  txt2audio: 'magenta',
   img2img: 'green',
   txt2vid: 'purple',
   img2vid: 'cyan',

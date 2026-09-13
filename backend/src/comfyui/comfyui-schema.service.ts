@@ -123,6 +123,10 @@ export class ComfyUISchemaService {
           pdef,
         );
         if (field) {
+          // CustomCombo's options live in the workflow, not /object_info.
+          if (classType === 'CustomCombo' && param === 'choice') {
+            field.options = Object.entries(n.inputs ?? {}).filter(([key, v]) => /^option\d+$/.test(key) && typeof v === 'string' && v.length > 0).map(([, v]) => v as string);
+          }
           if (classType === 'LoadImage' && param === 'image') {
             const consumers = entries.flatMap(([, consumer]) => {
               const c = consumer as { class_type?: string; inputs?: Record<string, unknown> };

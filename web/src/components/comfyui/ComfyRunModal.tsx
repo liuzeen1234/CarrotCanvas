@@ -277,6 +277,8 @@ export default function ComfyRunModal({ open, workflow, onClose, onCoverSaved }:
                               alt={o.filename}
                               style={{ width: '100%', borderRadius: 4, display: 'block' }}
                             />
+                          ) : o.kind === 'audio' ? (
+                            <audio controls preload="metadata" src={o.url} style={{ width: '100%' }} />
                           ) : (
                             <div style={{ textAlign: 'center', padding: 16, color: '#888' }}>
                               {o.filename}
@@ -287,7 +289,7 @@ export default function ComfyRunModal({ open, workflow, onClose, onCoverSaved }:
                           </div>
                           <Space size={4} wrap>
                             <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownload(o)}>
-                              保存图片
+                              {o.kind === 'audio' ? '保存音频' : o.kind === 'video' ? '保存视频' : '保存图片'}
                             </Button>
                             {o.kind === 'image' && (
                               <Button
