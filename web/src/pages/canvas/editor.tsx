@@ -36,6 +36,7 @@ import SystemResourceMonitor from '@/components/canvas/SystemResourceMonitor';
 import RunAssetPreview, { type RunOutputAsset } from '@/components/canvas/RunAssetPreview';
 import RunRecovery, { RecoveryLabel, RecoveryDetails, type RecoveryMetadata } from '@/components/canvas/RunRecovery';
 import { createClientUuid } from '@/utils/uuid';
+import { copyCanvasTitle } from '@/utils/clipboard';
 import CanvasIoPanel, { type CanvasIo } from '@/components/canvas/CanvasIoPanel';
 import { findInputPosition, resolveOverlaps } from '@/components/canvas/resolveOverlaps';
 import './editor.css';
@@ -1432,7 +1433,22 @@ function CanvasEditorInner() {
                 {doc ? (
                   <div
                     className={`canvas-floating-title${editingName ? ' is-editing' : ''}`}
-                    title={editingName ? undefined : `${canvasName}（双击重命名）`}
+                    title={editingName ? undefined : `${canvasName}（${canWrite ? '双击重命名' : '单击复制标题'}）`}
+                    role={!canWrite && !editingName ? 'button' : undefined}
+                    tabIndex={!canWrite && !editingName ? 0 : undefined}
+                    aria-label={!canWrite && !editingName ? `复制画布标题：${canvasName}` : undefined}
+                    style={!canWrite && !editingName ? { cursor: 'copy' } : undefined}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (!canWrite && !editingName) void copyCanvasTitle(canvasName);
+                    }}
+                    onKeyDown={(event) => {
+                      if (!canWrite && !editingName && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void copyCanvasTitle(canvasName);
+                      }
+                    }}
                     onDoubleClick={(event) => {
                       event.stopPropagation();
                       if (canWrite && !editingName) startRename();
