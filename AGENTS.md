@@ -19,6 +19,8 @@
 
 ## 开发工作流约定
 
+- 用户要求“启动 CarrotCanvas 服务”（包括“启动服务”等同义请求）时，同时检查前端 8000、后端 3100、Codex2API 3010 与 ComfyUI 8188。已有健康实例不重复启动；离线服务一并启动并验证健康。Codex2API 使用 `C:\Users\liu\.codex\skills\codex2api\scripts\ensure-codex2api.ps1`；ComfyUI 优先沿用 CarrotCanvas 已保存的托管启动配置和统一调度器，启动失败需检查日志并处理，不能仅凭 CarrotCanvas health=ok 宣称全部启动成功。
+
 - **开发期间后端验证直接用 3100，不另起端口**（如 3200 等临时实例）。开发过程中用户不会使用该后端，因此放心「该构建就构建、该重启就重启」。
 - 改动后端代码后的标准流程：`tsc -p tsconfig.build.json` 编译通过 → 停掉 3100 旧进程（pnpm wrapper + `node dist/main.js` 都要停）→ 用与用户一致的方式重新拉起：从仓库根 `pnpm --filter @carrot-canvas/backend start`（后台、日志重定向到 `backend/data/`）→ 用 `GET /api/health` 与新增路由（如 `/api/canvas`）确认新代码已生效。
 - 开发、修复与验证需要时，代理可自行重新构建并重启本项目的 **3100 后端**与 **8000 前端 dev**，无需另行向用户确认；重启前应确认目标端口及进程，重启后验证健康状态与页面可访问性。3000 Infinite-Canvas 属于其他项目，除非用户明确要求，否则不主动操作。
