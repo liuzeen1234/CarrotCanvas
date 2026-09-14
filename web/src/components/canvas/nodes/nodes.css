@@ -1,6 +1,8 @@
 /* CarrotCanvas 画布节点外观（C5）。统一卡片式：头部（类型标签 + 绑定名）+ 主体（表单/预览）+ 底部（状态，C6）。 */
 
 .canvas-node {
+  /* 节点外层可能保留更宽的持久化尺寸，端口必须相对可见卡片定位。 */
+  position: relative;
   background: #fff;
   border: 1px solid rgba(5, 5, 5, 0.1);
   border-radius: 8px;
