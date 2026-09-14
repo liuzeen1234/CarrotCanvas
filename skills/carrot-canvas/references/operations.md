@@ -21,6 +21,7 @@ export default async function (s) {
 - `s.canvas`：初始/最近 operations 返回的图；`await s.refresh()` 重读 agent-view 并更新 revision。
 - `s.operations(operations, intent, idempotencyKey?)`：原子批次；自动附 lease/epoch/revision/agent 身份。
 - `s.write(method, path, body, options?)`：受生命周期管理的 JSON 或 FormData 写入；自动附 proof 与幂等键，但不会替你推导业务字段或验证授权。body 的 canvasId 必须与 session 一致。调用 Run/asset 路径前核对资源属于此画布。高影响操作在调用前核对用户授权。
+- `s.io(command,payload,idempotencyKey?)`、`s.importInputs(filenames,{name?,idempotencyKey?})`：受同一 Session 保护的输入输出命令与本地文件输入导入，详见 [项目与画布输入输出](projects-io.md)。
 - `s.uploadMedia(filename, kind, nodeId?)`：当前项目文件导入此画布，kind 为 image/video/audio；返回 `asset`，含 assetId/url/kind/filename，可存入节点 `lastAssets`。
 - `s.waitRun(runId, {timeoutMs, intervalMs}?)`：轮询持久 Run，返回终态（包括失败/needs_attention）；超时抛错，不重新提交。
 - `s.signal` / `s.done`：停止信号和释放完成通知。所有异步工作必须 await；不要启动无人收尾的任务。

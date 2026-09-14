@@ -69,11 +69,11 @@ export const ACTION_REGISTRY: RegisteredAction[] = [
   action({ name: 'project.get', description: '读取项目、关联画布及只供浏览下载的成果快照历史', method: 'GET', path: '/api/projects/:id', scope: 'project' }),
   action({ name: 'project.create', description: '创建画布集合项目，无输入区；项目不能作为引用来源', method: 'POST', path: '/api/projects', scope: 'workspace' }),
   action({ name: 'project.delete', description: '删除空项目及其成果副本，不删除画布；包含画布则拒绝', method: 'DELETE', path: '/api/projects/:id', scope: 'project', permission: 'high-impact', confirmation: 'human', errors: [...standardErrors, { code: 'PROJECT_NOT_EMPTY', status: 409, description: '请先移出所有画布' }, { code: 'REVISION_CONFLICT', status: 409, description: '项目版本变化' }], inputSchema: commandSchema(false, undefined, { expectedRevision: { type: 'integer' } }, ['expectedRevision']) }),
-  ...['edit', 'canvas.add', 'canvas.remove', 'canvas.create', 'results.capture', 'results.restore'].map(command => action({ name: `project.${command}`, description: `项目命令 ${command}；多对多关联不修改画布 revision；成果保存独立副本，不能被引用`, method: 'POST', path: '/api/projects/:id/command', scope: 'project', idempotent: true, reversible: command === 'results.restore' || command.startsWith('canvas.'), sideEffects: ['project_revision', ...(command === 'results.capture' ? ['project_snapshot_files'] : [])], inputSchema: commandSchema(false, command), errors: [...standardErrors, { code: 'REVISION_CONFLICT', status: 409, description: '项目版本变化' }, { code: 'IDEMPOTENCY_CONFLICT', status: 409, description: '幂等键冲突' }, { code: 'SOURCE_VERSION_CHANGED', status: 409, description: '请重新选择成果版本' }] })),
+  ...['edit', 'canvas.add', 'canvas.remove', 'canvas.create', 'results.capture', 'results.restore'].map(command => action({ name: `project.${command}`, description: `项目命令 ${command}；多对多关联不修改画布 revision；成果保存独立副本，不能被引用`, method: 'POST', path: '/api/projects/:id/command', scope: 'project', idempotent: true, reversible: command === 'results.restore' || command === 'canvas.add' || command === 'canvas.remove', sideEffects: ['project_revision', ...(command === 'results.capture' ? ['project_snapshot_files'] : [])], inputSchema: commandSchema(false, command), errors: [...standardErrors, { code: 'REVISION_CONFLICT', status: 409, description: '项目版本变化' }, { code: 'IDEMPOTENCY_CONFLICT', status: 409, description: '幂等键冲突' }, { code: 'SOURCE_VERSION_CHANGED', status: 409, description: '请重新选择成果版本' }] })),
   action({ name: 'canvas.io.get', description: '读取画布输入组/快照历史、输出版本；输出仅明确发布后可引入', method: 'GET', path: '/api/canvas/:id/io', scope: 'canvas' }),
   action({ name: 'canvas.input.check_update', description: '只读比较上游当前输出与固定输入快照，不更新内容', method: 'GET', path: '/api/canvas/:id/io/inputs/:groupId/update-preview', scope: 'canvas' }),
   action({ name: 'canvas.input.import', description: 'multipart files（1–30 个，单文件 ≤256 MB，UTF-8 文本 ≤5 MB）；复制原文件，不启动 Provider', method: 'POST', path: '/api/canvas/:id/io/files', scope: 'canvas', requiresLease: true, idempotent: true, sideEffects: ['canvas_revision','input_snapshot_files'], errors: canvasWriteErrors, inputSchema: { type: 'object', required: ['path','multipart'], properties: { path: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } }, multipart: { type: 'object', required: ['files','leaseToken','leaseEpoch','expectedRevision','idempotencyKey'], properties: { files: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'string', format: 'binary' } }, leaseToken: { type: 'string' }, leaseEpoch: { type: 'integer' }, expectedRevision: { type: 'integer' }, idempotencyKey: { type: 'string' }, name: { type: 'string' } } } } } }),
-  ...['input.capture','input.update','input.restore','input.remove','input.edit','input.bind','output.publish','output.replace','output.edit','output.remove','output.reorder'].map(command => action({ name: `canvas.${command}`, description: `画布 IO 命令 ${command}；固定版本，复制本地素材，只有主动更新才变化；既有 Run 不变`, method: 'POST', path: '/api/canvas/:id/io/command', scope: 'canvas', requiresLease: true, idempotent: true, reversible: true, sideEffects: ['canvas_revision','operation_log', ...(command === 'input.capture' || command === 'input.update' ? ['input_snapshot_files'] : [])], inputSchema: commandSchema(true, command), errors: [...canvasWriteErrors, { code: 'INPUT_ITEM_IN_USE', status: 400, description: '请先解除工作区使用或保留旧快照' }, { code: 'INPUT_KIND_CHANGED', status: 400, description: '新版输入类型改变' }, { code: 'SOURCE_VERSION_CHANGED', status: 409, description: '来源版本变化，请重新预览' }, { code: 'SOURCE_HAS_NO_OUTPUTS', status: 400, description: '来源没有已发布输出' }] })),
+  ...['input.capture','input.update','input.restore','input.remove','input.edit','input.bind','output.publish','output.replace','output.edit','output.remove','output.reorder'].map(command => action({ name: `canvas.${command}`, description: `画布 IO 命令 ${command}；${ioMeaning(command)}`, method: 'POST', path: '/api/canvas/:id/io/command', scope: 'canvas', requiresLease: true, idempotent: true, reversible: true, sideEffects: ['canvas_revision','operation_log', ...(command === 'input.capture' || command === 'input.update' ? ['input_snapshot_files'] : [])], inputSchema: commandSchema(true, command), errors: [...canvasWriteErrors, { code: 'OUTPUT_ASSET_ALREADY_PUBLISHED', status: 400, description: '同一资源不能重复出现在当前输出' }, { code: 'OUTPUT_SLOT_CONFLICT', status: 400, description: '同一卡片同类型/文字端口只能选择一个产物' }, { code: 'INPUT_BINDING_MISMATCH', status: 400, description: '输入节点内容必须来自实际保留快照' }, { code: 'SOURCE_VERSION_CHANGED', status: 409, description: '来源版本变化，请重新预览' }, { code: 'SOURCE_HAS_NO_OUTPUTS', status: 400, description: '来源没有已发布输出' }] })),
   action({ name: 'run.recovery_suggestion', description: '只读查找补录原因与来源关联，优先自动填入',
     method: 'GET', path: '/api/runs/:id/recovery-suggestion', scope: 'run',
     machineDescription: 'Read-only recovery draft from source error, current node output, matching provider task ID and attributed node notes. Optional assetId; otherwise use current output. Does not invoke providers or register recovery. Empty evidence means insufficient linkage and requires operator input. Current output and notes do not prove same upstream invocation.',
@@ -138,6 +138,15 @@ export const ACTION_REGISTRY: RegisteredAction[] = [
   action({ name: 'tts.run.submit', description: '用 CosyVoice 3、IndexTTS2 或 Qwen3-TTS 按 pause plan 严格串行生成语音片段、插入精确 PCM 静音并保存一条最终音频', machineDescription: 'Qwen3-TTS supports official CustomVoice speakers and prompt-only VoiceDesign. Supports only <pause ms="N"/> with N=100..10000. Holds one outer local-compute lease through synthesis, concatenation and final persistence.', method: 'POST', path: '/api/tts/runs', scope: 'run', requiresLease: true, idempotent: true, sideEffects: ['generation_run', 'local_compute_lease', 'audio_asset'], errors: canvasWriteErrors }),
 ];
 
+
+function ioMeaning(command: string) {
+  if (command === 'input.remove') return '移出输入面板并归档快照，工作区副本和连线保留，不要求先删除节点';
+  if (command === 'input.update' || command === 'input.restore') return '切换输入版本；同身份同类型工作区绑定更新，已移除/改变类型的绑定保留旧快照并标记；既有 Run 不变';
+  if (command === 'output.publish') return '显式发布当前或成功历史产物；同 nodeId+类型/文字端口替换并保留 itemKey，撤下重发仍保留身份；批量1–100项，同端口限一个，assetId不可重复';
+  if (command === 'input.bind') return '创建独立本地快照输入节点，不自动连接；position 可选，建议按现有节点尺寸避让';
+  return '固定版本并复制本地素材，只有主动更新才变化，既有 Run 不变';
+}
+
 function commandSchema(lease: boolean, command?: string, fields?: Record<string, unknown>, requiredFields?: string[]) {
   const string = { type: 'string' }; const payload: Record<string, unknown> = {
     groupId: string, itemKey: string, snapshotId: string, sourceCanvasId: string, sourceOutputsVersion: { type: 'integer' },
@@ -145,14 +154,32 @@ function commandSchema(lease: boolean, command?: string, fields?: Record<string,
     nodeId: string, runId: string, assetId: string, text: { type: 'string' }, textPart: { enum: ['positive','negative'] },
     position: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } }, required: ['x','y'] },
     order: { type: 'array', uniqueItems: true, items: string },
-    items: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: { assetId: string, nodeId: string, runId: string, text: string, textPart: { enum: ['positive', 'negative'] }, name: string, note: string } } },
+    items: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', anyOf: ['assetId','nodeId','runId','text'].map(key => ({required:[key]})), additionalProperties: false, properties: { assetId: string, nodeId: string, runId: string, text: string, textPart: { enum: ['positive', 'negative'] }, name: {type:'string',maxLength:200}, note: {type:'string',maxLength:2000} } } },
     selections: { type: 'array', maxItems: 100, items: { type: 'object', required: ['canvasId','itemKey','outputsVersion'], properties: { canvasId: string, itemKey: string, outputsVersion: { type: 'integer' }, name: string, note: string } } },
   };
+  const shape: Record<string, [string[], string[]]> = {
+    'input.capture': [['sourceCanvasId','sourceOutputsVersion','name'], ['sourceCanvasId']],
+    'input.update': [['groupId','sourceOutputsVersion'], ['groupId']],
+    'input.restore': [['groupId','snapshotId'], ['groupId','snapshotId']],
+    'input.remove': [['groupId'], ['groupId']], 'input.edit': [['groupId','name','note'], ['groupId']],
+    'input.bind': [['groupId','itemKey','position'], ['groupId','itemKey']],
+    'output.publish': [['assetId','nodeId','runId','text','textPart','name','note','items'], []],
+    'output.replace': [['itemKey','assetId','nodeId','runId','text','textPart','name','note'], ['itemKey']],
+    'output.edit': [['itemKey','name','note'], ['itemKey']], 'output.remove': [['itemKey'], ['itemKey']],
+    'output.reorder': [['order'], ['order']], 'edit': [['name','description'], []],
+    'canvas.add': [['canvasId'], ['canvasId']], 'canvas.remove': [['canvasId'], ['canvasId']],
+    'canvas.create': [['name'], []], 'results.capture': [['name','note','selections'], ['selections']],
+    'results.restore': [['snapshotId'], ['snapshotId']],
+  };
+  const chosen = command && shape[command];
+  const publishSources = ['assetId','nodeId','runId','text'].map(key => ({ required: [key] }));
+  const payloadSchema = { type: 'object', properties: chosen ? Object.fromEntries(chosen[0].map(key => [key,payload[key]])) : payload, required: chosen?.[1] ?? [], additionalProperties: false,
+    ...(command === 'output.publish' ? { anyOf: [...publishSources, { required: ['items'] }] } : command === 'output.replace' ? { anyOf: publishSources } : {}) };
   return { type: 'object', required: ['path','body'], properties: {
     path: { type: 'object', required: ['id'], properties: { id: string } },
-    body: { type: 'object', required: requiredFields ?? ['expectedRevision','idempotencyKey','command', ...(lease ? ['leaseToken','leaseEpoch'] : [])], properties: fields ?? {
+    body: { type: 'object', required: requiredFields ?? ['expectedRevision','idempotencyKey','command', ...(chosen && (chosen[1].length || command === 'output.publish') ? ['payload'] : []), ...(lease ? ['leaseToken','leaseEpoch'] : [])], properties: fields ?? {
       expectedRevision: { type: 'integer' }, idempotencyKey: string, command: { const: command }, actorId: string, actorType: { enum: ['human','agent'] },
-      ...(lease ? { leaseToken: string, leaseEpoch: { type: 'integer' } } : {}), payload: { type: 'object', properties: payload, additionalProperties: false },
+      ...(lease ? { leaseToken: string, leaseEpoch: { type: 'integer' } } : {}), payload: payloadSchema,
     }, additionalProperties: false },
   } };
 }

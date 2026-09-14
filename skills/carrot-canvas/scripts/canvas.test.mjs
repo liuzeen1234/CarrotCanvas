@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CanvasClient, sleep } from './canvas.mjs';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 function fixture() {
   const client = new CanvasClient();
@@ -19,10 +22,30 @@ function fixture() {
     if (path.startsWith('/runs?')) return { items: [{ id: 'existing-run' }] };
     if (path.endsWith('/handoff') || path.endsWith('/release')) return { released: true };
     if (path.endsWith('/slow')) { await slow; return { resultRevision: ++revision }; }
+    if (path.endsWith('/io/command') || path.endsWith('/io/files')) return { resultRevision: ++revision, canvas: { revision, io: { inputs: [], outputs: [] }, graph: { nodes: [], edges: [] } } };
     throw Error(`Unexpected ${method} ${path}`);
   };
   return { client, calls, finishWrite, requestHandoff: () => { pending = true; }, breakRenewal: () => { renewalError = true; } };
 }
+
+test('IO helpers preserve imported bytes, proof, keys and revision within the same lease', async () => {
+  const f = fixture(); const folder = await mkdtemp(join(tmpdir(), 'carrot-skill-io-')); const filename = join(folder, '输入.txt');
+  try {
+    await writeFile(filename, '完整的输入快照');
+    await f.client.withCanvas('canvas', async s => {
+      await s.importInputs([filename], { name: '测试输入', idempotencyKey: 'import-fixed' });
+      assert.equal(s.revision, 1);
+      await s.io('output.publish', { text: '交付文本' }, 'publish-fixed');
+      assert.equal(s.revision, 2); assert.equal(s.canvas.revision, 2);
+      const imported = f.calls.find(c => c.path.endsWith('/io/files')).body;
+      assert.equal(imported.get('files').name, '输入.txt'); assert.equal(await imported.get('files').text(), '完整的输入快照');
+      assert.equal(imported.get('expectedRevision'), '0'); assert.equal(imported.get('actorType'), 'agent'); assert.equal(imported.get('idempotencyKey'), 'import-fixed');
+      const published = f.calls.find(c => c.path.endsWith('/io/command')).body;
+      assert.equal(published.expectedRevision, 1); assert.equal(published.idempotencyKey, 'publish-fixed'); assert.equal(published.leaseToken, 'test-token');
+    });
+    assert.equal(f.calls.filter(c => c.path.endsWith('/acquire')).length, 1);
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});
 
 test('handoff drains an already-started graph mutation before release', async () => {
   const f = fixture();

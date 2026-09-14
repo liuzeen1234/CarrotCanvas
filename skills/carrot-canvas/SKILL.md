@@ -12,7 +12,7 @@ description: 从任意项目通过 CarrotCanvas API 创建和编辑画布、编�
 ## 发现与目标
 
 1. `node <绝对脚本路径> get /health` 检查服务，再 `get /actions` 获取实时 action 的 method/path/schema、可用性、影响与权限。可过滤输出，但实际调用前读对应条目。
-2. `get /canvas` 列出画布。明确指定的画布按 ID 或唯一名称匹配；不同项目优先用独立命名画布，不随意接管最近打开的一张。需要新画布时 `create "项目名 · 用途"`，记录返回 ID。
+2. 涉及项目、画布分工、素材输入或成果发布时先读 [项目与画布输入输出](references/projects-io.md)，用 `/projects` 找项目集合，再用 `/canvas` 找画布；项目不是引用边界。`get /canvas` 列出画布。明确指定的画布按 ID 或唯一名称匹配；不同项目优先用独立命名画布，不随意接管最近打开的一张。需要新画布时 `create "项目名 · 用途"`，记录返回 ID。
 3. `get /canvas/<id>/agent-view` 读取最新图、revision、控制状态。复用工作流前读 `/workflows`、`/workflows/<id>`；动态参数按对应 schema 核对。ComfyUI 离线时 schema 查询可能不可用，按 [运行与媒体](references/operations.md#运行与媒体) 判断能否直接提交已确认的工作流输入，不把在线 schema 查询作为所有生成的硬性前置。不要凭记忆猜工作流 ID、模型名、参数或动态端口。
 
 部分 Action Registry 的 body/output schema 仍较宽泛，不能据此宣称任意参数有效。节点及运行的已验证协议见 [references/operations.md](references/operations.md)。遇到未覆盖字段先查实际接口或已有有效数据；本机仓库默认位于 `D:/dev/CarrotCanvas`，必要时只读 Controller/类型定义，不要求每次加载仓库历史。
@@ -69,6 +69,6 @@ ComfyUI 未运行本身不是生成阻塞：已有有效托管启动配置时，
 
 先核对 Run 终态、真实产物、画布引用与文件内容，再声明完成。下载使用 `download <assetId> <当前项目内绝对路径>`（拒绝覆盖已有文件），不要硬编码后端 data 目录。报告画布 ID/链接、Run ID、可用产物路径及未完成项；失败/needs_attention/超时不等于成功。
 
-操作项目集合、画布输入/输出或跨画布快照时，读取 [项目与画布输入输出](references/projects-io.md)。项目支持多对多关联；引入和项目成果均是独立快照，主动更新才变化，项目成果不能被引用。
+操作项目集合、画布输入/输出或跨画布快照时，读取 [项目与画布输入输出](references/projects-io.md)。项目支持多对多关联；画布工作区生成结果需明确发布到输出区，下游先捕获本地输入快照再绑定工作区，不能直接引用跨画布 assetId。输入移除不要求删除工作区副本；输出按卡片端口维持稳定身份。引入和项目成果均是独立快照，主动更新才变化，项目成果不能被引用。
 
 当前 Skill 封装现有画布和生成能力，不承诺自动分镜、时间轴剪辑或最终成片系统已实现。

@@ -631,3 +631,5 @@ Phase 0A 推荐的新会话指令：
 - 2026-09-14：移除画布/本地输入组允许保留工作区引用；removedInputs 归档原快照用于严格绑定校验、Run 实际版本溯源和资产保护。节点与连线不变，输入面板移除并停止更新；既有阶段范围不变。
 
 - 2026-09-14（画布整理重叠）：底部工具栏新增按钮，按 React Flow 当前测量尺寸与 24px 间距避让，优先小位移并惩罚原左右/上下关系反转；已有足够间距的节点保持位置。只修改 position，复用自动保存的 canvas.operations / move_nodes、lease/revision 和操作历史撤销，不改变边、资产或运行状态。3 项纯算法测试覆盖尺寸混合、同点重合、相对关系、远处不动和重复整理 no-op；既有 Phase 范围不变。
+
+- 2026-09-14（项目与 IO 的 AI 同步）：Action Registry 按 IO/项目命令限定参数与必填字段，发布批量项校验来源，移除已废弃 INPUT_ITEM_IN_USE / INPUT_KIND_CHANGED 声明，补充输出槽位/资源唯一性错误；修正项目内创建画布不可直接日常撤销的能力声明。agent-view 增加 ioSummary（活动输入、输出版本/身份及保留旧副本）和导入/项目 URL。Skill 客户端增加 Session.io/importInputs，说明卡片端口身份、输入归档、实际 Run 溯源、项目变更不影响引用及 AI 放置避让，新增零 Provider verify-io。后端编译、21 项 IO 集成测试、4 项客户端生命周期测试、8 项实际 schema 校验、Skill quick_validate 和真实 HTTP 项目/IO 闭环通过，测试对象已清理；Phase 范围不变。

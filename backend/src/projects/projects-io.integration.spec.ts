@@ -102,6 +102,10 @@ describe('Projects and independent canvas IO snapshots (SQLite + real files)', (
     await command(b, 'input.bind', { groupId: group.id, itemKey: group.snapshots[0].items[0].itemKey }); await command(a, 'output.remove', { itemKey: (await output(a)).items[0].itemKey });
     await command(b, 'input.update', { groupId: group.id }); expect((await io.get(b.id)).inputs[0].snapshots).toHaveLength(2); expect((await canvas.findOne(b.id)).graph.nodes[0].data.inputDetachedReason).toBe('removed'); expect((await canvas.findOne(b.id)).graph.nodes[0].data.lastText).toBe('reference');
     await command(b, 'input.remove', { groupId: group.id }); expect((await io.get(b.id)).inputs).toHaveLength(0); expect((await canvas.findOne(b.id)).graph.nodes[0].data.inputDetachedReason).toBe('group_removed');
+    const view = await canvas.agentView(b.id);
+    expect(view.ioSummary.inputGroups).toHaveLength(0);
+    expect(view.ioSummary.retainedWorkingInputs[0]).toMatchObject({ reason: 'group_removed', snapshotId: group.snapshots[0].id });
+    expect(view.ioImportUrl).toBe(`/api/canvas/${b.id}/io/files`);
     const node = (await canvas.findOne(b.id)).graph.nodes[0];
     const run = (await runs.begin({ provider: 'codex2api', canvasId: b.id, nodeId: node.id, inputSnapshot: { actualText: node.data.lastText }, actorType: 'agent' })).run;
     expect(run.inputLineage[0].snapshotId).toBe(group.snapshots[0].id);

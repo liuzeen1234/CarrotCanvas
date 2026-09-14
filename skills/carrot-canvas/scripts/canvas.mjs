@@ -150,6 +150,17 @@ class CanvasSession {
   operations(operations, intent, idempotencyKey = randomUUID()) {
     return this.write('POST', `${this.path}/operations`, { operations, intent, idempotencyKey });
   }
+  io(command, payload = {}, idempotencyKey = randomUUID()) {
+    return this.write('POST', `${this.path}/io/command`, { command, payload, idempotencyKey }, { timeoutMs: 180000 });
+  }
+  async importInputs(filenames, { name, idempotencyKey = randomUUID() } = {}) {
+    this.assertActive();
+    const form = new FormData();
+    for (const filename of filenames) form.append('files', new Blob([await readFile(filename)]), basename(filename));
+    if (name) form.set('name', name);
+    form.set('idempotencyKey', idempotencyKey);
+    return this.write('POST', `${this.path}/io/files`, form, { timeoutMs: 180000 });
+  }
   async uploadMedia(filename, kind, nodeId) {
     this.assertActive();
     const form = new FormData();
