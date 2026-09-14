@@ -184,6 +184,9 @@ body.canvas-editor-page .ant-pro-layout-content {
 }
 
 .canvas-interaction-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 16px;
   padding: 4px;
   border: 1px solid rgba(0, 0, 0, 0.08);

@@ -81,14 +81,25 @@ export class CanvasIoService {
         if (command.startsWith('output.')) {
           const items = clone(currentOutput(io)?.items ?? []);
           if (command === 'output.publish' || command === 'output.replace') {
-            const used = new Set(items.filter(item => command !== 'output.replace' || item.itemKey !== payload.itemKey).map(item => item.assetId));
+            const incoming = batch.length ? batch : [published!];
+            const slots = incoming.map(item => item.outputSlot).filter(Boolean);
+            if (command === 'output.replace' && published!.outputSlot && items.some(item => item.itemKey !== payload.itemKey && outputSlot(item) === published!.outputSlot)) invalid('该卡片端口已有输出，请直接设置该卡片的新产物为输出', 'OUTPUT_SLOT_CONFLICT');
+            if (new Set(slots).size !== slots.length) invalid('同一卡片端口只能选择一个产物', 'OUTPUT_SLOT_CONFLICT');
+            const used = new Set(items.filter(item => command === 'output.replace' ? item.itemKey !== payload.itemKey : !outputSlot(item) || !slots.includes(outputSlot(item))).map(item => item.assetId));
             for (const item of batch.length ? batch : [published!]) {
               if (used.has(item.assetId)) invalid('该资源已设为输出，不能重复设置', 'OUTPUT_ASSET_ALREADY_PUBLISHED');
               used.add(item.assetId);
             }
           }
-          if (command === 'output.publish') items.push(...(batch.length ? batch : [published!]));
-          else if (command === 'output.replace') { const index = items.findIndex(i => i.itemKey === payload.itemKey); if (index < 0) invalid('输出不存在'); items[index] = { ...published!, itemKey: items[index].itemKey }; }
+          if (command === 'output.publish') {
+            for (const item of batch.length ? batch : [published!]) {
+              const previous = [...io.outputs].reverse().flatMap(s => s.items).find(old => item.outputSlot && outputSlot(old) === item.outputSlot);
+              const index = items.findIndex(old => item.outputSlot && outputSlot(old) === item.outputSlot);
+              const next = { ...item, itemKey: previous?.itemKey ?? item.itemKey };
+              if (index < 0) items.push(next); else { items[index] = next; for (let i = items.length - 1; i >= 0; i--) if (i !== index && item.outputSlot && outputSlot(items[i]) === item.outputSlot) items.splice(i, 1); }
+            }
+          }
+          else if (command === 'output.replace') { const index = items.findIndex(i => i.itemKey === payload.itemKey); if (index < 0) invalid('输出不存在'); items[index] = { ...published!, itemKey: items[index].itemKey, outputSlot: published!.outputSlot ?? outputSlot(items[index]) }; }
           else if (command === 'output.edit') { const item = items.find(i => i.itemKey === payload.itemKey); if (!item) invalid('输出不存在'); item.name = bounded(payload.name, item.name); item.note = bounded(payload.note, item.note, 2000); }
           else if (command === 'output.remove') { const index = items.findIndex(i => i.itemKey === payload.itemKey); if (index < 0) invalid('输出不存在'); items.splice(index, 1); }
           else if (command === 'output.reorder') { if (!Array.isArray(payload.order) || payload.order.length !== items.length || new Set(payload.order).size !== items.length || payload.order.some((key: string) => !items.some(i => i.itemKey === key))) invalid('排序必须包含每个输出一次'); items.sort((a,b) => payload.order.indexOf(a.itemKey) - payload.order.indexOf(b.itemKey)); }
@@ -97,7 +108,7 @@ export class CanvasIoService {
         } else {
           const group = this.group(io, payload.groupId);
           if (command === 'input.restore') { if (!group.snapshots.some(s => s.id === payload.snapshotId)) invalid('快照不存在'); group.activeSnapshotId = payload.snapshotId; this.projectBindings(draft, group); }
-          else if (command === 'input.remove') { if (draft.graph.nodes.some(n => n.data.inputGroupId === group.id)) invalid('请先删除该输入组的工作区节点', 'INPUT_ITEM_IN_USE'); io.inputs = io.inputs.filter(g => g.id !== group.id); }
+          else if (command === 'input.remove') { io.removedInputs ??= []; io.removedInputs.push(clone(group)); for (const node of draft.graph.nodes.filter(n => n.data.inputGroupId === group.id)) node.data = { ...node.data, inputDetachedReason: 'group_removed' }; io.inputs = io.inputs.filter(g => g.id !== group.id); }
           else if (command === 'input.edit') { group.name = bounded(payload.name, group.name); group.note = bounded(payload.note, group.note, 2000); }
           else if (command === 'input.bind') {
             const item = activeInput(group).items.find(i => i.itemKey === payload.itemKey); if (!item) invalid('输入项不存在');
@@ -140,10 +151,13 @@ export class CanvasIoService {
   private group(io: CanvasIoState, id: string): IoInputGroup { const group = io.inputs.find(g => g.id === id); if (!group) throw new NotFoundException({ code: 'INPUT_NOT_FOUND', message: '输入组不存在' }); return group; }
   private projectBindings(draft: CanvasDoc, group: IoInputGroup) {
     for (const node of draft.graph.nodes.filter(n => n.data.inputGroupId === group.id)) {
-      const item = activeInput(group).items.find(i => i.itemKey === node.data.inputItemKey);
-      if (!item) invalid(`新版移除了工作区节点“${node.data.cardName ?? node.id}”正在使用的输入，请先删除该节点或保留旧版`, 'INPUT_ITEM_IN_USE');
-      if (item.kind !== node.data.kind) invalid('输入类型已变化，请先解除工作区使用', 'INPUT_KIND_CHANGED');
-      node.data = { ...node.data, ...bindingData(group, item) };
+      const old = group.snapshots.find(s => s.id === node.data.inputSnapshotId)?.items.find(i => i.itemKey === node.data.inputItemKey);
+      const item = activeInput(group).items.find(i => i.itemKey === node.data.inputItemKey)
+        ?? activeInput(group).items.find(i => old && i.kind === old.kind && i.sourceAssetId && i.sourceAssetId === old.sourceAssetId);
+      if (!item || item.kind !== node.data.kind) {
+        node.data = { ...node.data, inputDetachedReason: item ? 'kind_changed' : 'removed' }; continue;
+      }
+      node.data = { ...node.data, inputItemKey: item.itemKey, ...bindingData(group, item) };
     }
   }
 
@@ -163,17 +177,19 @@ export class CanvasIoService {
     if (assetId) {
       return this.assets.withReadProtection(id, async () => {
         const { asset, absPath } = await this.assets.read(assetId); if (asset.canvasId !== id) invalid('只能发布当前画布内的资源');
-        return { itemKey: randomUUID(), assetId, kind: asset.kind, name: bounded(payload.name, asset.originName ?? '输出'), note: bounded(payload.note, '', 2000), hash: await this.assets.fileHash(absPath), sourceNodeId: nodeId ?? asset.nodeId ?? undefined, sourceRunId: runId, ...(asset.kind === 'text' ? { text: decodeText(await import('fs/promises').then(fs => fs.readFile(absPath))) } : {}) };
+        return { itemKey: randomUUID(), assetId, kind: asset.kind, name: bounded(payload.name, asset.originName ?? '输出'), note: bounded(payload.note, '', 2000), hash: await this.assets.fileHash(absPath), sourceNodeId: nodeId ?? asset.nodeId ?? undefined, sourceRunId: runId, outputSlot: (nodeId ?? asset.nodeId) ? `${nodeId ?? asset.nodeId}:${asset.kind}${asset.kind === 'text' ? ':combined' : ''}` : undefined, ...(asset.kind === 'text' ? { text: decodeText(await import('fs/promises').then(fs => fs.readFile(absPath))) } : {}) };
       });
     }
     if (typeof text !== 'string' || !text.length || Buffer.byteLength(text) > 5 * 1024 * 1024) invalid('请选择有效文字或媒体产物（文字最大 5 MB）');
     const buffer = Buffer.from(text); const asset = await this.assets.prepareImport({ canvasId: id, kind: 'text', buffer, originName: `${bounded(payload.name, '文字输出')}.txt`, mime: 'text/plain; charset=utf-8' }); prepared.push(asset);
-    return { itemKey: randomUUID(), assetId: asset.id, kind: 'text', text, name: bounded(payload.name, '文字输出'), note: bounded(payload.note, '', 2000), hash: createHash('sha256').update(buffer).digest('hex'), sourceNodeId: nodeId, sourceRunId: runId };
+    return { itemKey: randomUUID(), assetId: asset.id, kind: 'text', text, name: bounded(payload.name, '文字输出'), note: bounded(payload.note, '', 2000), hash: createHash('sha256').update(buffer).digest('hex'), sourceNodeId: nodeId, sourceRunId: runId, outputSlot: nodeId ? `${nodeId}:text:${payload.textPart ?? 'combined'}` : undefined };
   }
 }
 
+function outputSlot(item: IoItem): string | undefined { return item.outputSlot ?? (item.sourceNodeId ? `${item.sourceNodeId}:${item.kind}${item.kind === 'text' ? ':combined' : ''}` : undefined); }
+
 export function bindingData(group: IoInputGroup, item: IoItem) {
-  return { kind: item.kind, inputSnapshotId: group.activeSnapshotId, lastText: item.text ?? '', lastAssets: item.kind === 'text' ? [] : [{ assetId: item.assetId, kind: item.kind, url: `/api/assets/${item.assetId}`, filename: item.name }], inputLocalAssetId: item.assetId };
+  return { inputDetachedReason: null, kind: item.kind, inputSnapshotId: group.activeSnapshotId, lastText: item.text ?? '', lastAssets: item.kind === 'text' ? [] : [{ assetId: item.assetId, kind: item.kind, url: `/api/assets/${item.assetId}`, filename: item.name }], inputLocalAssetId: item.assetId };
 }
 export function diffItems(before: IoItem[], after: IoItem[]) {
   const changes: Array<{ itemKey: string; name: string; change: string }> = [];

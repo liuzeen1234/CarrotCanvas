@@ -625,3 +625,9 @@ Phase 0A 推荐的新会话指令：
 
 - 2026-09-09（输入节点易读性，阶段状态不变）：图片、视频和音频输入节点在媒体预览下展示上传文件的原始文件名，并新增可选备注输入；备注作为节点 data 随 canonical graph、revision 和既有语义化 update_node 流程持久化，文字输入节点行为不变。
 - 2026-09-12（Stable Audio 3 音效工作流，阶段状态不变）：通用 ComfyUI 工作流节点增加 `txt2audio` 分类、真实 `audio-source` 类型、FLAC 播放与下载；音频资产和候选沿用现有 Run / lineage / 历史，不新增 Phase 2/3 或数据库领域。Agent 测试通过正常 lease/revision 语义操作和平台运行提交，在专用验收画布留下参数、Run 与资产 ID；真实生成及人工听感边界见 [STABLE-AUDIO-INTEGRATION.md](./STABLE-AUDIO-INTEGRATION.md)。
+
+- 2026-09-14：画布 IO 更新允许来源撤下或类型变化，工作区保留原本地快照并显示状态，Run inputLineage 使用节点实际 inputSnapshotId；卡片输出以 nodeId + 类型/文字端口保持身份，主动发布替换资源，撤下重发保留 itemKey。
+
+- 2026-09-14：移除画布/本地输入组允许保留工作区引用；removedInputs 归档原快照用于严格绑定校验、Run 实际版本溯源和资产保护。节点与连线不变，输入面板移除并停止更新；既有阶段范围不变。
+
+- 2026-09-14（画布整理重叠）：底部工具栏新增按钮，按 React Flow 当前测量尺寸与 24px 间距避让，优先小位移并惩罚原左右/上下关系反转；已有足够间距的节点保持位置。只修改 position，复用自动保存的 canvas.operations / move_nodes、lease/revision 和操作历史撤销，不改变边、资产或运行状态。3 项纯算法测试覆盖尺寸混合、同点重合、相对关系、远处不动和重复整理 no-op；既有 Phase 范围不变。

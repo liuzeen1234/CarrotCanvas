@@ -234,9 +234,10 @@ function validId(value: unknown) { return typeof value === 'string' && value.len
 function assertIoBindings(graph: CanvasGraph, io: CanvasIoState | null) {
   for (const node of graph.nodes) {
     if (!node.data.inputGroupId) continue;
-    const group = io?.inputs.find(g => g.id === node.data.inputGroupId);
-    const item = group && activeInput(group)?.items.find(i => i.itemKey === node.data.inputItemKey);
-    if (!item || !group || node.type !== 'result' || !node.data.inputMode || node.data.kind !== item.kind || node.data.inputSnapshotId !== group.activeSnapshotId || node.data.inputLocalAssetId !== item.assetId || node.data.lastText !== (item.text ?? '')) bad('INPUT_BINDING_MISMATCH', '输入快照节点内容必须通过输入区更新');
+    const group = [...(io?.inputs ?? []), ...(io?.removedInputs ?? [])].find(g => g.id === node.data.inputGroupId);
+    const pinned = group?.snapshots.find(s => s.id === node.data.inputSnapshotId);
+    const item = pinned?.items.find(i => i.itemKey === node.data.inputItemKey);
+    if (!item || !group || node.type !== 'result' || !node.data.inputMode || node.data.kind !== item.kind || node.data.inputLocalAssetId !== item.assetId || node.data.lastText !== (item.text ?? '')) bad('INPUT_BINDING_MISMATCH', '输入快照节点内容必须通过输入区更新');
     const assets = node.data.lastAssets as any[];
     if (!Array.isArray(assets) || (item.kind === 'text' ? assets.length !== 0 : assets.length !== 1 || assets[0]?.assetId !== item.assetId || assets[0]?.kind !== item.kind || assets[0]?.url !== `/api/assets/${item.assetId}`)) bad('INPUT_BINDING_MISMATCH', '输入快照资源绑定不一致');
   }

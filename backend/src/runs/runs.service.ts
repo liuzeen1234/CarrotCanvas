@@ -4,7 +4,6 @@ import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
 import { Asset } from '../assets/asset.entity';
 import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff, GenerationRunStatus } from './generation-run.entity';
 import { CanvasDoc } from '../canvas/canvas.entity';
-import { activeInput } from '../canvas/canvas-io.types';
 
 @Injectable()
 export class RunsService implements OnModuleInit {
@@ -42,8 +41,8 @@ export class RunsService implements OnModuleInit {
       let changed = true; while (changed) { changed = false; for (const edge of doc?.graph.edges ?? []) if (upstream.has(edge.target) && !upstream.has(edge.source)) { upstream.add(edge.source); changed = true; } }
       run.inputLineage = [];
       for (const node of doc?.graph.nodes ?? []) if (upstream.has(node.id) && node.data.inputGroupId) {
-        const group = doc?.io?.inputs.find(g => g.id === node.data.inputGroupId); const item = group && activeInput(group).items.find(i => i.itemKey === node.data.inputItemKey);
-        if (item && group) run.inputLineage.push({ inputGroupId: group.id, snapshotId: group.activeSnapshotId, itemKey: item.itemKey, assetId: item.assetId, name: item.name, sourceCanvasId: item.sourceCanvasId, sourceCanvasName: item.sourceCanvasName, sourceOutputsVersion: item.sourceOutputsVersion, sourceOutputId: item.sourceOutputId, sourceAssetId: item.sourceAssetId });
+        const group = [...(doc?.io?.inputs ?? []), ...(doc?.io?.removedInputs ?? [])].find(g => g.id === node.data.inputGroupId); const item = group?.snapshots.find(s => s.id === node.data.inputSnapshotId)?.items.find(i => i.itemKey === node.data.inputItemKey);
+        if (item && group) run.inputLineage.push({ inputGroupId: group.id, snapshotId: String(node.data.inputSnapshotId), itemKey: item.itemKey, assetId: item.assetId, name: item.name, sourceCanvasId: item.sourceCanvasId, sourceCanvasName: item.sourceCanvasName, sourceOutputsVersion: item.sourceOutputsVersion, sourceOutputId: item.sourceOutputId, sourceAssetId: item.sourceAssetId });
       }
       run.inputAssetIds = [...new Set([...run.inputAssetIds, ...run.inputLineage.map(i => i.assetId)])];
     }

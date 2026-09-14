@@ -33,14 +33,14 @@ export default function CanvasIoPanel({ side, canvasId, io, writable, busy, exec
       const choices: any[] = [];
       for (const node of doc.graph.nodes) {
         const label = node.data.cardName || node.data.workflowName || node.id;
-        for (const asset of node.data.lastAssets ?? []) choices.push({ key: `node:${node.id}:${asset.assetId}`, label: `${label} · ${asset.filename || asset.kind}`, payload: { nodeId: node.id, assetId: asset.assetId }, item: { ...asset, name: asset.filename || label } });
-        if (node.data.lastText) choices.push({ key: `node:${node.id}:text`, label: `${label} · 当前文字`, payload: { nodeId: node.id }, item: { kind: 'text', text: node.data.lastText } });
-        for (const part of ['positive','negative']) if (node.data.lastTextParts?.[part]) choices.push({ key: `node:${node.id}:${part}`, label: `${label} · ${part === 'positive' ? '正向' : '负向'}文字`, payload: { nodeId: node.id, textPart: part }, item: { kind: 'text', text: node.data.lastTextParts[part] } });
+        for (const asset of node.data.lastAssets ?? []) choices.push({ key: `node:${node.id}:${asset.assetId}`, slot: `${node.id}:${asset.kind}`, label: `${label} · ${asset.filename || asset.kind}`, payload: { nodeId: node.id, assetId: asset.assetId }, item: { ...asset, name: asset.filename || label } });
+        if (node.data.lastText) choices.push({ key: `node:${node.id}:text`, slot: `${node.id}:text:combined`, label: `${label} · 当前文字`, payload: { nodeId: node.id }, item: { kind: 'text', text: node.data.lastText } });
+        for (const part of ['positive','negative']) if (node.data.lastTextParts?.[part]) choices.push({ key: `node:${node.id}:${part}`, slot: `${node.id}:text:${part}`, label: `${label} · ${part === 'positive' ? '正向' : '负向'}文字`, payload: { nodeId: node.id, textPart: part }, item: { kind: 'text', text: node.data.lastTextParts[part] } });
       }
       for (const record of history.items ?? []) if (record.status === 'succeeded') {
         const label = `${new Date(record.createdAt).toLocaleString()} · 历史`;
-        for (const asset of record.outputAssets ?? []) choices.push({ key: `run:${record.id}:${asset.assetId}`, label: `${label} · ${asset.filename || asset.kind}`, payload: { runId: record.id, assetId: asset.assetId }, item: { ...asset, name: asset.filename } });
-        if (record.outputText) choices.push({ key: `run:${record.id}:text`, label: `${label} · 文字`, payload: { runId: record.id }, item: { kind: 'text', text: record.outputText } });
+        for (const asset of record.outputAssets ?? []) choices.push({ key: `run:${record.id}:${asset.assetId}`, slot: record.nodeId ? `${record.nodeId}:${asset.kind}` : undefined, label: `${label} · ${asset.filename || asset.kind}`, payload: { runId: record.id, assetId: asset.assetId }, item: { ...asset, name: asset.filename } });
+        if (record.outputText) choices.push({ key: `run:${record.id}:text`, slot: record.nodeId ? `${record.nodeId}:text:combined` : undefined, label: `${label} · 文字`, payload: { runId: record.id }, item: { kind: 'text', text: record.outputText } });
       }
       for (const group of io?.inputs ?? []) for (const item of group.snapshots.find(s => s.id === group.activeSnapshotId)?.items ?? []) choices.push({ key: `input:${item.assetId}`, label: `${group.name} · ${item.name}`, payload: { assetId: item.assetId }, item });
       setCandidates(choices); setSelectedKeys([]); setPublishSearch(''); setPublishDrafts(Object.fromEntries(choices.map(c => [c.key, { name: c.item.name || c.label, note: c.item.note || '' }]))); setReplaceKey(key); setPublishOpen(true);
@@ -52,7 +52,7 @@ export default function CanvasIoPanel({ side, canvasId, io, writable, busy, exec
   const selected = candidates.filter(c => selectedKeys.includes(c.key));
   const filteredCandidates = candidates.filter(c => c.label.toLowerCase().includes(publishSearch.toLowerCase()));
   const isPublished = (c: any) => !!c.item.assetId && !!outputs?.items.some(item => item.assetId === c.item.assetId && item.itemKey !== replaceKey);
-  const duplicateSelection = (c: any) => !!c.item.assetId && selected.some(other => other.key !== c.key && other.item.assetId === c.item.assetId);
+  const duplicateSelection = (c: any) => selected.some(other => other.key !== c.key && ((c.item.assetId && other.item.assetId === c.item.assetId) || (c.slot && other.slot === c.slot)));
   return <>
     <aside style={{ width: open ? 288 : 38, flexShrink: 0, borderRight: '1px solid #eee', borderLeft: '1px solid #eee', background: '#fafafa', minHeight: 0, overflow: 'auto', padding: open ? 12 : 4 }}>
       {!open ? <Button type="text" style={{ writingMode: 'vertical-rl', height: 90 }} onClick={() => toggle(true)}>{title}</Button> : <>
@@ -70,8 +70,8 @@ export default function CanvasIoPanel({ side, canvasId, io, writable, busy, exec
               {group.note && <Typography.Paragraph>{group.note}</Typography.Paragraph>}
               <Space wrap style={{ margin: '8px 0' }}>
                 <Button size="small" disabled={!writable || busy} onClick={() => { setName(group.name); setNote(group.note); setEditing({ groupId: group.id }); }}>备注</Button>
-                {group.sourceCanvasId && <Button size="small" icon={<ReloadOutlined />} disabled={busy} onClick={async () => { try { const preview = await request<any>(`/api/canvas/${canvasId}/io/inputs/${group.id}/update-preview`); setUpdate({ ...preview, groupId: group.id }); } catch { message.error('检查更新失败'); } }}>检查更新</Button>}
-                <Popconfirm title="移除输入组？" description="请先删除对应工作区输入节点；历史生成记录保留。" onConfirm={() => run('input.remove', { groupId: group.id }).catch(() => {})}><Button size="small" danger disabled={!writable || busy}>移除</Button></Popconfirm>
+                {group.sourceCanvasId && <Button size="small" icon={<ReloadOutlined />} disabled={!writable || busy} onClick={async () => { try { const preview = await request<any>(`/api/canvas/${canvasId}/io/inputs/${group.id}/update-preview`); setUpdate({ ...preview, groupId: group.id }); } catch { message.error('检查更新失败'); } }}>检查更新</Button>}
+                <Popconfirm title="移除输入组？" description="从输入区移除，工作区副本、连线和历史记录保留，不再检查来源更新。" onConfirm={() => run('input.remove', { groupId: group.id }).catch(() => {})}><Button size="small" danger disabled={!writable || busy}>移除</Button></Popconfirm>
               </Space>
               <Select size="small" style={{ width: '100%', marginBottom: 8 }} value={group.activeSnapshotId} disabled={!writable || busy} options={group.snapshots.map(s => ({ value: s.id, label: `快照 ${s.version} · ${new Date(s.createdAt).toLocaleString()}` }))} onChange={snapshotId => void run('input.restore', { groupId: group.id, snapshotId }).catch(() => {})} />
               {active.items.map(item => <div key={item.itemKey} style={{ borderTop: '1px solid #eee', paddingTop: 8, marginTop: 8 }}><Typography.Text strong>{item.name}</Typography.Text><Tag>{item.kind}</Tag><IoPreview item={item} /><Button size="small" style={{ marginTop: 6 }} disabled={!writable || busy} onClick={() => void run('input.bind', { groupId: group.id, itemKey: item.itemKey, position: { x: 80, y: 80 + active.items.indexOf(item) * 160 } }).catch(() => {})}>加入工作区</Button></div>)}
@@ -101,13 +101,13 @@ export default function CanvasIoPanel({ side, canvasId, io, writable, busy, exec
       const items = selected.map(c => ({ ...c.payload, ...publishDrafts[c.key] }));
       void run(replaceKey ? 'output.replace' : 'output.publish', replaceKey ? { ...items[0], itemKey: replaceKey } : { items }).then(() => setPublishOpen(false)).catch(() => {});
     }}>
-      <Typography.Paragraph type="secondary">{replaceKey ? '勾选一个结果替换当前输出。' : '勾选需要发布的结果，预览确认后一次发布为同一输出版本。'}</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">{replaceKey ? '勾选一个结果替换当前输出。' : '同一卡片同类型只能选择一个产物；再次发布替换对应输出，不影响下游已有快照。'}</Typography.Paragraph>
       <Input.Search placeholder="搜索当前内容或历史候选" value={publishSearch} onChange={e => setPublishSearch(e.target.value)} allowClear style={{ marginBottom: 12 }} />
       <Space wrap style={{ marginBottom: 12 }}>
         <Typography.Text>已选 {selected.length} 项</Typography.Text>
         {!replaceKey && <Button size="small" disabled={busy || !filteredCandidates.length} onClick={() => {
-          const keys = [...selectedKeys]; const assets = new Set(selected.map(c => c.item.assetId).filter(Boolean));
-          for (const c of filteredCandidates) { if (keys.length >= 100) break; if (keys.includes(c.key) || isPublished(c) || (c.item.assetId && assets.has(c.item.assetId))) continue; keys.push(c.key); if (c.item.assetId) assets.add(c.item.assetId); }
+          const keys = [...selectedKeys]; const assets = new Set(selected.map(c => c.item.assetId).filter(Boolean)); const slots = new Set(selected.map(c => c.slot).filter(Boolean));
+          for (const c of filteredCandidates) { if (keys.length >= 100) break; if (keys.includes(c.key) || isPublished(c) || (c.item.assetId && assets.has(c.item.assetId)) || (c.slot && slots.has(c.slot))) continue; keys.push(c.key); if (c.item.assetId) assets.add(c.item.assetId); if (c.slot) slots.add(c.slot); }
           setSelectedKeys(keys);
         }}>全选搜索结果</Button>}
         <Button size="small" disabled={busy || !selected.length} onClick={() => setSelectedKeys([])}>清空选择</Button>
@@ -137,7 +137,7 @@ export default function CanvasIoPanel({ side, canvasId, io, writable, busy, exec
       </div>}
     </Modal>
     <Modal title="检查输入更新" open={!!update} onCancel={() => setUpdate(undefined)} confirmLoading={busy} okText="更新为新快照" okButtonProps={{ disabled: !writable || !update?.available || !update?.hasUpdate }} onOk={() => run('input.update', { groupId: update.groupId, sourceOutputsVersion: update.sourceOutputsVersion }).then(() => setUpdate(undefined)).catch(() => {})}>
-      {!update?.available ? <Alert type="warning" message={update?.message} /> : <><Typography.Paragraph>{update.hasUpdate ? `来源输出 v${update.previousVersion} → v${update.sourceOutputsVersion}` : '已是当前输出版本'}</Typography.Paragraph>{update.changes?.map((c: any, index: number) => <div key={index}><Tag>{c.change}</Tag>{c.name}</div>)}<Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>更新保留旧快照，不自动重跑工作区或改写已有结果。</Typography.Paragraph></>}
+      {!update?.available ? <Alert type="warning" message={update?.message} /> : <><Typography.Paragraph>{update.hasUpdate ? `来源输出 v${update.previousVersion} → v${update.sourceOutputsVersion}` : '已是当前输出版本'}</Typography.Paragraph>{update.changes?.map((c: any, index: number) => <div key={index}><Tag>{c.change}</Tag>{c.name}</div>)}<Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>同身份同类型的工作区输入会更新；新版已移除或改变类型的输入保留旧资源并标记。不自动重跑或改写已有结果。</Typography.Paragraph></>}
     </Modal>
     <Modal title="名称与说明" open={!!editing} onCancel={() => setEditing(undefined)} confirmLoading={busy} onOk={() => run(editing?.groupId ? 'input.edit' : 'output.edit', { ...editing, name, note }).then(() => setEditing(undefined)).catch(() => {})}><Input value={name} onChange={e => setName(e.target.value)} maxLength={200} /><Input.TextArea value={note} onChange={e => setNote(e.target.value)} maxLength={2000} style={{ marginTop: 8 }} /></Modal>
   </>;

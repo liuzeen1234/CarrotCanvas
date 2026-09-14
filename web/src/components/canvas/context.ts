@@ -30,6 +30,8 @@ export interface CanvasImageInputReference {
 }
 
 export interface CanvasNodeDataApi {
+  /** 本会话刚加入工作区的节点，仅用于短暂定位提示。 */
+  newlyAddedNodeIds?: string[];
   /** 当前画布是否只读；节点内所有共享副作用必须服从此标志。 */
   readOnly: boolean;
   control?: { leaseToken: string; leaseEpoch: number; expectedRevision: number };
@@ -43,6 +45,7 @@ export interface CanvasNodeDataApi {
   /** 发布明确的当前或历史产物，复用编辑器的保存与 IO 写入队列。 */
   publishOutput?: (payload: Record<string, unknown>) => Promise<unknown>;
   publishedAssetIds?: string[];
+  publishedOutputs?: Array<{ assetId: string; text?: string; sourceNodeId?: string; outputSlot?: string; kind: string }>;
   ensureResultNode: (sourceNodeId: string, kind?: 'image' | 'video' | 'audio') => void;
   setNodeRunState: (nodeId: string, run: RunStateData | null) => void;
   /** 读取节点的共享运行态，让只读观察者也能看到进度和终态。 */

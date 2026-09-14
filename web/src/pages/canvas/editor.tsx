@@ -37,6 +37,7 @@ import RunAssetPreview, { type RunOutputAsset } from '@/components/canvas/RunAss
 import RunRecovery, { RecoveryLabel, RecoveryDetails, type RecoveryMetadata } from '@/components/canvas/RunRecovery';
 import { createClientUuid } from '@/utils/uuid';
 import CanvasIoPanel, { type CanvasIo } from '@/components/canvas/CanvasIoPanel';
+import { findInputPosition, resolveOverlaps } from '@/components/canvas/resolveOverlaps';
 import './editor.css';
 
 const { Text } = Typography;
@@ -187,6 +188,15 @@ function CanvasEditorInner() {
   const generationHistorySignatureRef = useRef('');
   /** 运行态只驻留内存，不进入 graph；结果节点通过 Context 读取上游状态。 */
   const [nodeRuns, setNodeRuns] = useState<Record<string, RunStateData | null>>({});
+  const [newlyAddedNodeIds, setNewlyAddedNodeIds] = useState<string[]>([]);
+  const inputHighlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  useEffect(() => {
+    setNewlyAddedNodeIds([]);
+    return () => {
+      inputHighlightTimers.current.forEach(timer => clearTimeout(timer));
+      inputHighlightTimers.current.clear();
+    };
+  }, [id]);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const viewportRef = useRef(viewport);
@@ -462,6 +472,9 @@ function CanvasEditorInner() {
       const localSnapshot = JSON.stringify(localGraph);
       if (localSnapshot !== lastSavedSnapshotRef.current) pendingSaveRef.current = { graph: localGraph, snapshot: localSnapshot };
       await drainSaves();
+      if (command === 'input.bind') {
+        payload = { ...payload, position: findInputPosition(getNodes(), payload.position, CANVAS_NODE_WIDTH) };
+      }
       const current = leaseRef.current; if (!id || !current || current.status !== 'active') throw new Error('请先取得画布编辑权');
       setIoBusy(true);
       const proof = { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, actorType: 'human', actorId: current.holderId, idempotencyKey: createClientUuid() };
@@ -471,6 +484,17 @@ function CanvasEditorInner() {
         result = await request(`/api/canvas/${id}/io/files`, { method: 'POST', data: form, requestType: 'form', timeout: 180000 });
       } else result = await request(`/api/canvas/${id}/io/command`, { method: 'POST', data: { ...proof, command, payload }, timeout: 180000 });
       const graph = createPersistedGraph(result.canvas.graph.nodes, result.canvas.graph.edges, viewportRef.current);
+      if (command === 'input.bind') {
+        const existingIds = new Set(nodesRef.current.map(node => node.id));
+        const added = result.canvas.graph.nodes.filter(node => !existingIds.has(node.id)).map(node => node.id);
+        setNewlyAddedNodeIds(previous => [...previous, ...added]);
+        for (const nodeId of added) {
+          inputHighlightTimers.current.set(nodeId, setTimeout(() => {
+            setNewlyAddedNodeIds(previous => previous.filter(value => value !== nodeId));
+            inputHighlightTimers.current.delete(nodeId);
+          }, 3000));
+        }
+      }
       lastSavedGraphRef.current = graph; lastSavedSnapshotRef.current = JSON.stringify(graph);
       nodesRef.current = result.canvas.graph.nodes; edgesRef.current = result.canvas.graph.edges;
       setNodes(result.canvas.graph.nodes); setEdges(result.canvas.graph.edges); adoptCanvas(result.canvas);
@@ -1067,7 +1091,21 @@ function CanvasEditorInner() {
     if (id) window.localStorage.setItem(`carrot-canvas:viewport:${id}`, JSON.stringify(nextViewport));
   }, [id]);
 
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes } = useReactFlow();
+  const arrangeOverlaps = () => {
+    if (!canWrite || nodes.some(node => node.dragging)) return;
+    const positions = resolveOverlaps(getNodes());
+    const moved = nodes.filter(node => {
+      const next = positions.get(node.id);
+      return next && (next.x !== node.position.x || next.y !== node.position.y);
+    });
+    if (!moved.length) { message.info('卡片之间已有足够间距'); return; }
+    setNodes(items => items.map(node => {
+      const position = positions.get(node.id);
+      return position ? { ...node, position } : node;
+    }));
+    message.success(`已整理 ${moved.length} 张卡片，位置将自动保存`);
+  };
 
   /** 在屏幕坐标处打开分级菜单（右键 / 移动端长按共用） */
   const openMenu = useCallback((screenX: number, screenY: number) => {
@@ -1227,9 +1265,11 @@ function CanvasEditorInner() {
   const nodeCount = nodes.length;
   const publishedAssetIds = useMemo(() => doc?.io?.outputs.at(-1)?.items.map(item => item.assetId) ?? [], [doc?.io]);
   const nodeDataApi = useMemo(() => ({
+    newlyAddedNodeIds,
     canvasId: id,
     publishOutput,
     publishedAssetIds,
+    publishedOutputs: doc?.io?.outputs.at(-1)?.items ?? [],
     readOnly: !canWrite,
     control: lease ? { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: revisionRef.current } : undefined,
     updateNodeData: handleUpdateNodeData,
@@ -1244,7 +1284,7 @@ function CanvasEditorInner() {
     disconnectEdge: deleteEdge,
     getUpstreamText,
     generationHistoryVersion,
-  }), [id, publishOutput, publishedAssetIds, canWrite, lease, revisionRef.current, handleUpdateNodeData, handleObserveNodeData, handleDeleteNode,
+  }), [id, newlyAddedNodeIds, publishOutput, publishedAssetIds, doc?.io, canWrite, lease, revisionRef.current, handleUpdateNodeData, handleObserveNodeData, handleDeleteNode,
     ensureResultNode, setNodeRunState, getNodeRunState, getResultState, getUpstreamAsset,
     getUpstreamAssets, deleteEdge, getUpstreamText, generationHistoryVersion]);
   const selectedEdge = edges.find((edge) => edge.selected);
@@ -1355,6 +1395,9 @@ function CanvasEditorInner() {
             >
               <Background />
               <Panel position="bottom-center" className="canvas-interaction-mode nodrag">
+                <Tooltip title="移开重叠卡片，尽量保持原来的相对位置；可在操作历史中撤销">
+                  <Button size="small" disabled={!canWrite || nodes.length < 2 || nodes.some(node => node.dragging)} onClick={arrangeOverlaps}>整理重叠</Button>
+                </Tooltip>
                 <Segmented
                   value={interactionMode}
                   onChange={(value) => { setSpacePanActive(false); setInteractionMode(value as 'hand' | 'pointer'); }}

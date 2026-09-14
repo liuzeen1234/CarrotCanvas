@@ -17,6 +17,35 @@
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.25);
 }
 
+@property --canvas-highlight-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.canvas-node--input-highlight { position: relative; }
+.canvas-node--input-highlight::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 12px;
+  padding: 3px;
+  background: conic-gradient(from var(--canvas-highlight-angle), #b7eb8f, #52c41a, #13a866, #95de64, #b7eb8f);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 5;
+  animation: canvas-input-highlight 3s ease-out forwards, canvas-input-highlight-rotate 1.2s linear infinite;
+}
+@keyframes canvas-input-highlight-rotate {
+  to { --canvas-highlight-angle: 360deg; }
+}
+@keyframes canvas-input-highlight {
+  0%, 75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 .canvas-node__header {
   display: flex;
   align-items: center;

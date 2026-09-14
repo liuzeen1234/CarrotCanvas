@@ -11,7 +11,7 @@ GET `/canvas/:id/io` 返回 inputs 和 outputs 全部历史；agent-view 返回 
 - `input.capture`：`{sourceCanvasId,sourceOutputsVersion?}`。任意其他画布当前输出整组独立复制；不允许自身或项目来源。
 - `input.update`：先 GET `/canvas/<id>/io/inputs/<groupId>/update-preview`；确认差异后 `{groupId,sourceOutputsVersion}`。来源版本变化拒绝提交，需要重新预览；无变化 no-op。
 - `input.restore`：`{groupId,snapshotId}`；`input.edit`：`{groupId,name,note}`；`input.remove`：`{groupId}`。
-- `input.bind`：`{groupId,itemKey,position:{x,y}}`，创建本画布快照适配节点，再用正常 connect 连接 typed handles。同身份同类型更新保留连线；删除或类型变化的使用中输入被拒绝，先解除使用。
+- `input.bind`：`{groupId,itemKey,position:{x,y}}`，创建本画布快照适配节点，再用正常 connect 连接 typed handles。同身份同类型更新保留连线；删除或类型变化允许更新，使用中的节点保留旧快照并标记；Run 记录节点实际版本。
 - `output.publish`：`{assetId,name?,note?}`、`{nodeId,assetId?}`、`{nodeId,textPart:'positive'|'negative'}`、`{runId,assetId?,textPart?}` 或 `{text,name?,note?}`。只接受本画布已有文件或真实节点/成功 Run 的文字，文字也保存 Asset。
 - 批量发布：`output.publish` 的 `{items:[上述单项payload,...]}`，1–100项，一个事务、一个输出版本和一次 revision；任一项失败则整批回滚，原请求原幂等键重放不会重复发布。
 - `output.replace`：同发布字段再加 `itemKey`；`output.edit`：`{itemKey,name,note}`；`output.remove`：`{itemKey}`；`output.reorder`：`{order:[全部itemKey恰好一次]}`。均产生新完整输出版本，旧版保留。
@@ -21,3 +21,7 @@ GET `/canvas/:id/io` 返回 inputs 和 outputs 全部历史；agent-view 返回 
 `results.capture` 的 payload：`{name,note,selections:[{canvasId,itemKey,outputsVersion,name?,note?}]}`；仅当前关联画布，最多100项，每项独立复制到项目。`results.restore`：`{snapshotId}`，设置活动成果但不删除历史。
 
 快照不会自动同步或重跑。明确更新才切换当前输入，旧 Run 保存 inputLineage 和提交时输入，不受影响。来源被删除或移出项目后副本仍可用；只失去继续更新的能力。下载仍走 `/assets/:assetId/download`。Checkpoint/undo 覆盖 IO，恢复输出形成单调递增的新版本。不要把项目成果的 assetId 塞进画布运行参数绕过不可引用规则。
+
+- 2026-09-14：生成卡片以 nodeId + 产物类型/文字端口维护稳定输出身份，显式再次发布替换该输出，撤下重发保留 itemKey；assetId 仅标识具体资源。批量发布同一卡片端口限选一个产物，已有历史快照保持原样。无编辑权限禁用检查更新。
+
+- 2026-09-14：input.remove 不要求删除工作区节点，输入组移入 removedInputs 历史，保留实际快照、节点及连线，并显示输入已移除标记。历史不作为可选输入或更新来源。

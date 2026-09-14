@@ -97,12 +97,63 @@ describe('Projects and independent canvas IO snapshots (SQLite + real files)', (
     expect((await runs.get(run.id)).inputLineage[0].snapshotId).toBe(old.id);
     await command(b, 'input.restore', { groupId: group.id, snapshotId: old.id }); expect((await canvas.findOne(b.id)).graph.nodes[0].data.lastText).toBe('第一版');
   });
-  it('removed or changed-type output in use cannot silently break the target graph', async () => {
+  it('removed output retains the working snapshot and actual run lineage', async () => {
     const a = await make(); const b = await make(); await command(a, 'output.publish', { text: 'reference' }); await command(b, 'input.capture', { sourceCanvasId: a.id }); const group = (await io.get(b.id)).inputs[0];
     await command(b, 'input.bind', { groupId: group.id, itemKey: group.snapshots[0].items[0].itemKey }); await command(a, 'output.remove', { itemKey: (await output(a)).items[0].itemKey });
-    await expect(command(b, 'input.update', { groupId: group.id })).rejects.toMatchObject({ response: { code: 'INPUT_ITEM_IN_USE' } }); expect((await io.get(b.id)).inputs[0].snapshots).toHaveLength(1);
-    await expect(command(b, 'input.remove', { groupId: group.id })).rejects.toMatchObject({ response: { code: 'INPUT_ITEM_IN_USE' } });
-    const node = (await canvas.findOne(b.id)).graph.nodes[0]; await expect(canvas.applyOperations(b.id, { ...await proof(b), operations: [{ type: 'update_node', nodeId: node.id, dataPatch: { lastText: 'tamper' } }] })).rejects.toMatchObject({ response: { code: 'INPUT_BINDING_MISMATCH' } });
+    await command(b, 'input.update', { groupId: group.id }); expect((await io.get(b.id)).inputs[0].snapshots).toHaveLength(2); expect((await canvas.findOne(b.id)).graph.nodes[0].data.inputDetachedReason).toBe('removed'); expect((await canvas.findOne(b.id)).graph.nodes[0].data.lastText).toBe('reference');
+    await command(b, 'input.remove', { groupId: group.id }); expect((await io.get(b.id)).inputs).toHaveLength(0); expect((await canvas.findOne(b.id)).graph.nodes[0].data.inputDetachedReason).toBe('group_removed');
+    const node = (await canvas.findOne(b.id)).graph.nodes[0];
+    const run = (await runs.begin({ provider: 'codex2api', canvasId: b.id, nodeId: node.id, inputSnapshot: { actualText: node.data.lastText }, actorType: 'agent' })).run;
+    expect(run.inputLineage[0].snapshotId).toBe(group.snapshots[0].id);
+    await expect(canvas.applyOperations(b.id, { ...await proof(b), operations: [{ type: 'update_node', nodeId: node.id, dataPatch: { lastText: 'tamper' } }] })).rejects.toMatchObject({ response: { code: 'INPUT_BINDING_MISMATCH' } });
+  });
+  it('card republish replaces its resource while preserving identity, including revoke-republish', async () => {
+    const a = await make(); const b = await make(); const nodeId = randomUUID();
+    await canvas.applyOperations(a.id, { ...await proof(a), operations: [{ type: 'create_node', node: { id: nodeId, type: 'codex-capability', position: { x: 0, y: 0 }, data: { capability: 'text', prompt: 'test', model: 'codex', lastText: 'v1' } } }] });
+    await command(a, 'output.publish', { nodeId }); const first = (await output(a)).items[0];
+    await command(b, 'input.capture', { sourceCanvasId: a.id }); const group = (await io.get(b.id)).inputs[0];
+    await command(b, 'input.bind', { groupId: group.id, itemKey: first.itemKey });
+    await canvas.applyOperations(a.id, { ...await proof(a), operations: [{ type: 'update_node', nodeId, dataPatch: { lastText: 'v2' } }] });
+    await command(a, 'output.publish', { nodeId }); const second = (await output(a)).items[0];
+    expect((await output(a)).items).toHaveLength(1); expect(second.itemKey).toBe(first.itemKey); expect(second.assetId).not.toBe(first.assetId);
+    await command(b, 'input.update', { groupId: group.id }); expect((await canvas.findOne(b.id)).graph.nodes[0].data.lastText).toBe('v2');
+    await command(a, 'output.remove', { itemKey: first.itemKey }); await command(a, 'output.publish', { nodeId });
+    expect((await output(a)).items[0].itemKey).toBe(first.itemKey);
+    await expect(command(a, 'output.publish', { items: [{ nodeId }, { nodeId }] })).rejects.toMatchObject({ response: { code: 'OUTPUT_SLOT_CONFLICT' } });
+  });
+  it('legacy same-asset republish reconnects and kind changes retain the old working snapshot', async () => {
+    const a = await make(); const b = await make(); await command(a, 'output.publish', { text: 'legacy' }); const first = (await output(a)).items[0];
+    await command(b, 'input.capture', { sourceCanvasId: a.id }); const group = (await io.get(b.id)).inputs[0];
+    await command(b, 'input.bind', { groupId: group.id, itemKey: first.itemKey });
+    await command(a, 'output.remove', { itemKey: first.itemKey }); await command(a, 'output.publish', { assetId: first.assetId, name: '正常标题' });
+    await command(b, 'input.update', { groupId: group.id }); const rebound = (await canvas.findOne(b.id)).graph.nodes[0];
+    expect(rebound.data.inputItemKey).toBe((await output(a)).items[0].itemKey); expect(rebound.data.inputDetachedReason).toBeNull();
+    await io.importFiles(a.id, await proof(a), [{ originalname: 'image.png', mimetype: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64') }]);
+    const image = (await io.get(a.id)).inputs[0].snapshots[0].items[0];
+    await command(a, 'output.replace', { itemKey: rebound.data.inputItemKey, assetId: image.assetId }); await command(b, 'input.update', { groupId: group.id });
+    const retained = (await canvas.findOne(b.id)).graph.nodes[0]; expect(retained.data.inputDetachedReason).toBe('kind_changed'); expect(retained.data.lastText).toBe('legacy'); expect(retained.data.inputSnapshotId).toBe(rebound.data.inputSnapshotId);
+    expect((await io.get(b.id)).inputs[0].snapshots.at(-1).items[0].kind).toBe('image');
+  });
+  it('local input removal preserves graph, files and lineage, supports later editing and undo', async () => {
+    const c = await make();
+    await io.importFiles(c.id, await proof(c), [{ originalname: '说明.txt', mimetype: 'text/plain', buffer: Buffer.from('保留的本地文本') }]);
+    const group = (await io.get(c.id)).inputs[0]; const item = group.snapshots[0].items[0];
+    await command(c, 'input.bind', { groupId: group.id, itemKey: item.itemKey });
+    const before = (await canvas.findOne(c.id)).graph;
+    await command(c, 'input.remove', { groupId: group.id }); const removal = (await canvas.operationLog(c.id))[0];
+    const after = (await canvas.findOne(c.id)).graph;
+    expect(after.edges).toEqual(before.edges); expect(after.nodes[0].position).toEqual(before.nodes[0].position);
+    expect(after.nodes[0].data.lastText).toBe('保留的本地文本'); expect(after.nodes[0].data.inputLocalAssetId).toBe(item.assetId);
+    expect((await io.get(c.id)).inputs).toHaveLength(0);
+    await expect(io.preview(c.id, group.id)).rejects.toMatchObject({ response: { code: 'INPUT_NOT_FOUND' } });
+    expect(await readFile((await assets.read(item.assetId)).absPath, 'utf8')).toBe('保留的本地文本');
+    const run = (await runs.begin({ provider: 'codex2api', canvasId: c.id, nodeId: after.nodes[0].id, inputSnapshot: {}, actorType: 'agent' })).run;
+    expect(run.inputAssetIds).toContain(item.assetId); expect(run.inputLineage[0].snapshotId).toBe(group.snapshots[0].id);
+    await canvas.undoOperation(c.id, removal.id, await proof(c));
+    expect((await io.get(c.id)).inputs[0].id).toBe(group.id); expect((await canvas.findOne(c.id)).graph).toEqual(before);
+    await command(c, 'input.remove', { groupId: group.id });
+    await canvas.applyOperations(c.id, { ...await proof(c), operations: [{ type: 'update_node', nodeId: after.nodes[0].id, dataPatch: { note: '移除后仍可编辑备注' } }] });
+    expect((await canvas.findOne(c.id)).graph.nodes[0].data.note).toBe('移除后仍可编辑备注');
   });
   it('no-op update does not add a revision and source version race is rejected', async () => {
     const a = await make(); const b = await make(); await command(a, 'output.publish', { text: 'v1' }); await command(b, 'input.capture', { sourceCanvasId: a.id }); const group = (await io.get(b.id)).inputs[0]; const revision = (await canvas.findOne(b.id)).revision;
