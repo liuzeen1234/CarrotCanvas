@@ -87,8 +87,8 @@ export default function TtsNode(props: NodeProps) {
       {data.provider === 'cosyvoice3' ? <InputNumber value={data.speed} min={0.5} max={2} step={0.05} disabled={readOnly} onChange={(speed) => update({ speed: speed || 1 })} addonBefore="语速" style={{ width: '100%' }} /> : null}
       {busy ? <Tag color="processing">正在等待本机重型计算资源或生成配音</Tag> : null}
       {error ? <Alert type="error" showIcon message={error} /> : null}
-      {(data.lastAssets || []).map((asset) => <div key={asset.assetId}><ViewportAudio controls src={asset.url} style={{ width: '100%' }} /><AssetIdLabel assetId={asset.assetId} /><PublishOutputButton payload={{ nodeId: props.id, assetId: asset.assetId, name: asset.filename }} /></div>)}
-      <NodeOutputHistory currentAssetId={data.lastAssets?.[0]?.assetId} canvasId={canvasId} nodeId={props.id} kind="audio" readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => update({ lastAssets: [asset] })} onObserveAsset={(asset) => observeNodeData(props.id, { lastAssets: [asset] })} />
+      {(data.lastAssets || []).map((asset) => <div key={asset.assetId}><ViewportAudio controls src={asset.url} style={{ width: '100%' }} /><AssetIdLabel assetId={asset.assetId} /><PublishOutputButton payload={{ nodeId: props.id, assetId: asset.assetId, name: data.cardName || asset.filename }} /></div>)}
+      <NodeOutputHistory cardName={data.cardName} currentAssetId={data.lastAssets?.[0]?.assetId} canvasId={canvasId} nodeId={props.id} kind="audio" readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => update({ lastAssets: [asset] })} onObserveAsset={(asset) => observeNodeData(props.id, { lastAssets: [asset] })} />
     </Space></div>
     <Handle type="source" position={Position.Right} id={resultSourceHandle('audio')} className="canvas-handle--audio" title="音频输出" />
   </div>;
