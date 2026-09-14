@@ -34,13 +34,16 @@ import { AssetIdLabel } from '@/components/canvas/nodes/NodeCardFields';
 import { ComfyUIAPI, extractSeedValues, type RunStateData } from '@/components/comfyui/types';
 import SystemResourceMonitor from '@/components/canvas/SystemResourceMonitor';
 import RunAssetPreview, { type RunOutputAsset } from '@/components/canvas/RunAssetPreview';
+import RunRecovery, { RecoveryLabel, RecoveryDetails, type RecoveryMetadata } from '@/components/canvas/RunRecovery';
 import { createClientUuid } from '@/utils/uuid';
+import CanvasIoPanel, { type CanvasIo } from '@/components/canvas/CanvasIoPanel';
 import './editor.css';
 
 const { Text } = Typography;
 
 /** 画布文档（含完整 graph） */
 interface CanvasDoc {
+  io?: CanvasIo | null;
   id: string;
   name: string;
   graph: {
@@ -59,7 +62,8 @@ interface CanvasControlHolder { holderType: 'human' | 'agent'; holderId: string;
 interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: string | null; }
 interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
 interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
-interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputAssets?: RunOutputAsset[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
+interface GenerationRunItem { inputLineage?: Array<{ snapshotId: string; itemKey: string; name?: string; sourceCanvasId?: string; sourceCanvasName?: string; sourceOutputsVersion?: number }>; }
+interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputAssets?: RunOutputAsset[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; recovery?: RecoveryMetadata | null; actorType?: string; actorId?: string; candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
 
 const sourceHandleKind = (handle: string) => handle === 'text-positive-source' || handle === 'text-negative-source'
   ? 'text'
@@ -149,12 +153,18 @@ function CanvasEditorInner() {
   const [controlMessage, setControlMessage] = useState('正在读取控制权…');
   const [observedHolder, setObservedHolder] = useState<CanvasControlHolder | null>(null);
   const [handoffRequested, setHandoffRequested] = useState(false);
+  const [controlOpen, setControlOpen] = useState(false);
+  const [releasingControl, setReleasingControl] = useState(false);
+  const releaseInFlightRef = useRef(false);
+  const availableHintShownRef = useRef(false);
   /** acquire 成功后必须先同步最新 canonical state / Run handoff，完成前不开放写入。 */
   const [controlReady, setControlReady] = useState(false);
   const revisionRef = useRef(0);
   const leaseRef = useRef<CanvasLease | null>(null);
+  const [ioBusy, setIoBusy] = useState(false);
+  const ioInFlightRef = useRef(false);
   leaseRef.current = lease;
-  const canWrite = lease?.status === 'active' && controlReady;
+  const canWrite = lease?.status === 'active' && controlReady && !releasingControl && !ioBusy;
 
   // 受控节点图：C5 编辑器内可添加/删除/连线；自动保存由 C7 落地
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -273,6 +283,9 @@ function CanvasEditorInner() {
     if (!id) return;
     let cancelled = false;
     // 切换画布时重置状态，避免残留上一张画的节点
+    availableHintShownRef.current = false;
+    setControlOpen(false);
+    setHandoffRequested(false);
     setDoc(null);
     setReady(false);
     setNodes([]);
@@ -286,43 +299,15 @@ function CanvasEditorInner() {
       request<CanvasDoc>(`/api/canvas/${id}`),
       request<any>(`/api/canvas/${id}/control/status`),
     ])
-      .then(async ([initialData, initialStatus]) => {
-        let data = initialData;
-        let status = initialStatus;
-        let acquired: CanvasLease | null = null;
-        const available = ['available', 'expired', 'revoked'].includes(status?.status);
-        let acquiredStateSynced = false;
-        let retryInitialAcquire = false;
-        if (available) {
-          try {
-            acquired = await request<CanvasLease>(`/api/canvas/${id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId: humanHolderId() } });
-            // status 与首次 graph 读取之间可能发生过写入；取得 lease 后重新读取 canonical state。
-            try {
-              data = await request<CanvasDoc>(`/api/canvas/${id}`);
-              acquiredStateSynced = true;
-            } catch {
-              // acquire 已成功，不能丢失 token；保留租约并由后续同步循环重试。
-            }
-          } catch {
-            // 竞争失败表示控制权刚被其他写入者取得，刷新状态并安全退回只读。
-            [data, status] = await Promise.all([
-              request<CanvasDoc>(`/api/canvas/${id}`),
-              request<any>(`/api/canvas/${id}/control/status`),
-            ]);
-            retryInitialAcquire = ['available', 'expired', 'revoked'].includes(status?.status);
-          }
-        }
-        if (cancelled) {
-          if (acquired) void request(`/api/canvas/${id}/control/release`, { method: 'POST', data: { leaseToken: acquired.leaseToken, leaseEpoch: acquired.epoch } });
-          return;
-        }
-        const activeHolder = !acquired && ['active', 'handoff_pending'].includes(status?.status) && status?.lease
+      .then(([data, status]) => {
+        if (cancelled) return;
+        const activeHolder = ['active', 'handoff_pending'].includes(status?.status) && status?.lease
           ? { holderType: status.lease.holderType, holderId: status.lease.holderId, status: status.status }
           : null;
-        leaseRef.current = acquired;
-        setDoc(data); revisionRef.current = data.revision ?? 0; setLease(acquired); setObservedHolder(activeHolder); setHandoffRequested(retryInitialAcquire);
-        setControlReady(Boolean(acquired && acquiredStateSynced));
-        setControlMessage(acquired ? (acquiredStateSynced ? '' : '已取得编辑权，正在同步最新画布…') : retryInitialAcquire ? '自动取得编辑权失败，正在重试…' : activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
+        leaseRef.current = null;
+        setDoc(data); revisionRef.current = data.revision ?? 0; setLease(null); setObservedHolder(activeHolder); setHandoffRequested(false);
+        setControlReady(false);
+        setControlMessage(activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
         setSaveStatus('saved'); setLastSavedAt(new Date(data.updatedAt)); setSaveError('');
       })
       .catch((e: any) => {
@@ -469,6 +454,33 @@ function CanvasEditorInner() {
     setSaveStatus('saved'); setLastSavedAt(new Date(canvas.updatedAt)); setSaveError('');
   }, []);
 
+  const executeIo = async (command: string, payload: any = {}, files?: File[]) => {
+    if (ioInFlightRef.current) throw new Error('上一项输入输出操作尚未完成');
+    ioInFlightRef.current = true;
+    try {
+      const localGraph = createPersistedGraph(nodesRef.current, edgesRef.current, viewportRef.current);
+      const localSnapshot = JSON.stringify(localGraph);
+      if (localSnapshot !== lastSavedSnapshotRef.current) pendingSaveRef.current = { graph: localGraph, snapshot: localSnapshot };
+      await drainSaves();
+      const current = leaseRef.current; if (!id || !current || current.status !== 'active') throw new Error('请先取得画布编辑权');
+      setIoBusy(true);
+      const proof = { leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current, actorType: 'human', actorId: current.holderId, idempotencyKey: createClientUuid() };
+      let result: { canvas: CanvasDoc };
+      if (files) {
+        const form = new FormData(); for (const file of files) form.append('files', file); for (const [key,value] of Object.entries(proof)) form.append(key, String(value));
+        result = await request(`/api/canvas/${id}/io/files`, { method: 'POST', data: form, requestType: 'form', timeout: 180000 });
+      } else result = await request(`/api/canvas/${id}/io/command`, { method: 'POST', data: { ...proof, command, payload }, timeout: 180000 });
+      const graph = createPersistedGraph(result.canvas.graph.nodes, result.canvas.graph.edges, viewportRef.current);
+      lastSavedGraphRef.current = graph; lastSavedSnapshotRef.current = JSON.stringify(graph);
+      nodesRef.current = result.canvas.graph.nodes; edgesRef.current = result.canvas.graph.edges;
+      setNodes(result.canvas.graph.nodes); setEdges(result.canvas.graph.edges); adoptCanvas(result.canvas);
+      return result;
+    } finally { ioInFlightRef.current = false; setIoBusy(false); }
+  };
+
+  const executeIoRef = useRef(executeIo); executeIoRef.current = executeIo;
+  const publishOutput = useCallback((payload: Record<string, unknown>) => executeIoRef.current('output.publish', payload), []);
+
   const createCheckpoint = useCallback(async () => {
     const current = leaseRef.current; if (!id || !current) return;
     try {
@@ -512,38 +524,57 @@ function CanvasEditorInner() {
     if (!saveInFlightRef.current) void flushSave();
   }, [canWrite, flushSave, id]);
 
+  const releaseControl = useCallback(async (current: CanvasLease, requested = false) => {
+    if (!id || releaseInFlightRef.current) return;
+    releaseInFlightRef.current = true;
+    setReleasingControl(true);
+    setControlMessage('正在保存并释放编辑权…');
+    try {
+      const waitStarted = Date.now();
+      while (ioInFlightRef.current) { if (Date.now() - waitStarted > 60000) throw new Error('输入输出操作仍在进行，请完成后再释放编辑权'); await new Promise(resolve => window.setTimeout(resolve, 100)); }
+      await drainSaves();
+      const history = await request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=1`);
+      const latestRun = history.items?.[0];
+      if (latestRun) {
+        await request(`/api/runs/${latestRun.id}/handoff`, { method: 'POST', data: {
+          leaseToken: current.leaseToken, leaseEpoch: current.epoch, expectedRevision: revisionRef.current,
+          actorType: 'human', actorId: current.holderId,
+          summary: requested ? '人工页面响应控制权请求；继续观察同一 Run，不重复提交或自动取消。' : '人工主动释放编辑权；继续观察同一 Run，不重复提交或自动取消。',
+        } });
+      } else {
+        await request(`/api/canvas/${id}/control/release`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch } });
+      }
+      leaseRef.current = null;
+      setLease(null); setControlReady(false); setObservedHolder(null); setHandoffRequested(false);
+      setControlMessage('编辑权已释放，当前为只读');
+      setControlOpen(false);
+    } catch (error: any) {
+      const detail = error?.response?.data?.message || error?.message || '释放编辑权失败';
+      setControlMessage(`释放失败：${detail}，请重试`);
+      message.error(detail);
+    } finally {
+      releaseInFlightRef.current = false;
+      setReleasingControl(false);
+    }
+  }, [drainSaves, id]);
+
   useEffect(() => {
     if (!id || !lease) return;
     const timer = window.setInterval(async () => {
       const current = leaseRef.current;
-      if (!current) return;
+      if (!current || releaseInFlightRef.current) return;
       try {
         const renewed = await request<CanvasLease>(`/api/canvas/${id}/control/renew`, { method: 'POST', data: { leaseToken: current.leaseToken, leaseEpoch: current.epoch } });
+        if (leaseRef.current?.epoch !== current.epoch) return;
         setLease(renewed);
         if (renewed.status === 'handoff_pending') {
           leaseRef.current = renewed;
-          setControlMessage('收到交接请求：正在保存并释放编辑权…');
-          await drainSaves();
-          const history = await request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=1`);
-          const latestRun = history.items?.[0];
-          if (latestRun) {
-            await request(`/api/runs/${latestRun.id}/handoff`, { method: 'POST', data: {
-              leaseToken: renewed.leaseToken, leaseEpoch: renewed.epoch, expectedRevision: revisionRef.current,
-              actorType: 'human', actorId: humanHolderId(), summary: '人工页面响应控制权请求；继续观察同一 Run，不重复提交或自动取消。',
-            } });
-          } else {
-            await request(`/api/canvas/${id}/control/release`, { method: 'POST', data: { leaseToken: renewed.leaseToken, leaseEpoch: renewed.epoch } });
-          }
-          leaseRef.current = null;
-          setLease(null);
-          setControlReady(false);
-          setObservedHolder(null);
-          setControlMessage('编辑权已交接，当前为只读');
+          await releaseControl(renewed, true);
         }
       } catch (e: any) { leaseRef.current = null; setLease(null); setControlReady(false); setControlMessage(e?.response?.data?.message || '编辑权已失效，当前为只读'); }
     }, 15000);
     return () => window.clearInterval(timer);
-  }, [drainSaves, id, lease?.epoch]);
+  }, [releaseControl, id, lease?.epoch]);
 
   useEffect(() => () => {
     const current = leaseRef.current;
@@ -563,13 +594,17 @@ function CanvasEditorInner() {
   }, [id]);
 
   useEffect(() => {
-    if (!id || lease) return;
+    if (!id || lease || !ready) return;
     const checkControl = async () => {
       try {
         const status = await request<any>(`/api/canvas/${id}/control/status`);
         const available = ['available', 'expired', 'revoked'].includes(status.status);
         const activeHolder = !available && status?.lease ? { holderType: status.lease.holderType, holderId: status.lease.holderId, status: status.status } : null;
         setObservedHolder(activeHolder);
+        if (available && !handoffRequested && !availableHintShownRef.current) {
+          availableHintShownRef.current = true;
+          setControlOpen(true);
+        }
         if (!handoffRequested) setControlMessage(activeHolder ? `由${activeHolder.holderType === 'agent' ? 'AI' : '人工'}持有，当前为只读` : '当前没有控制者，可主动取得编辑权');
         if (!handoffRequested || !available) return;
         const acquired = await request<CanvasLease>(`/api/canvas/${id}/control/acquire`, { method: 'POST', data: { holderType: 'human', holderId: humanHolderId() } });
@@ -584,7 +619,7 @@ function CanvasEditorInner() {
     void checkControl();
     const timer = window.setInterval(() => void checkControl(), 2000);
     return () => window.clearInterval(timer);
-  }, [handoffRequested, id, lease]);
+  }, [handoffRequested, id, lease, ready]);
 
   useEffect(() => {
     if (!id || !lease || controlReady) return;
@@ -1190,8 +1225,11 @@ function CanvasEditorInner() {
   }, [canWrite, menu, screenToFlowPosition]);
 
   const nodeCount = nodes.length;
+  const publishedAssetIds = useMemo(() => doc?.io?.outputs.at(-1)?.items.map(item => item.assetId) ?? [], [doc?.io]);
   const nodeDataApi = useMemo(() => ({
     canvasId: id,
+    publishOutput,
+    publishedAssetIds,
     readOnly: !canWrite,
     control: lease ? { leaseToken: lease.leaseToken, leaseEpoch: lease.epoch, expectedRevision: revisionRef.current } : undefined,
     updateNodeData: handleUpdateNodeData,
@@ -1206,7 +1244,7 @@ function CanvasEditorInner() {
     disconnectEdge: deleteEdge,
     getUpstreamText,
     generationHistoryVersion,
-  }), [id, canWrite, lease, revisionRef.current, handleUpdateNodeData, handleObserveNodeData, handleDeleteNode,
+  }), [id, publishOutput, publishedAssetIds, canWrite, lease, revisionRef.current, handleUpdateNodeData, handleObserveNodeData, handleDeleteNode,
     ensureResultNode, setNodeRunState, getNodeRunState, getResultState, getUpstreamAsset,
     getUpstreamAssets, deleteEdge, getUpstreamText, generationHistoryVersion]);
   const selectedEdge = edges.find((edge) => edge.selected);
@@ -1235,7 +1273,7 @@ function CanvasEditorInner() {
       ref={rootRef}
       style={{
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         minHeight: 0,
         overflow: 'hidden',
         boxSizing: 'border-box',
@@ -1257,6 +1295,7 @@ function CanvasEditorInner() {
             }),
       }}
     >
+      {doc && ready && <CanvasIoPanel key={`${id}-inputs`} side="inputs" canvasId={id!} io={doc.io} writable={canWrite} busy={ioBusy} execute={executeIo} />}
       {/* 画布主体 */}
       <div
         ref={containerRef}
@@ -1264,6 +1303,7 @@ function CanvasEditorInner() {
         onClickCapture={onContainerClickCapture}
         style={{
           flex: 1,
+          minWidth: 0,
           position: 'relative',
           border: 0,
           borderRadius: 0,
@@ -1326,6 +1366,7 @@ function CanvasEditorInner() {
                 />
               </Panel>
               <Panel position="top-left" className="canvas-floating-header">
+                <Tag style={{ alignSelf: 'center', margin: 0 }}>工作区</Tag>
                 <Link to="/canvas">
                   <Button icon={<ArrowLeftOutlined />} aria-label="返回画布列表">{isNarrow ? null : '返回列表'}</Button>
                 </Link>
@@ -1380,6 +1421,8 @@ function CanvasEditorInner() {
                   </div>
                 ) : null}
                 <Popover
+                  open={controlOpen}
+                  onOpenChange={setControlOpen}
                   trigger="click"
                   placement="bottomLeft"
                   content={(
@@ -1390,7 +1433,8 @@ function CanvasEditorInner() {
                       <div>状态：{visibleHolder?.status ?? (canWrite ? 'active' : 'available')}</div>
                       <div>revision：{revisionRef.current}</div>
                       {controlMessage ? <div className="canvas-control-note">{controlMessage}</div> : null}
-                      {!canWrite && !handoffRequested ? <Button size="small" onClick={() => void requestControl()}>{visibleHolder ? '请求交接' : '取得编辑权'}</Button> : null}
+                      {lease && controlReady ? <Button size="small" loading={releasingControl} onClick={() => void releaseControl(lease)}>释放编辑权</Button> : null}
+                      {!lease && !handoffRequested ? <Button size="small" onClick={() => void requestControl()}>{visibleHolder ? '请求交接' : '取得编辑权'}</Button> : null}
                     </div>
                   )}
                 >
@@ -1405,7 +1449,7 @@ function CanvasEditorInner() {
                   {isNarrow ? null : '生成历史'}
                 </Button>
               </Panel>
-              <Panel position="top-right" className="canvas-resource-monitor nodrag">
+              <Panel position="bottom-left" className="canvas-resource-monitor nodrag" style={{ marginLeft: 64, marginBottom: 60 }}>
                 <SystemResourceMonitor />
               </Panel>
               {selectedEdge ? (
@@ -1462,6 +1506,7 @@ function CanvasEditorInner() {
           </CanvasNodeDataContext.Provider>
         ) : null}
       </div>
+      {doc && ready && <CanvasIoPanel key={`${id}-outputs`} side="outputs" canvasId={id!} io={doc.io} writable={canWrite} busy={ioBusy} execute={executeIo} />}
       <Drawer title="操作历史与恢复点" open={historyOpen} onClose={() => setHistoryOpen(false)} width={isNarrow ? '100%' : 520}>
         <Spin spinning={historyLoading}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -1501,10 +1546,14 @@ function CanvasEditorInner() {
           <List dataSource={generationRuns} locale={{ emptyText: '还没有生成记录' }} renderItem={(run) => (
             <List.Item>
               <div style={{ width: '100%' }}>
-                <Space wrap><Tag color={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'error' : run.status === 'needs_attention' ? 'warning' : 'processing'}>{run.status}</Tag><Tag>{run.provider}</Tag>{run.latestHandoff ? <Tag color={run.latestHandoff.outcome === 'adopted' ? 'blue' : run.latestHandoff.outcome === 'released' ? 'gold' : 'error'}>{run.latestHandoff.outcome === 'adopted' ? `${run.latestHandoff.toActorType === 'agent' ? 'AI' : '人工'}已接手` : run.latestHandoff.outcome === 'released' ? '等待接手' : '交接失败'}</Tag> : null}<RunDuration timestamps={run} /><Text type="secondary">尝试 {run.attemptCount}</Text><Text type="secondary">{new Date(run.createdAt).toLocaleString()}</Text></Space>
+                <Space wrap><Tag color={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'error' : run.status === 'needs_attention' ? 'warning' : 'processing'}>{run.status}</Tag><Tag>{run.provider}</Tag>{run.latestHandoff ? <Tag color={run.latestHandoff.outcome === 'adopted' ? 'blue' : run.latestHandoff.outcome === 'released' ? 'gold' : 'error'}>{run.latestHandoff.outcome === 'adopted' ? `${run.latestHandoff.toActorType === 'agent' ? 'AI' : '人工'}已接手` : run.latestHandoff.outcome === 'released' ? '等待接手' : '交接失败'}</Tag> : null}{run.recovery ? null : <RunDuration timestamps={run} />}{run.recovery ? null : <Text type="secondary">尝试 {run.attemptCount}</Text>}<Text type="secondary">{new Date(run.createdAt).toLocaleString()}</Text></Space>
                 <div style={{ marginTop: 6 }}><Text>节点：{run.nodeId ?? '工具箱'} · 能力：{run.capabilityId ?? '-'}</Text></div>
                 {Object.entries(extractSeedValues(run.inputSnapshot)).length ? <div style={{ marginTop: 6 }}><Text type="secondary">seed：{Object.entries(extractSeedValues(run.inputSnapshot)).map(([key, value]) => `${key.split('::').pop()}=${value}`).join(' · ')}</Text><Button size="small" type="text" onClick={() => void navigator.clipboard.writeText(Object.values(extractSeedValues(run.inputSnapshot)).join(', ')).then(() => message.success('seed 已复制'))}>复制</Button></div> : null}
+                <RecoveryLabel recovery={run.recovery} />
+                <RecoveryDetails recovery={run.recovery} actor={`${run.actorType === 'agent' ? 'AI' : '人工'} ${run.actorId ?? ''}`} />
+                {run.nodeId ? <RunRecovery runs={[run]} currentAssetId={(nodes.find((node) => node.id === run.nodeId)?.data as any)?.lastAssets?.[0]?.assetId} readOnly={!canWrite} control={nodeDataApi.control} onRecovered={loadGenerationHistory} /> : null}
                 {run.error?.message ? <div style={{ color: '#ff4d4f', marginTop: 4 }}>{run.error.message}</div> : null}
+                {run.inputLineage?.length ? <div style={{ marginTop: 8, color: '#888' }}>输入来源：{run.inputLineage.map((item,index) => <div key={`${item.snapshotId}-${item.itemKey}-${index}`}>{item.name || '输入素材'}{item.sourceCanvasId ? <> · <Link to={`/canvas/${item.sourceCanvasId}`}>{item.sourceCanvasName || '来源画布'}</Link> · 输出 v{item.sourceOutputsVersion}</> : ' · 本地文件副本'}</div>)}</div> : null}
                 {run.outputText ? <Typography.Paragraph style={{ marginTop: 10, whiteSpace: 'pre-wrap' }} ellipsis={{ rows: 4, expandable: true, symbol: '展开全文' }}>{run.outputText}</Typography.Paragraph> : null}
                 {run.outputAssetIds.length ? <Image.PreviewGroup><Space wrap style={{ marginTop: 10 }}>{run.outputAssetIds.map((assetId) => <RunAssetPreview key={assetId} assetId={assetId} asset={run.outputAssets?.find(asset => asset.assetId === assetId)} />)}</Space></Image.PreviewGroup> : null}
               </div>

@@ -16,7 +16,7 @@ describe('Phase 0A canvas control (SQLite integration)', () => {
     db = new DataSource({ type: 'better-sqlite3', database: ':memory:', entities: [CanvasDoc, CanvasControlLease, CanvasOperationReceipt, CanvasOperationLog, CanvasCheckpoint, CanvasAssetGcJob, Workflow], synchronize: true });
     await db.initialize();
     docs = db.getRepository(CanvasDoc); leases = db.getRepository(CanvasControlLease); receipts = db.getRepository(CanvasOperationReceipt);
-    assets = { ensureCanvasPartition: jest.fn(), getCanvasAssetSizes: jest.fn(async () => ({})), deleteCanvas: jest.fn(), deleteGeneratedByNode: jest.fn() };
+    assets = { ensureCanvasPartition: jest.fn(), getCanvasAssetSizes: jest.fn(async () => ({})), deleteCanvas: jest.fn(), deleteGeneratedByNode: jest.fn(), withDeleteProtection: jest.fn(async (_id, work) => work()) };
     service = new CanvasService(docs, leases, receipts, db.getRepository(CanvasOperationLog), db.getRepository(CanvasCheckpoint), db.getRepository(CanvasAssetGcJob), assets as any);
   });
 

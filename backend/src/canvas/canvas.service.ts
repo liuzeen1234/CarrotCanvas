@@ -1,18 +1,25 @@
 import { BadRequestException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'crypto';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
+import { activeInput, CanvasIoState, emptyCanvasIo } from './canvas-io.types';
+import { Project, ProjectCanvas } from '../projects/project.entity';
+import { domainTransaction } from '../database/domain-transaction';
+import { Asset } from '../assets/asset.entity';
+import { GenerationRun, GenerationRunHandoff, GenerationCandidateGroup } from '../runs/generation-run.entity';
 import { AssetsService } from '../assets/assets.service';
 import { Workflow } from '../workflows/workflow.entity';
 import { CanvasAssetGcJob, CanvasCheckpoint, CanvasControlLease, CanvasDoc, CanvasEdge, CanvasGraph, CanvasNode, CanvasOperationLog, CanvasOperationReceipt, emptyCanvasGraph } from './canvas.entity';
 import { ACTION_REGISTRY } from './action-registry';
 
-export interface CanvasListItem { id: string; name: string; createdAt: Date; updatedAt: Date; nodeCount: number; assetSize: number; revision: number; }
+export interface CanvasListItem { id: string; name: string; createdAt: Date; updatedAt: Date; nodeCount: number; assetSize: number; revision: number; projects: Array<{ id: string; name: string }>; }
 export interface CreateCanvasDto { name?: string; }
 export interface LeaseIdentity { holderType: 'human' | 'agent'; holderId: string; }
 export interface LeaseProof { leaseToken: string; leaseEpoch: number; expectedRevision: number; actorType?: 'human' | 'agent'; actorId?: string; idempotencyKey?: string; operationId?: string; }
 export interface UpdateCanvasDto extends Partial<LeaseProof> { name?: string; graph?: CanvasGraph; }
 export type CanvasOperation =
+  | { type: 'io_command'; command: string; payload: unknown }
+  | { type: 'restore_io'; io: CanvasIoState }
   | { type: 'replace_graph'; graph: CanvasGraph }
   | { type: 'rename_canvas'; name: string }
   | { type: 'set_brief'; brief: Record<string, unknown> | null }
@@ -54,10 +61,15 @@ export class CanvasService implements OnModuleInit {
   onModuleInit() { return this.processPendingGc(); }
 
   actions() { return { registryVersion: 1, actions: ACTION_REGISTRY }; }
-  async list(): Promise<CanvasListItem[]> { const docs = await this.repo.find({ order: { updatedAt: 'DESC' } }); const sizes = await this.assets.getCanvasAssetSizes(); return docs.map((d) => ({ id: d.id, name: d.name, createdAt: d.createdAt, updatedAt: d.updatedAt, revision: d.revision ?? 0, nodeCount: Array.isArray(d.graph?.nodes) ? d.graph.nodes.length : 0, assetSize: sizes[d.id] ?? 0 })); }
+  async list(): Promise<CanvasListItem[]> {
+    const docs = await this.repo.find({ order: { updatedAt: 'DESC' } }); const sizes = await this.assets.getCanvasAssetSizes();
+    const links = this.repo.manager?.connection?.hasMetadata(ProjectCanvas) ? await this.repo.manager.getRepository(ProjectCanvas).find() : [];
+    const projects = this.repo.manager?.connection?.hasMetadata(Project) ? await this.repo.manager.getRepository(Project).find() : [];
+    return docs.map(d => ({ id: d.id, name: d.name, createdAt: d.createdAt, updatedAt: d.updatedAt, revision: d.revision ?? 0, nodeCount: d.graph?.nodes?.length ?? 0, assetSize: sizes[d.id] ?? 0, projects: projects.filter(p => links.some(l => l.projectId === p.id && l.canvasId === d.id)).map(p => ({ id: p.id, name: p.name })) }));
+  }
   async create(dto: CreateCanvasDto): Promise<CanvasDoc> { const doc = this.repo.create({ name: (dto.name ?? '').trim() || DEFAULT_CANVAS_NAME, graph: emptyCanvasGraph(), revision: 0, schemaVersion: 1, brief: null, activeCheckpointId: null, lastHandoffId: null, updatedByType: null, updatedById: null }); const saved = await this.repo.save(doc); await this.assets.ensureCanvasPartition(saved.id); return saved; }
   async findOne(id: string): Promise<CanvasDoc> { const doc = await this.repo.findOne({ where: { id } }); if (!doc) throw new NotFoundException({ code: 'CANVAS_NOT_FOUND', message: `画布 ${id} 不存在` }); return doc; }
-  async agentView(id: string) { const canvas = await this.findOne(id); return { canvas, control: await this.controlStatus(id), supportedOperations: ['replace_graph', 'rename_canvas', 'set_brief', 'create_node', 'update_node', 'move_nodes', 'delete_node', 'connect', 'disconnect'], actionsUrl: '/api/actions', operationLogUrl: `/api/canvas/${id}/operation-log`, checkpointsUrl: `/api/canvas/${id}/checkpoints` }; }
+  async agentView(id: string) { const canvas = await this.findOne(id); return { canvas, projects: (await this.list()).find(c => c.id === id)?.projects ?? [], control: await this.controlStatus(id), supportedOperations: ['replace_graph', 'rename_canvas', 'set_brief', 'create_node', 'update_node', 'move_nodes', 'delete_node', 'connect', 'disconnect'], actionsUrl: '/api/actions', ioUrl: `/api/canvas/${id}/io`, ioCommandUrl: `/api/canvas/${id}/io/command`, operationLogUrl: `/api/canvas/${id}/operation-log`, checkpointsUrl: `/api/canvas/${id}/checkpoints` }; }
   async controlStatus(id: string) { await this.findOne(id); const lease = await this.getNormalizedLease(id); if (!lease) return { status: 'available', lease: null }; return { status: lease.status, lease: this.publicLease(lease) }; }
   async assertWriteAccess(id: string, proof: Partial<LeaseProof>) { await this.requireLease(id, proof); const canvas = await this.findOne(id); if (proof.expectedRevision !== (canvas.revision ?? 0)) this.fail(409, 'REVISION_CONFLICT', '画布 revision 已变化', { expectedRevision: proof.expectedRevision, currentRevision: canvas.revision ?? 0 }); return canvas; }
   async assertLeaseHolder(id: string, proof: Partial<LeaseProof> & LeaseIdentity) { const lease = await this.requireLease(id, proof); if (proof.actorType !== lease.holderType || proof.actorId !== lease.holderId) this.fail(403, 'OPERATION_NOT_ALLOWED', '交接操作者必须与当前租约持有者一致'); return lease; }
@@ -74,12 +86,27 @@ export class CanvasService implements OnModuleInit {
   async forceTakeover(id: string, dto: LeaseIdentity & { reason: string }) { this.validateIdentity(dto); if (dto.holderType !== 'human') this.fail(403, 'OPERATION_NOT_ALLOWED', '只有人工可以故障强制接管'); if (!dto.reason?.trim()) throw new BadRequestException({ code: 'TAKEOVER_REASON_REQUIRED', message: '强制接管必须记录原因' }); const prior = await this.getNormalizedLease(id); if (prior) { prior.status = 'revoked'; prior.lastTakeoverReason = dto.reason.trim(); await this.leases.save(prior); } const acquired = await this.acquire(id, dto); const next = await this.leases.findOne({ where: { canvasId: id } }); if (next) { next.lastTakeoverReason = dto.reason.trim(); await this.leases.save(next); } return acquired; }
 
   async update(id: string, dto: UpdateCanvasDto): Promise<CanvasDoc> { if (dto.graph === undefined && dto.name === undefined) return this.findOne(id); const operations: OperationBatchDto['operations'] = []; if (dto.name !== undefined) operations.push({ type: 'rename_canvas', name: dto.name }); if (dto.graph !== undefined) operations.push({ type: 'replace_graph', graph: dto.graph }); const proof = dto as LeaseProof; const result = await this.applyOperations(id, { ...proof, idempotencyKey: proof.idempotencyKey ?? proof.operationId ?? randomUUID(), operations }); return result.canvas; }
-  async applyOperations(id: string, dto: OperationBatchDto): Promise<{ canvas: CanvasDoc; baseRevision: number; resultRevision: number; replayed: boolean }> {
+  async applyIoCommand(id: string, proof: LeaseProof, command: string, payload: unknown, mutate: (draft: CanvasDoc, manager: EntityManager) => Promise<void>) {
+    return this.applyOperations(id, { ...proof, intent: command, operations: [{ type: 'io_command', command, payload }] }, mutate);
+  }
+
+  async replayIo(id: string, proof: LeaseProof, command: string, payload: unknown) {
+    const lease = await this.requireLease(id, proof);
+    if ((proof.actorId && proof.actorId !== lease.holderId) || (proof.actorType && proof.actorType !== lease.holderType)) this.fail(403, 'OPERATION_NOT_ALLOWED', '操作者必须与租约持有者一致');
+    if (!proof.idempotencyKey && !proof.operationId) this.fail(400, 'IDEMPOTENCY_KEY_REQUIRED', '需要幂等键');
+    const receipt = await this.receipts.findOne({ where: { canvasId: id, idempotencyKey: proof.idempotencyKey ?? proof.operationId! } });
+    if (!receipt) { if (lease.status === 'handoff_pending') this.fail(409, 'HANDOFF_PENDING', '正在交接，禁止开启新的输入输出操作'); return null; }
+    const hash = this.hash(JSON.stringify({ expectedRevision: proof.expectedRevision, operations: [{ type: 'io_command', command, payload }] }));
+    if (hash !== receipt.requestHash) this.fail(409, 'IDEMPOTENCY_CONFLICT', '相同幂等键对应了不同请求');
+    return { ...receipt.response, replayed: true } as any;
+  }
+
+  async applyOperations(id: string, dto: OperationBatchDto, ioMutation?: (draft: CanvasDoc, manager: EntityManager) => Promise<void>, allowIoRestore = false): Promise<{ canvas: CanvasDoc; baseRevision: number; resultRevision: number; replayed: boolean }> {
     if (!dto.idempotencyKey && !dto.operationId) throw new BadRequestException({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: '需要 idempotencyKey 或 operationId' }); if (!Array.isArray(dto.operations) || dto.operations.length === 0) throw new BadRequestException({ code: 'OPERATIONS_REQUIRED', message: 'operations 不能为空' });
     const key = dto.idempotencyKey ?? dto.operationId!;
     const requestHash = this.hash(JSON.stringify({ expectedRevision: dto.expectedRevision, operations: dto.operations }));
     const lease = await this.requireLease(id, dto);
-    const result = await this.repo.manager.transaction(async (manager) => {
+    const result = await domainTransaction(this.repo.manager, async (manager) => {
       const canvasRepo = manager.getRepository(CanvasDoc);
       const receiptRepo = manager.getRepository(CanvasOperationReceipt);
       const logRepo = manager.getRepository(CanvasOperationLog);
@@ -96,13 +123,28 @@ export class CanvasService implements OnModuleInit {
       const draft = cloneState(doc);
       const inverseOperations: CanvasOperation[] = [];
       const deletedGeneratedNodeIds: string[] = [];
-      for (const op of dto.operations) applyCanvasOperation(draft, op, inverseOperations, deletedGeneratedNodeIds);
+      for (const op of dto.operations) {
+        if (op.type === 'io_command') {
+          if (!ioMutation) this.fail(400, 'OPERATION_NOT_ALLOWED', '请使用画布输入输出命令接口');
+          inverseOperations.push({ type: 'restore_io', io: JSON.parse(JSON.stringify(draft.io ?? emptyCanvasIo())) }, { type: 'replace_graph', graph: JSON.parse(JSON.stringify(draft.graph)) });
+          await ioMutation(draft as CanvasDoc, manager);
+        } else if (op.type === 'restore_io') {
+          if (!allowIoRestore) this.fail(403, 'OPERATION_NOT_ALLOWED', '只能通过撤销或恢复点恢复输入输出');
+          inverseOperations.push({ type: 'restore_io', io: JSON.parse(JSON.stringify(draft.io ?? emptyCanvasIo())) });
+          const history = draft.io?.outputs ?? [];
+          const old = op.io.outputs[op.io.outputs.length - 1];
+          draft.io = JSON.parse(JSON.stringify(op.io));
+          draft.io!.outputs = [...history, { id: randomUUID(), version: (history[history.length - 1]?.version ?? 0) + 1, createdAt: new Date().toISOString(), actorId: dto.actorId ?? lease.holderId, items: old?.items ?? [] }];
+        } else applyCanvasOperation(draft, op, inverseOperations, deletedGeneratedNodeIds);
+      }
+      await this.requireLease(id, dto);
       assertReferenceIntegrityChange(doc.graph, draft.graph);
+      assertIoBindings(draft.graph, draft.io);
       validateGraph(draft.graph);
       await validateWorkflowHandles(draft.graph, manager.getRepository(Workflow));
-      doc.name = draft.name; doc.graph = draft.graph; doc.brief = draft.brief;
+      doc.name = draft.name; doc.graph = draft.graph; doc.brief = draft.brief; doc.io = draft.io ?? null;
       doc.revision = baseRevision + 1; doc.updatedByType = dto.actorType ?? lease.holderType; doc.updatedById = dto.actorId ?? lease.holderId;
-      const updated = await canvasRepo.update({ id, revision: baseRevision }, { name: doc.name, graph: doc.graph, brief: doc.brief, revision: doc.revision, updatedByType: doc.updatedByType, updatedById: doc.updatedById } as any);
+      const updated = await canvasRepo.update({ id, revision: baseRevision }, { name: doc.name, graph: doc.graph, brief: doc.brief, io: doc.io, revision: doc.revision, updatedByType: doc.updatedByType, updatedById: doc.updatedById } as any);
       if (updated.affected !== 1) this.fail(409, 'REVISION_CONFLICT', '画布被并发修改，请重新读取后重试');
       const canvas = await canvasRepo.findOneOrFail({ where: { id } });
       const response = { canvas, baseRevision, resultRevision: canvas.revision };
@@ -120,6 +162,11 @@ export class CanvasService implements OnModuleInit {
   private async processPendingGc(canvasId?: string) {
     const jobs = await this.gcJobs.find(canvasId ? { where: { canvasId }, order: { createdAt: 'ASC' } } : { order: { createdAt: 'ASC' } });
     for (const job of jobs) {
+      if (job.nodeId === '__canvas_partition__' && !await this.repo.exist({ where: { id: job.canvasId } })) {
+        try { await this.assets.deleteCanvas(job.canvasId); await this.gcJobs.delete(job.id); }
+        catch (error) { job.attempts++; job.lastAttemptAt = new Date(); job.lastError = error instanceof Error ? error.message : String(error); await this.gcJobs.save(job); }
+        continue;
+      }
       const protectedByCheckpoint = (await this.checkpoints.find({ where: { canvasId: job.canvasId } })).some((checkpoint) => checkpoint.graph.nodes.some((node) => node.id === job.nodeId));
       if (protectedByCheckpoint) continue;
       try { await this.assets.deleteGeneratedByNode(job.canvasId, job.nodeId); await this.gcJobs.delete(job.id); }
@@ -134,14 +181,14 @@ export class CanvasService implements OnModuleInit {
     const canvas = await this.findOne(id);
     if (dto.expectedRevision !== canvas.revision) this.fail(409, 'REVISION_CONFLICT', '画布 revision 已变化', { currentRevision: canvas.revision });
     const name = dto.name?.trim(); if (!name) throw new BadRequestException({ code: 'INVALID_CHECKPOINT_NAME', message: '恢复点名称不能为空' });
-    const checkpoint = await this.checkpoints.save(this.checkpoints.create({ canvasId: id, name, description: dto.description?.trim() || null, revision: canvas.revision, canvasName: canvas.name, graph: canvas.graph, brief: canvas.brief, createdByType: dto.actorType ?? lease.holderType, createdById: dto.actorId ?? lease.holderId }));
+    const checkpoint = await this.checkpoints.save(this.checkpoints.create({ canvasId: id, name, description: dto.description?.trim() || null, revision: canvas.revision, canvasName: canvas.name, graph: canvas.graph, brief: canvas.brief, io: canvas.io ?? emptyCanvasIo(), createdByType: dto.actorType ?? lease.holderType, createdById: dto.actorId ?? lease.holderId }));
     return checkpoint;
   }
   async listCheckpoints(id: string) { await this.findOne(id); return this.checkpoints.find({ where: { canvasId: id }, order: { createdAt: 'DESC' } }); }
   async restoreCheckpoint(id: string, checkpointId: string, dto: LeaseProof) {
     const checkpoint = await this.checkpoints.findOne({ where: { id: checkpointId, canvasId: id } });
     if (!checkpoint) throw new NotFoundException({ code: 'CHECKPOINT_NOT_FOUND', message: '恢复点不存在' });
-    return this.applyOperations(id, { ...dto, idempotencyKey: dto.idempotencyKey ?? dto.operationId!, intent: `restore checkpoint ${checkpoint.name}`, operations: [{ type: 'rename_canvas', name: checkpoint.canvasName }, { type: 'replace_graph', graph: checkpoint.graph }, { type: 'set_brief', brief: checkpoint.brief }] });
+    return this.applyOperations(id, { ...dto, idempotencyKey: dto.idempotencyKey ?? dto.operationId!, intent: `restore checkpoint ${checkpoint.name}`, operations: [{ type: 'rename_canvas', name: checkpoint.canvasName }, { type: 'replace_graph', graph: checkpoint.graph }, { type: 'set_brief', brief: checkpoint.brief }, ...(checkpoint.io ? [{ type: 'restore_io' as const, io: checkpoint.io }] : [])] }, undefined, true);
   }
   async undoOperation(id: string, logId: string, dto: LeaseProof) {
     const log = await this.logs.findOne({ where: { id: logId, canvasId: id } });
@@ -149,12 +196,29 @@ export class CanvasService implements OnModuleInit {
     if (log.undoneByLogId) this.fail(409, 'OPERATION_ALREADY_UNDONE', '该操作批次已经撤销');
     if ((log.inverseOperations as CanvasOperation[]).some((operation) => operation.type === 'create_node' && Array.isArray(operation.node.data.lastAssets) && operation.node.data.lastAssets.length > 0)) this.fail(409, 'OPERATION_NOT_REVERSIBLE', '该批次删除了带产出资产的节点，不能日常撤销；请恢复删除前的 Checkpoint');
     if (dto.expectedRevision !== log.resultRevision) this.fail(409, 'UNDO_PRECONDITION_FAILED', '撤销后已有其他修改；为避免覆盖后续修改，拒绝撤销', { operationRevision: log.resultRevision, currentRevision: dto.expectedRevision });
-    const result = await this.applyOperations(id, { ...dto, idempotencyKey: dto.idempotencyKey ?? dto.operationId!, intent: `undo ${log.id}`, operations: log.inverseOperations as CanvasOperation[] });
+    const result = await this.applyOperations(id, { ...dto, idempotencyKey: dto.idempotencyKey ?? dto.operationId!, intent: `undo ${log.id}`, operations: log.inverseOperations as CanvasOperation[] }, undefined, true);
     const undoLog = await this.logs.findOne({ where: { canvasId: id, resultRevision: result.resultRevision } });
     log.undoneByLogId = undoLog?.id ?? 'completed'; await this.logs.save(log);
     return result;
   }
-  async remove(id: string, proof?: Partial<LeaseProof>): Promise<void> { await this.requireLease(id, proof ?? {}); const doc = await this.findOne(id); if (proof?.expectedRevision !== (doc.revision ?? 0)) this.fail(409, 'REVISION_CONFLICT', '画布 revision 已变化', { expectedRevision: proof?.expectedRevision, currentRevision: doc.revision ?? 0 }); await this.assets.deleteCanvas(id); await this.repo.remove(doc); }
+  async remove(id: string, proof?: Partial<LeaseProof>): Promise<void> {
+    await this.requireLease(id, proof ?? {}); const doc = await this.findOne(id);
+    if (proof?.expectedRevision !== (doc.revision ?? 0)) this.fail(409, 'REVISION_CONFLICT', '画布 revision 已变化', { expectedRevision: proof?.expectedRevision, currentRevision: doc.revision ?? 0 });
+    await this.assets.withDeleteProtection(id, async () => {
+      let jobId: string | undefined;
+      await domainTransaction(this.repo.manager, async manager => {
+        await this.requireLease(id, proof ?? {});
+        const latest = await manager.getRepository(CanvasDoc).findOne({ where: { id } });
+        if (!latest || latest.revision !== proof?.expectedRevision) this.fail(409, 'REVISION_CONFLICT', '画布已变化，请刷新后重试');
+        if (manager.connection.hasMetadata(ProjectCanvas)) { const links = await manager.getRepository(ProjectCanvas).find({ where: { canvasId: id } }); await manager.getRepository(ProjectCanvas).delete({ canvasId: id }); for (const link of links) await manager.getRepository(Project).increment({ id: link.projectId }, 'revision', 1); }
+        for (const entity of [Asset, CanvasControlLease, CanvasOperationReceipt, CanvasOperationLog, CanvasCheckpoint, CanvasAssetGcJob, GenerationRun, GenerationRunHandoff, GenerationCandidateGroup]) if (manager.connection.hasMetadata(entity)) await manager.getRepository(entity).delete({ canvasId: id } as any);
+        await manager.getRepository(CanvasDoc).remove(doc);
+        if (manager.connection.hasMetadata(CanvasAssetGcJob)) { const gc = manager.getRepository(CanvasAssetGcJob); const job = await gc.save(gc.create({ canvasId: id, nodeId: '__canvas_partition__', attempts: 0, lastError: null, lastAttemptAt: null })); jobId = job.id; }
+      });
+      try { await this.assets.deleteCanvas(id); if (jobId) await this.gcJobs.delete(jobId); }
+      catch (error) { this.logger.warn(`画布 ${id} 已删除，资源清理将在后续操作或重启时重试：${String(error)}`); }
+    });
+  }
 
   private async requireLease(id: string, proof: Partial<Pick<LeaseProof, 'leaseToken' | 'leaseEpoch'>>) { const lease = await this.getNormalizedLease(id); if (!lease || ['expired','revoked'].includes(lease.status)) this.fail(410, 'LEASE_EXPIRED', '画布写入租约不存在或已过期'); if (proof.leaseEpoch !== lease.epoch) this.fail(409, 'STALE_LEASE', '租约 epoch 已变化', { currentEpoch: lease.epoch }); if (!proof.leaseToken || this.hash(proof.leaseToken) !== lease.tokenHash) this.fail(403, 'OPERATION_NOT_ALLOWED', '租约令牌无效'); return lease; }
   private async getNormalizedLease(canvasId: string) { const lease = await this.leases.findOne({ where: { canvasId } }); if (lease && ['active','handoff_pending'].includes(lease.status) && ((lease.serverInstanceId && lease.serverInstanceId !== SERVER_INSTANCE_ID) || new Date(lease.expiresAt).getTime() <= Date.now())) { lease.status = 'expired'; await this.leases.save(lease); } return lease; }
@@ -164,9 +228,19 @@ export class CanvasService implements OnModuleInit {
   private fail(status: number, code: string, message: string, details?: unknown): never { throw new HttpException({ statusCode: status, code, message, details }, status); }
 }
 
-function cloneState(doc: CanvasDoc): Pick<CanvasDoc, 'name' | 'graph' | 'brief'> { return JSON.parse(JSON.stringify({ name: doc.name, graph: doc.graph, brief: doc.brief })); }
+function cloneState(doc: CanvasDoc): Pick<CanvasDoc, 'name' | 'graph' | 'brief' | 'io'> { return JSON.parse(JSON.stringify({ name: doc.name, graph: doc.graph, brief: doc.brief, io: doc.io ?? null })); }
 function bad(code: string, message: string, details?: unknown): never { throw new BadRequestException({ code, message, details }); }
 function validId(value: unknown) { return typeof value === 'string' && value.length > 0 && value.length <= 200; }
+function assertIoBindings(graph: CanvasGraph, io: CanvasIoState | null) {
+  for (const node of graph.nodes) {
+    if (!node.data.inputGroupId) continue;
+    const group = io?.inputs.find(g => g.id === node.data.inputGroupId);
+    const item = group && activeInput(group)?.items.find(i => i.itemKey === node.data.inputItemKey);
+    if (!item || !group || node.type !== 'result' || !node.data.inputMode || node.data.kind !== item.kind || node.data.inputSnapshotId !== group.activeSnapshotId || node.data.inputLocalAssetId !== item.assetId || node.data.lastText !== (item.text ?? '')) bad('INPUT_BINDING_MISMATCH', '输入快照节点内容必须通过输入区更新');
+    const assets = node.data.lastAssets as any[];
+    if (!Array.isArray(assets) || (item.kind === 'text' ? assets.length !== 0 : assets.length !== 1 || assets[0]?.assetId !== item.assetId || assets[0]?.kind !== item.kind || assets[0]?.url !== `/api/assets/${item.assetId}`)) bad('INPUT_BINDING_MISMATCH', '输入快照资源绑定不一致');
+  }
+}
 function validateNode(node: CanvasNode) {
   if (!node || !validId(node.id)) bad('INVALID_NODE', '节点 id 不合法');
   if (!['txt2img', 'result', 'codex-capability', 'tts'].includes(node.type)) bad('UNSUPPORTED_NODE_TYPE', `不支持节点类型 ${node.type}`);

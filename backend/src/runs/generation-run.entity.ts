@@ -2,9 +2,20 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Update
 
 export type GenerationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'needs_attention';
 
+/** Success refers to registering a recovered output, not to a new provider invocation. */
+export interface RunRecovery {
+  sourceRunId: string;
+  sourceStatus: GenerationRunStatus;
+  reason: string;
+  evidence: string;
+  recoveredAt: number;
+  leaseEpoch: number;
+}
+
 @Entity('generation_runs')
 @Index(['canvasId', 'nodeId', 'createdAt'])
 export class GenerationRun {
+  @Column({ type: 'simple-json', name: 'input_lineage', nullable: true }) inputLineage: Array<{ inputGroupId: string; snapshotId: string; itemKey: string; assetId: string; name?: string; sourceCanvasId?: string; sourceCanvasName?: string; sourceOutputsVersion?: number; sourceOutputId?: string; sourceAssetId?: string }> | null;
   @PrimaryGeneratedColumn('uuid') id: string;
   @Index() @Column({ type: 'text' }) provider: 'comfyui' | 'codex2api' | 'cosyvoice3' | 'indextts2' | 'qwen3tts';
   @Index() @Column({ type: 'text' }) status: GenerationRunStatus;
@@ -12,6 +23,7 @@ export class GenerationRun {
   @Index() @Column({ type: 'text', name: 'node_id', nullable: true }) nodeId: string | null;
   @Index() @Column({ type: 'text', name: 'shot_id', nullable: true }) shotId: string | null;
   @Column({ type: 'text', name: 'parent_run_id', nullable: true }) parentRunId: string | null;
+  @Column({ type: 'simple-json', nullable: true }) recovery: RunRecovery | null;
   @Column({ type: 'text', name: 'provider_run_id', nullable: true }) providerRunId: string | null;
   @Column({ type: 'text', name: 'capability_id', nullable: true }) capabilityId: string | null;
   @Column({ type: 'text', name: 'capability_version', nullable: true }) capabilityVersion: string | null;

@@ -7,10 +7,10 @@ import {
 } from 'typeorm';
 
 /** 资产内容类型 */
-export type AssetKind = 'image' | 'video' | 'audio';
+export type AssetKind = 'image' | 'video' | 'audio' | 'text';
 
 /** 资产来源 */
-export type AssetSource = 'generated' | 'upload';
+export type AssetSource = 'generated' | 'upload' | 'import';
 
 /**
  * 平台资产（assets）。一切中间产物（生成图 / 上传图 / 视频等）都存到

@@ -1,5 +1,7 @@
 # AI 原生画布与人机接力
 
+> 2026-09-14 既有控制面扩展：项目多对多集合、画布输入/输出及项目最终成果快照第一版完成。IO 语义写入复用 lease/revision、事务日志/回执、Checkpoint/undo；编辑器先排空保存，交接排空在途 IO。项目关联仅修改项目 revision，不改变画布控制权；Run 增加不可变 inputLineage，快照更新不改旧输入。22 suites / 185 tests、前后端构建、页面与重启验收通过，旧数据对比不变。方案和限制见 [PROJECTS-AND-CANVAS-IO.md](./PROJECTS-AND-CANVAS-IO.md)；既有 Phase 0A–1B 状态不变，不启用 Phase 2/3。
+
 > 状态：Phase 1B 已实现并通过行为级验收；当前需求范围已完成，Phase 2 及后续阶段暂不实施
 > 最后更新：2026-09-13
 > GitHub Issue：[Issue #1](https://github.com/liuzeen1234/CarrotCanvas/issues/1)
@@ -114,7 +116,7 @@ AI 可以查询服务是否配置、健康状态和可用模型，但不能读�
 - `acquiredAt`、`lastHeartbeatAt`、`expiresAt`。
 - `status: active | handoff_pending | expired | revoked`。
 
-当前默认参数：TTL 45 秒；前端人工持有者每 15 秒续约，Agent 建议每 10–15 秒续约。人工进入空闲画布会自动竞争获取，但不抢占已有持有者；Agent 开始写任务时必须通过正常交接或空闲 acquire 显式获取。
+当前默认参数：TTL 45 秒；前端人工持有者每 15 秒续约，Agent 建议每 10–15 秒续约。人工进入画布默认只读，不自动获取；确认空闲时显示一次可关闭的控制权提示，点击“取得编辑权”才竞争获取，不抢占已有持有者；Agent 开始写任务时必须通过正常交接或空闲 acquire 显式获取。
 
 所有画布写请求携带：
 
@@ -205,7 +207,7 @@ Handoff 至少保存：
 - `GET /api/actions` 提供运行时 Action Registry，包含稳定 action name、输入输出 JSON Schema、权限、lease 要求、副作用、幂等/可逆性、可用性和结构化错误声明，并覆盖现有 Controller 领域入口。0A 的 operations 支持 `replace_graph`、`rename_canvas`、`set_brief`；节点级语义 operations、Operation Log 与 Checkpoint 仍严格留在 0B。
 - 兼容 `PATCH /api/canvas/:id` 已包装为受 lease/revision/idempotency 保护的 operation batch；删除画布同样要求 lease。Canvas 条件更新与 operation receipt 在同一 SQLite 事务中提交，回执失败会回滚 Canvas 和 revision。
 - 带 `canvasId` 的 ComfyUI Run、Codex2API 生图/编辑和节点生成资产清理也校验同一 lease/epoch/expectedRevision，避免绕过 graph API 修改画布共享产物。
-- 人工进入画布时若后端确认控制权空闲，会自动竞争取得人工 lease 并进入可编辑状态；若已有人工或 AI 控制者，或竞争瞬间被其他写入者抢先取得，则保持只读并持续轮询、准确显示控制者类型与状态，仅此时提供“请求交接”。人工取得 lease 后每 15 秒续租；锁定时完整禁用节点编辑、运行、中断、上传、删除、连线和新增，但仍允许查看、下载、选择和 viewport。人工持有者观察到 `handoff_pending` 后停止新编辑，等待串行保存及追写队列完全排空后才释放。列表页重命名/删除使用短租约。
+- 人工进入画布默认只读；后端确认控制权空闲时，在控制浮块弹出一次可关闭提示，只有主动点击“取得编辑权”才竞争取得人工 lease；若已有人工或 AI 控制者，或竞争瞬间被其他写入者抢先取得，则保持只读并持续轮询、准确显示控制者类型与状态，仅此时提供“请求交接”。人工取得 lease 后每 15 秒续租；锁定时完整禁用节点编辑、运行、中断、上传、删除、连线和新增，但仍允许查看、下载、选择和 viewport。人工持有者观察到 `handoff_pending` 后停止新编辑，等待串行保存及追写队列完全排空后才释放。列表页重命名/删除使用短租约。
 - 编辑器在返回按钮与画布标题之间以独立浮块常驻展示“有未保存更改 / 保存中 / 已保存时间 / 保存失败”状态，并提供立即保存按钮与 `Ctrl/Cmd+S`；保存失败时保留待提交内容并允许手动重试，存在待保存或在途写入时关闭页面会触发浏览器离开提醒。只读会话明确显示“只读”，不以“已保存”误导当前控制状态。
 - 控制权状态由底部大提示条改为画布标题后的紧凑浮块，默认不展示 holder ID，也不重复“当前控制者”文案；通过绿/橙/蓝边框和底色区分可编辑、只读与交接中，点击后再展示完整 ID、revision、状态说明和请求交接入口。
 - PC 端画布详情页独占 ProLayout 右侧内容区，移除默认内容 padding、画布边框圆角和页面级纵向滚动，画布工作区完整铺满可用宽高；其他路由保持原布局间距。
@@ -532,6 +534,18 @@ Phase 0A 推荐的新会话指令：
 > 实现 Issue #1 的 Phase 0A。开始前完整阅读 AGENTS.md、docs/AI-NATIVE-CANVAS.md 及相关集成文档；只实现 Phase 0A，完成测试和行为级验收，并更新设计文档的阶段状态，不开始 Phase 0B。
 
 ## 11. 变更记录
+
+- 2026-09-14（项目与画布 IO 方案）：新增 [PROJECTS-AND-CANVAS-IO.md](./PROJECTS-AND-CANVAS-IO.md)，记录项目归属、三区域与任意跨画布输出快照、主动更新、来源保留，以及 P1–P4 实施与验收计划。仅编写方案，业务功能尚未实现；后续命令须复用 Action Registry、lease/revision、日志与 Checkpoint。Phase 0A–1B 完成状态不变，不恢复暂不实施的 Phase 2/3。
+
+- 2026-09-13（控制权进入与主动释放）：进入画布不再自动 acquire 或自动重试获取，默认只读；控制状态轮询确认 available/expired/revoked 后，每次进入最多自动展开一次控制详情提示。已有控制者仍使用显式请求交接。取得权限并同步完成后，控制详情新增“释放编辑权”，先暂停新编辑、排空保存，再保存最近 Run Handoff 并释放（无 Run 直接 release）；失败保留租约并提示重试，成功保持只读，不自行重新获取。复用既有控制与 Run API，无数据库或阶段范围变更。前端生产构建验证通过。
+
+- 2026-09-13（Skill 防止首帧副本再写入）：补充图生视频创建、运行与接手检查合同；组引用的回灌文件名和编译提示词只进入临时提交输入及 Run 快照，不回写 canonical formValues。无独立文件引用意图的旧参考槽位置空，避免模板默认素材被再次投影；合法 field 引用保留。保存后 refresh 按实际组装核对数量/身份。核对当前 Txt2ImgNode/useComfyRun 的提交路径，规则同步到仓库与用户级 Skill；不改业务代码或阶段状态，不执行生成。
+
+- 2026-09-13（V01–V03 旧首帧清理）：在用户指定的“许明短片 · 对话版人物选角”画布核对三张图生视频卡，旧 formValues 首帧与实时连线资产 SHA-256 均一致，且旧 field 引用没有独立排序或绑定。正常 agent 租约下一个 update_node 批次移除 referenceMedia.images 中的连线副本并清空旧 114::image，revision 100→101；完整 graph 对比确认仅这些字段变化，连线、排序、prompt 绑定及已有视频产物保留，主动释放租约，未生成。Skill 补充经内容验证的旧 field 副本清理边界，未按 assetId 合并合法引用。证据见 artifacts/reference-contract/v01-v03-cleanup-1789279942775.json；阶段状态不变。
+
+- 2026-09-13：补录表单优先通过只读 `run.recovery_suggestion` 查找原错误、当前资产、任务关联与带 ID 的节点备注，自动填入原因和依据；无关联条件时才手填。保持备注归属与上游未核验提示，不调用 provider 或自动登记；切换来源取消旧查找，手动编辑不会被自动响应覆盖。阶段范围不变。
+
+- 2026-09-13：新增已有图片/视频/音频的独立补录恢复记录及 `run.recover` Action。保留原 failed/cancelled/needs_attention Run，通过 parentRunId/recovery 元数据关联既有平台产物、原因、操作者陈述来源与补录时间；恢复登记 succeeded 不代表原生成成功、不调用 Provider。租约/revision 校验、幂等及候选追加在同一事务；保留当前与批准选择、graph/revision 不变。节点历史与画布流水提供恢复入口及来源标记，nullable recovery 列兼容旧记录；21 suites / 169 tests、前后端构建通过。详细合同与人工操作见 RUN-RECOVERY.md。不自动批量修复业务画布；Phase 0A–1B 与 Phase 2/3 范围不变。
 
 - 2026-09-13（Skill 参考图存储合同）：更新 SKILL.md 与 operations.md，Codex referenceImages 只存直接上传图片，连线从 edges 解析；两类引用仍统一排序和绑定。修正混合示例，明确提交按 referenceId 去重、连线优先与同序文件/资产/映射/提示词合同，不按 assetId 合并合法引用。核对 ComfyUI referenceMedia 相同存储边界及 formValues 文件/旧字段兼容，说明其 inputAssetIds 是资产血缘集合。旧副本通过正常 lease + update_node 清理并保留连线、排序、绑定和产物。验证证据见 artifacts/reference-contract/；仅维护文档与无费用验证，保留既有 CodexCapabilityNode.tsx 修复，Phase 0A–1B 状态与 Phase 2/3 范围不变。
 

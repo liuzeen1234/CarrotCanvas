@@ -1,13 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional, ConflictException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { join, resolve, sep } from 'path';
 import { existsSync, createReadStream } from 'fs';
 import { promises as fs } from 'fs';
 import { Asset, AssetKind, AssetSource } from './asset.entity';
-import { CanvasCheckpoint } from '../canvas/canvas.entity';
-import { GenerationCandidateGroup } from '../runs/generation-run.entity';
+import { CanvasCheckpoint, CanvasDoc } from '../canvas/canvas.entity';
+import { GenerationCandidateGroup, GenerationRun } from '../runs/generation-run.entity';
 
 /**
  * 平台资产根目录：默认与 SQLite 文件同目录（backend/data/assets/）。
@@ -52,7 +52,9 @@ export interface AssetReadResult {
  * 禁止任何用户输入直接拼路径（防目录穿越）。
  */
 @Injectable()
-export class AssetsService {
+export class AssetsService implements OnModuleInit {
+  private readonly readers = new Map<string, number>();
+  private readonly deleting = new Set<string>();
   constructor(
     @InjectRepository(Asset)
     private readonly repo: Repository<Asset>,
@@ -63,6 +65,55 @@ export class AssetsService {
     @InjectRepository(GenerationCandidateGroup)
     private readonly candidateGroups?: Repository<GenerationCandidateGroup>,
   ) {}
+
+  /** A source partition cannot disappear while an immutable snapshot is copied. */
+  async withReadProtection<T>(canvasId: string, work: () => Promise<T>): Promise<T> {
+    if (this.deleting.has(canvasId)) throw new ConflictException({ code: 'SOURCE_UNAVAILABLE', message: '来源正在删除，请稍后重试' });
+    this.readers.set(canvasId, (this.readers.get(canvasId) ?? 0) + 1);
+    try { return await work(); }
+    finally { const count = (this.readers.get(canvasId) ?? 1) - 1; if (count) this.readers.set(canvasId, count); else this.readers.delete(canvasId); }
+  }
+  async withDeleteProtection<T>(canvasId: string, work: () => Promise<T>): Promise<T> {
+    if (this.readers.has(canvasId) || this.deleting.has(canvasId)) throw new ConflictException({ code: 'SOURCE_COPY_IN_PROGRESS', message: '来源正在复制或删除，请稍后重试' });
+    this.deleting.add(canvasId); try { return await work(); } finally { this.deleting.delete(canvasId); }
+  }
+
+  async prepareImport(input: SaveUploadInput): Promise<Asset> {
+    await fs.mkdir(join(ASSETS_ROOT, input.canvasId, 'input'), { recursive: true });
+    const id = randomUUID();
+    const relPath = `input/${id}__${safeName(input.originName, 'input')}`;
+    const asset = this.repo.create({ id, canvasId: input.canvasId, nodeId: null, kind: input.kind ?? 'image', source: 'import', runPromptId: null, workflowId: null, relPath, originName: input.originName ?? null, mime: input.mime ?? null, size: input.buffer.length });
+    await fs.writeFile(this.resolveAssetPath(asset), input.buffer, { flag: 'wx' });
+    return asset;
+  }
+
+  async prepareCopy(canvasId: string, sourceId: string): Promise<{ asset: Asset; hash: string }> {
+    const { asset: source, absPath } = await this.read(sourceId);
+    await fs.mkdir(join(ASSETS_ROOT, canvasId, 'input'), { recursive: true });
+    const id = randomUUID();
+    const asset = this.repo.create({ ...source, id, canvasId, nodeId: null, source: 'import', relPath: `input/${id}__${safeName(source.originName, 'input')}`, createdAt: undefined });
+    const target = this.resolveAssetPath(asset);
+    try { await fs.copyFile(absPath, target); return { asset, hash: await this.fileHash(target) }; }
+    catch (error) { await fs.rm(target, { force: true }).catch(() => undefined); throw error; }
+  }
+
+  async fileHash(path: string): Promise<string> { const hash = createHash('sha256'); for await (const part of createReadStream(path)) hash.update(part); return hash.digest('hex'); }
+  async discardPrepared(assets: Asset[]): Promise<void> { for (const asset of assets) if (!await this.repo.exist({ where: { id: asset.id } })) await fs.rm(this.resolveAssetPath(asset), { force: true }).catch(() => undefined); }
+
+  /** Recover only orphan snapshot files, never legacy/provider assets. */
+  async onModuleInit() {
+    if (!existsSync(ASSETS_ROOT)) return;
+    const partitions = await fs.readdir(ASSETS_ROOT, { withFileTypes: true });
+    for (const partition of partitions.filter(p => p.isDirectory())) {
+      const folder = join(ASSETS_ROOT, partition.name, 'input');
+      if (!existsSync(folder)) continue;
+      for (const file of await fs.readdir(folder, { withFileTypes: true })) {
+        if (!file.isFile() || !/^[0-9a-f-]{36}__/.test(file.name)) continue;
+        const path = join(folder, file.name); const stat = await fs.stat(path);
+        if (Date.now() - stat.mtimeMs > 86400000 && !await this.repo.exist({ where: { id: file.name.slice(0, 36) } })) await fs.rm(path, { force: true });
+      }
+    }
+  }
 
   // ---------- 分区 ----------
 
@@ -162,8 +213,10 @@ export class AssetsService {
 
   /** 删画布级联：删除该画布分区的 asset 行 + 整目录 */
   async deleteCanvas(canvasId: string): Promise<void> {
-    await this.repo.delete({ canvasId });
-    await fs.rm(join(ASSETS_ROOT, canvasId), { recursive: true, force: true });
+    if (this.readers.has(canvasId)) throw new ConflictException({ code: 'SOURCE_COPY_IN_PROGRESS', message: '正在复制该来源，请稍后删除' });
+    this.deleting.add(canvasId);
+    try { await this.repo.delete({ canvasId }); await fs.rm(join(ASSETS_ROOT, canvasId), { recursive: true, force: true }); }
+    finally { this.deleting.delete(canvasId); }
   }
 
   /**
@@ -177,10 +230,18 @@ export class AssetsService {
     nodeId: string,
     keepIds?: string[],
   ): Promise<void> {
+    if (this.readers.has(canvasId)) throw new ConflictException({ code: 'SOURCE_COPY_IN_PROGRESS', message: '来源正在复制，资产清理稍后重试' });
     const assets = await this.repo.find({
       where: { canvasId, nodeId, source: 'generated' },
     });
     const protectedIds = await this.checkpointAssetIds(canvasId);
+    if (this.repo.manager?.connection?.hasMetadata(CanvasDoc)) {
+      const doc = await this.repo.manager.getRepository(CanvasDoc).findOne({ where: { id: canvasId } });
+      collectAssetIds(doc?.graph, protectedIds); collectAssetIds(doc?.io, protectedIds);
+    }
+    if (this.repo.manager?.connection?.hasMetadata(GenerationRun)) {
+      for (const run of await this.repo.manager.getRepository(GenerationRun).find({ where: { canvasId } })) { run.inputAssetIds.forEach(id => protectedIds.add(id)); run.outputAssetIds.forEach(id => protectedIds.add(id)); }
+    }
     if (this.candidateGroups) {
       const groups = await this.candidateGroups.find({ where: { canvasId } });
       for (const group of groups) if (group.approvedAssetId) protectedIds.add(group.approvedAssetId);
@@ -203,7 +264,7 @@ export class AssetsService {
       if (typeof record.assetId === 'string' && record.assetId) ids.add(record.assetId);
       Object.values(record).forEach(visit);
     };
-    checkpoints.forEach((checkpoint) => visit(checkpoint.graph));
+    checkpoints.forEach((checkpoint) => { visit(checkpoint.graph); visit(checkpoint.io); });
     return ids;
   }
 
@@ -223,11 +284,18 @@ export class AssetsService {
     const root = resolve(ASSETS_ROOT);
     const partition = resolve(join(root, asset.canvasId));
     const target = resolve(join(partition, asset.relPath));
-    if (!target.startsWith(partition + sep)) {
+    if (!partition.startsWith(root + sep) || !target.startsWith(partition + sep)) {
       throw new BadRequestException(`非法的资产路径：${asset.relPath}`);
     }
     return target;
   }
+}
+
+function collectAssetIds(value: unknown, ids: Set<string>) {
+  if (Array.isArray(value)) { value.forEach(v => collectAssetIds(v, ids)); return; }
+  if (!value || typeof value !== 'object') return;
+  const record = value as Record<string, unknown>; if (typeof record.assetId === 'string') ids.add(record.assetId);
+  Object.values(record).forEach(v => collectAssetIds(v, ids));
 }
 
 /**

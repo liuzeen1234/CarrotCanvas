@@ -18,6 +18,8 @@ export default defineConfig({
     { path: '/welcome', component: './index', name: '首页', icon: 'HomeOutlined' },
     { path: '/canvas', component: './canvas/index', name: '画布', icon: 'DashboardOutlined' },
     { path: '/canvas/:id', component: './canvas/editor' },
+    { path: '/projects', component: './projects/index', name: '项目', icon: 'FolderOpenOutlined' },
+    { path: '/projects/:id', component: './projects/detail' },
     { path: '/capabilities', component: './capabilities', name: 'AI 能力', icon: 'AppstoreOutlined' },
     {
       path: '/comfyui-api',

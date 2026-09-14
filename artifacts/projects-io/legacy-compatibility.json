@@ -1,0 +1,16 @@
+{
+  "checkedAt": "2026-09-14T02:08:12.255Z",
+  "tables": {
+    "assets": 130,
+    "canvas_operation_receipts": 949,
+    "canvas_docs": 15,
+    "canvas_operation_logs": 861,
+    "canvas_checkpoints": 4,
+    "generation_candidate_groups": 91,
+    "generation_run_handoffs": 63,
+    "generation_runs": 152
+  },
+  "remainingTestCanvases": 0,
+  "legacyAssetFilesPresent": 130,
+  "legacyAssetRows": 130
+}

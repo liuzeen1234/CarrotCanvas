@@ -147,6 +147,10 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-13（Skill 预防重复）：图生视频多参考组的解析文件名只进入临时 resolvedValues/apiJson 与 Run 快照；Agent 不把运行输入整体回写节点 formValues，不同时存组引用和旧首帧文件。无独立文件引用意图的参考槽位创建时显式置空，合法 field 引用继续保留。Skill 增加保存后重读与引用数量/身份核对；核对当前提交路径不回写 resolvedValues，未改运行实现、不生成。
+
+- 2026-09-13（旧首帧迁移副本）：指定业务画布 V01–V03 在多参考组连线之外仍保存 referenceMedia 连线副本及旧 formValues 114::image；后者以独立 field referenceId 展示，普通 referenceId 去重不消除。逐张 SHA-256 核对旧文件与连线图片一致且没有独立 field 排序/绑定后，通过正常 lease + update_node 清理这两处已确认副本，其他参数、边、绑定与视频产物不变；不修改组装规则、不合并合法独立引用，不执行生成。Skill 明确此有证据的清理例外，运行阶段状态不变。
+
 - 2026-09-13（Skill 存储边界核对）：referenceMedia[group] 只存直接上传素材，连线从 edges/上游资产解析；组内排序和绑定覆盖两类引用。Txt2ImgNode 当前按 connected → embedded formValues 文件 → uploaded（含旧图片数组）组装，按 referenceId 去重且连线优先，然后排序。兼容读取不自动清理 canonical 旧副本；正常租约下 update_node 只清理数组，保留 edges、排序、绑定、formValues 和产物。不同 referenceId 的同资产素材保留独立槽位与映射，inputAssetIds 的 Set 仅用于资产血缘。协议说明同步进 carrot-canvas Skill；不改运行引擎，不执行生成，阶段状态不变。
 
 - 2026-09-12（Stable Audio 3 Medium 本地音效接入）：保存官方普通 Medium 原模板与默认关闭本地扩写的 FLAC 副本；新增 `txt2audio` 分类和画布菜单，通用工作流卡片及工具箱支持音频播放器，CustomCombo 从实际工作流提取官方选项。实测后在副本增加显式时长 conditioning 和编码前 −3 dB，修复 latent 时长取整尾部静音和瞬态削波；快速完成 Run 在 completion 中持久化开始时间，生成流水按持久资产类型展示音频/视频。独立 ComfyUI、三组平台生成及真实 UI 运行/播放/下载通过；后端 157 项测试及前后端构建通过。平台仍沿用现有 runner、FIFO、资产、GenerationRun 与候选历史；未升级全局依赖或修改已有图像/视频工作流。模型完整性、Run/asset 和人工听感边界见 [STABLE-AUDIO-INTEGRATION.md](./STABLE-AUDIO-INTEGRATION.md)。

@@ -7,7 +7,9 @@
 | 文档 | 内容 |
 |---|---|
 | [PROJECT-SUMMARY.md](./PROJECT-SUMMARY.md) | 项目现状总结（技术栈、结构、运行状态、已解决问题） |
+| [PROJECTS-AND-CANVAS-IO.md](./PROJECTS-AND-CANVAS-IO.md) | 项目集合、画布三区域、跨画布快照与项目成果的方案、实际接口及 P1–P4 实现验收 |
 | [AI-NATIVE-CANVAS.md](./AI-NATIVE-CANVAS.md) | AI 原生画布控制、人机交接、生成历史、自主视频生产与 Agent Skill 的设计决策和实施进度 |
+| [RUN-RECOVERY.md](./RUN-RECOVERY.md) | 超时产物的独立补录恢复历史、操作入口、API、幂等与验证边界 |
 | [COMFYUI-INTEGRATION.md](./COMFYUI-INTEGRATION.md) | ComfyUI 集成·运行功能设计（阶段一：独立菜单/卡片式/JSONText+文件占位符/object_info 自动表单） |
 | [STABLE-AUDIO-INTEGRATION.md](./STABLE-AUDIO-INTEGRATION.md) | Stable Audio 3 普通 Medium 的本地模型、无损工作流、音效节点与实际验收证据 |
 | [CANVAS-INTEGRATION.md](./CANVAS-INTEGRATION.md) | Canvas 集成·画布节点调用工作流设计（阶段二：多画布/三类节点，一期仅文生图，C1 后端数据层 + C2 产物捕获 + C3 列表/编辑器路由 + C4 共享运行组件已完成） |

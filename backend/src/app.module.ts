@@ -12,6 +12,7 @@ import { RunsModule } from './runs/runs.module';
 import { SystemResourcesModule } from './system-resources/system-resources.module';
 import { LocalComputeSchedulerModule } from './gpu-scheduler/gpu-scheduler.module';
 import { TtsModule } from './tts/tts.module';
+import { ProjectsModule } from './projects/projects.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { TtsModule } from './tts/tts.module';
     SystemResourcesModule,
     LocalComputeSchedulerModule,
     TtsModule,
+    ProjectsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,6 +5,8 @@ import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff } from '.
 import { RunsController } from './runs.controller';
 import { RunsService } from './runs.service';
 import { CanvasModule } from '../canvas/canvas.module';
+import { AssetsModule } from '../assets/assets.module';
+import { RunRecoveryService } from './run-recovery.service';
 
-@Module({ imports: [TypeOrmModule.forFeature([GenerationRun, GenerationRunHandoff, GenerationCandidateGroup, Asset]), CanvasModule], controllers: [RunsController], providers: [RunsService], exports: [RunsService] })
+@Module({ imports: [TypeOrmModule.forFeature([GenerationRun, GenerationRunHandoff, GenerationCandidateGroup, Asset]), CanvasModule, AssetsModule], controllers: [RunsController], providers: [RunsService, RunRecoveryService], exports: [RunsService] })
 export class RunsModule {}

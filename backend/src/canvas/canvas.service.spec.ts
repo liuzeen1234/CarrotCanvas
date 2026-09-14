@@ -42,13 +42,15 @@ describe('CanvasService', () => {
       deleteCanvas: jest.fn(async () => undefined),
       getCanvasAssetSizes: jest.fn(async () => ({})),
       deleteGeneratedByNode: jest.fn(async () => undefined),
+      withDeleteProtection: jest.fn(async (_id: string, work: () => Promise<unknown>) => work()),
     };
     leases = { findOne: jest.fn(async () => ({ canvasId: 'c1', epoch: 1, holderType: 'human', holderId: 'h1', tokenHash: 'ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb', status: 'active', expiresAt: new Date(Date.now() + 60000), serverInstanceId: '' })), create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) };
     receipts = { findOne: jest.fn(async () => null), create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) };
     repo.manager = {
       transaction: jest.fn(async (work: any) => work({
+        connection: { hasMetadata: () => false },
         getRepository: (entity: any) => entity === CanvasDoc
-          ? { findOne: repo.findOne, findOneOrFail: jest.fn(async () => repo.currentDoc), update: repo.update }
+          ? { findOne: repo.findOne, findOneOrFail: jest.fn(async () => repo.currentDoc), update: repo.update, remove: repo.remove }
           : entity === CanvasOperationLog ? { create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) }
             : entity === CanvasAssetGcJob ? { create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x) }
             : entity === Workflow ? { findByIds: jest.fn(async () => []) } : receipts,

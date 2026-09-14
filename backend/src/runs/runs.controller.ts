@@ -1,10 +1,13 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { RunsService } from './runs.service';
 import { CanvasService } from '../canvas/canvas.service';
+import { RecoverRunInput, RunRecoveryService } from './run-recovery.service';
 
 @Controller('runs')
 export class RunsController {
-  constructor(private readonly runs: RunsService, private readonly canvas: CanvasService) {}
+  constructor(private readonly runs: RunsService, private readonly canvas: CanvasService, private readonly recovery: RunRecoveryService) {}
+  @Post(':id/recover') recover(@Param('id') id: string, @Body() body: RecoverRunInput) { return this.recovery.recover(id, body); }
+  @Get(':id/recovery-suggestion') suggestRecovery(@Param('id') id: string, @Query('assetId') assetId?: string) { return this.recovery.suggest(id, assetId); }
   @Get() list(@Query() query: Record<string, string>) { return this.runs.list(query); }
   @Get('candidates/group') group(@Query('canvasId') canvasId: string, @Query('nodeId') nodeId?: string, @Query('shotId') shotId?: string) { return this.runs.group(canvasId, nodeId, shotId); }
   @Patch('candidates/group') async choose(@Body() body: any) { await this.canvas.assertWriteAccess(body.canvasId, body); return this.runs.choose(body.canvasId, body.nodeId ?? null, body.shotId ?? null, body.assetId, !!body.approve, body.actorType); }

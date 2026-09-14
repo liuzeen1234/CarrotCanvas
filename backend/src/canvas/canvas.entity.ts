@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { CanvasIoState } from './canvas-io.types';
 
 /** 序列化节点图：React Flow 图 + 视口。见 docs/CANVAS-INTEGRATION.md §4.1 */
 export interface CanvasViewport {
@@ -47,6 +48,7 @@ export function emptyCanvasGraph(): CanvasGraph {
  */
 @Entity('canvas_docs')
 export class CanvasDoc {
+  @Column({ name: 'io_state', type: 'simple-json', nullable: true }) io: CanvasIoState | null;
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -174,6 +176,7 @@ export class CanvasOperationLog {
 
 @Entity('canvas_checkpoints')
 export class CanvasCheckpoint {
+  @Column({ name: 'io_state', type: 'simple-json', nullable: true }) io: CanvasIoState | null;
   @PrimaryGeneratedColumn('uuid') id: string;
   @Column({ name: 'canvas_id', type: 'text' }) canvasId: string;
   @Column({ type: 'text' }) name: string;

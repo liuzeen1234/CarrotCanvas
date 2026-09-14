@@ -65,6 +65,34 @@ const canvasWriteErrors = [
 
 /** Phase 0A capability fact. Schemas are intentionally discoverable and may grow without changing action names. */
 export const ACTION_REGISTRY: RegisteredAction[] = [
+  action({ name: 'project.list', description: '列出项目与画布/成果数量', method: 'GET', path: '/api/projects', scope: 'workspace', outputSchema: { type: 'array', items: { type: 'object' } } }),
+  action({ name: 'project.get', description: '读取项目、关联画布及只供浏览下载的成果快照历史', method: 'GET', path: '/api/projects/:id', scope: 'project' }),
+  action({ name: 'project.create', description: '创建画布集合项目，无输入区；项目不能作为引用来源', method: 'POST', path: '/api/projects', scope: 'workspace' }),
+  action({ name: 'project.delete', description: '删除空项目及其成果副本，不删除画布；包含画布则拒绝', method: 'DELETE', path: '/api/projects/:id', scope: 'project', permission: 'high-impact', confirmation: 'human', errors: [...standardErrors, { code: 'PROJECT_NOT_EMPTY', status: 409, description: '请先移出所有画布' }, { code: 'REVISION_CONFLICT', status: 409, description: '项目版本变化' }], inputSchema: commandSchema(false, undefined, { expectedRevision: { type: 'integer' } }, ['expectedRevision']) }),
+  ...['edit', 'canvas.add', 'canvas.remove', 'canvas.create', 'results.capture', 'results.restore'].map(command => action({ name: `project.${command}`, description: `项目命令 ${command}；多对多关联不修改画布 revision；成果保存独立副本，不能被引用`, method: 'POST', path: '/api/projects/:id/command', scope: 'project', idempotent: true, reversible: command === 'results.restore' || command.startsWith('canvas.'), sideEffects: ['project_revision', ...(command === 'results.capture' ? ['project_snapshot_files'] : [])], inputSchema: commandSchema(false, command), errors: [...standardErrors, { code: 'REVISION_CONFLICT', status: 409, description: '项目版本变化' }, { code: 'IDEMPOTENCY_CONFLICT', status: 409, description: '幂等键冲突' }, { code: 'SOURCE_VERSION_CHANGED', status: 409, description: '请重新选择成果版本' }] })),
+  action({ name: 'canvas.io.get', description: '读取画布输入组/快照历史、输出版本；输出仅明确发布后可引入', method: 'GET', path: '/api/canvas/:id/io', scope: 'canvas' }),
+  action({ name: 'canvas.input.check_update', description: '只读比较上游当前输出与固定输入快照，不更新内容', method: 'GET', path: '/api/canvas/:id/io/inputs/:groupId/update-preview', scope: 'canvas' }),
+  action({ name: 'canvas.input.import', description: 'multipart files（1–30 个，单文件 ≤256 MB，UTF-8 文本 ≤5 MB）；复制原文件，不启动 Provider', method: 'POST', path: '/api/canvas/:id/io/files', scope: 'canvas', requiresLease: true, idempotent: true, sideEffects: ['canvas_revision','input_snapshot_files'], errors: canvasWriteErrors, inputSchema: { type: 'object', required: ['path','multipart'], properties: { path: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } }, multipart: { type: 'object', required: ['files','leaseToken','leaseEpoch','expectedRevision','idempotencyKey'], properties: { files: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'string', format: 'binary' } }, leaseToken: { type: 'string' }, leaseEpoch: { type: 'integer' }, expectedRevision: { type: 'integer' }, idempotencyKey: { type: 'string' }, name: { type: 'string' } } } } } }),
+  ...['input.capture','input.update','input.restore','input.remove','input.edit','input.bind','output.publish','output.replace','output.edit','output.remove','output.reorder'].map(command => action({ name: `canvas.${command}`, description: `画布 IO 命令 ${command}；固定版本，复制本地素材，只有主动更新才变化；既有 Run 不变`, method: 'POST', path: '/api/canvas/:id/io/command', scope: 'canvas', requiresLease: true, idempotent: true, reversible: true, sideEffects: ['canvas_revision','operation_log', ...(command === 'input.capture' || command === 'input.update' ? ['input_snapshot_files'] : [])], inputSchema: commandSchema(true, command), errors: [...canvasWriteErrors, { code: 'INPUT_ITEM_IN_USE', status: 400, description: '请先解除工作区使用或保留旧快照' }, { code: 'INPUT_KIND_CHANGED', status: 400, description: '新版输入类型改变' }, { code: 'SOURCE_VERSION_CHANGED', status: 409, description: '来源版本变化，请重新预览' }, { code: 'SOURCE_HAS_NO_OUTPUTS', status: 400, description: '来源没有已发布输出' }] })),
+  action({ name: 'run.recovery_suggestion', description: '只读查找补录原因与来源关联，优先自动填入',
+    method: 'GET', path: '/api/runs/:id/recovery-suggestion', scope: 'run',
+    machineDescription: 'Read-only recovery draft from source error, current node output, matching provider task ID and attributed node notes. Optional assetId; otherwise use current output. Does not invoke providers or register recovery. Empty evidence means insufficient linkage and requires operator input. Current output and notes do not prove same upstream invocation.',
+    errors: [...standardErrors, { code: 'RUN_NOT_RECOVERABLE', status: 409, description: '该 Run 不支持补录' }, { code: 'RECOVERY_ASSET_MISMATCH', status: 400, description: '资产归属或类型不匹配' }] }),
+  action({ name: 'run.recover', description: '补录已有产物为独立恢复历史，保留原失败 Run',
+    machineDescription: 'Register one existing same-canvas/node asset for a failed/cancelled/needs_attention run. No provider invocation. The new succeeded record represents successful recovery registration and has explicit recovery metadata and parentRunId. Preserve current/approved selections and canonical graph revision. Deterministically idempotent per source run + asset; evidence is an operator statement, not automatic proof.',
+    method: 'POST', path: '/api/runs/:id/recover', scope: 'run', requiresLease: true, idempotent: true,
+    sideEffects: ['recovery_record', 'candidate_append'], errors: [...canvasWriteErrors,
+      { code: 'RUN_NOT_RECOVERABLE', status: 409, description: '原 Run 状态或上下文不支持补录' },
+      { code: 'RECOVERY_ASSET_MISMATCH', status: 400, description: '跨画布、节点或错误类型的资产/输入参考素材' },
+      { code: 'ASSET_ALREADY_RECORDED', status: 409, description: '资产已登记成功输出，不能重复归因' },
+      { code: 'RECOVERY_HANDOFF_PENDING', status: 409, description: '正在交接，禁止新的补录' }],
+    inputSchema: { type: 'object', required: ['path', 'body'], properties: {
+      path: { type: 'object', required: ['id'], properties: { id: { type: 'string', minLength: 1 } }, additionalProperties: false },
+      body: { type: 'object', required: ['leaseToken', 'leaseEpoch', 'expectedRevision', 'assetId', 'reason', 'evidence'], properties: {
+        leaseToken: { type: 'string', minLength: 1 }, leaseEpoch: { type: 'integer' }, expectedRevision: { type: 'integer' },
+        assetId: { type: 'string', minLength: 1, maxLength: 100 }, reason: { type: 'string', minLength: 1, maxLength: 2000 }, evidence: { type: 'string', minLength: 1, maxLength: 4000 },
+      }, additionalProperties: false },
+    }, additionalProperties: false } }),
   action({ name: 'canvas.list', description: '列出画布', method: 'GET', path: '/api/canvas', scope: 'workspace' }),
   action({ name: 'canvas.create', description: '创建画布', method: 'POST', path: '/api/canvas', scope: 'workspace', idempotent: false }),
   action({ name: 'canvas.get', description: '读取画布', method: 'GET', path: '/api/canvas/:id', scope: 'canvas' }),
@@ -109,3 +137,22 @@ export const ACTION_REGISTRY: RegisteredAction[] = [
   ].map(([name, method, path]) => action({ name, description: name, method, path })),
   action({ name: 'tts.run.submit', description: '用 CosyVoice 3、IndexTTS2 或 Qwen3-TTS 按 pause plan 严格串行生成语音片段、插入精确 PCM 静音并保存一条最终音频', machineDescription: 'Qwen3-TTS supports official CustomVoice speakers and prompt-only VoiceDesign. Supports only <pause ms="N"/> with N=100..10000. Holds one outer local-compute lease through synthesis, concatenation and final persistence.', method: 'POST', path: '/api/tts/runs', scope: 'run', requiresLease: true, idempotent: true, sideEffects: ['generation_run', 'local_compute_lease', 'audio_asset'], errors: canvasWriteErrors }),
 ];
+
+function commandSchema(lease: boolean, command?: string, fields?: Record<string, unknown>, requiredFields?: string[]) {
+  const string = { type: 'string' }; const payload: Record<string, unknown> = {
+    groupId: string, itemKey: string, snapshotId: string, sourceCanvasId: string, sourceOutputsVersion: { type: 'integer' },
+    canvasId: string, name: { type: 'string', maxLength: 200 }, note: { type: 'string', maxLength: 2000 }, description: { type: 'string', maxLength: 2000 },
+    nodeId: string, runId: string, assetId: string, text: { type: 'string' }, textPart: { enum: ['positive','negative'] },
+    position: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } }, required: ['x','y'] },
+    order: { type: 'array', uniqueItems: true, items: string },
+    items: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: { assetId: string, nodeId: string, runId: string, text: string, textPart: { enum: ['positive', 'negative'] }, name: string, note: string } } },
+    selections: { type: 'array', maxItems: 100, items: { type: 'object', required: ['canvasId','itemKey','outputsVersion'], properties: { canvasId: string, itemKey: string, outputsVersion: { type: 'integer' }, name: string, note: string } } },
+  };
+  return { type: 'object', required: ['path','body'], properties: {
+    path: { type: 'object', required: ['id'], properties: { id: string } },
+    body: { type: 'object', required: requiredFields ?? ['expectedRevision','idempotencyKey','command', ...(lease ? ['leaseToken','leaseEpoch'] : [])], properties: fields ?? {
+      expectedRevision: { type: 'integer' }, idempotencyKey: string, command: { const: command }, actorId: string, actorType: { enum: ['human','agent'] },
+      ...(lease ? { leaseToken: string, leaseEpoch: { type: 'integer' } } : {}), payload: { type: 'object', properties: payload, additionalProperties: false },
+    }, additionalProperties: false },
+  } };
+}

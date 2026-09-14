@@ -40,6 +40,9 @@ export interface CanvasNodeDataApi {
   /** 删除某节点（同时移除其相连边）。二次确认由节点自身 UI 负责。 */
   deleteNode: (nodeId: string) => void | Promise<void>;
   canvasId?: string;
+  /** 发布明确的当前或历史产物，复用编辑器的保存与 IO 写入队列。 */
+  publishOutput?: (payload: Record<string, unknown>) => Promise<unknown>;
+  publishedAssetIds?: string[];
   ensureResultNode: (sourceNodeId: string, kind?: 'image' | 'video' | 'audio') => void;
   setNodeRunState: (nodeId: string, run: RunStateData | null) => void;
   /** 读取节点的共享运行态，让只读观察者也能看到进度和终态。 */

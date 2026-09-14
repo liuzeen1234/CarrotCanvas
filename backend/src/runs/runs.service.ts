@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
 import { Asset } from '../assets/asset.entity';
 import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff, GenerationRunStatus } from './generation-run.entity';
+import { CanvasDoc } from '../canvas/canvas.entity';
+import { activeInput } from '../canvas/canvas-io.types';
 
 @Injectable()
 export class RunsService implements OnModuleInit {
@@ -34,6 +36,17 @@ export class RunsService implements OnModuleInit {
     const now = Date.now();
     const run = this.runs.create({ status: 'queued', canvasId: null, nodeId: null, shotId: null, parentRunId: null, providerRunId: null, capabilityId: null, capabilityVersion: null, inputAssetIds: [], outputAssetIds: [], outputText: null, outputParts: null, actorType: 'human', actorId: 'web', attemptCount: 1, idempotencyKey: null, error: null, queuedAt: now, startedAt: null, finishedAt: null, ...input, inputSnapshot: redact(input.inputSnapshot) });
     run.requestSnapshot = input.requestSnapshot == null ? null : redact(input.requestSnapshot);
+    if (input.canvasId && input.nodeId && this.runs.manager.connection.hasMetadata(CanvasDoc)) {
+      const doc = await this.runs.manager.getRepository(CanvasDoc).findOne({ where: { id: input.canvasId } });
+      const upstream = new Set<string>([input.nodeId]);
+      let changed = true; while (changed) { changed = false; for (const edge of doc?.graph.edges ?? []) if (upstream.has(edge.target) && !upstream.has(edge.source)) { upstream.add(edge.source); changed = true; } }
+      run.inputLineage = [];
+      for (const node of doc?.graph.nodes ?? []) if (upstream.has(node.id) && node.data.inputGroupId) {
+        const group = doc?.io?.inputs.find(g => g.id === node.data.inputGroupId); const item = group && activeInput(group).items.find(i => i.itemKey === node.data.inputItemKey);
+        if (item && group) run.inputLineage.push({ inputGroupId: group.id, snapshotId: group.activeSnapshotId, itemKey: item.itemKey, assetId: item.assetId, name: item.name, sourceCanvasId: item.sourceCanvasId, sourceCanvasName: item.sourceCanvasName, sourceOutputsVersion: item.sourceOutputsVersion, sourceOutputId: item.sourceOutputId, sourceAssetId: item.sourceAssetId });
+      }
+      run.inputAssetIds = [...new Set([...run.inputAssetIds, ...run.inputLineage.map(i => i.assetId)])];
+    }
     try { return { run: await this.runs.save(run), replay: false }; }
     catch (error) {
       // A concurrent identical request may have won the unique-key insert.
@@ -53,6 +66,7 @@ export class RunsService implements OnModuleInit {
 
   async patch(id: string, patch: Partial<GenerationRun>) {
     if (patch.inputSnapshot !== undefined) patch = { ...patch, inputSnapshot: redact(patch.inputSnapshot) };
+    if (patch.inputAssetIds) { const existing = await this.get(id); patch = { ...patch, inputAssetIds: [...new Set([...patch.inputAssetIds, ...(existing.inputLineage ?? []).map(item => item.assetId)])] }; }
     await this.runs.update(id, patch as any);
     return this.get(id);
   }
@@ -128,7 +142,13 @@ export class RunsService implements OnModuleInit {
       capabilities: this.capabilities(run),
       latestHandoff: (await this.handoffs.findOne({ where: { runId: run.id }, order: { createdAt: 'DESC' } })) ?? null,
     })));
-    return { items, total, page, pageSize };
+    // Node history can discover recovery sources in the same request, without
+    // doubling per-node network traffic or displacing successful history pages.
+    const recoverableRuns = query.includeRecoverable === 'true' && query.canvasId && query.nodeId
+      ? await this.runs.find({ where: { canvasId: query.canvasId, nodeId: query.nodeId, status: In(['failed', 'cancelled', 'needs_attention']), recovery: IsNull() },
+        select: { id: true, status: true, createdAt: true }, order: { createdAt: 'DESC' }, take: 20 })
+      : undefined;
+    return { items, total, page, pageSize, ...(recoverableRuns ? { recoverableRuns } : {}) };
   }
 
   async lineage(id: string) {
@@ -176,6 +196,7 @@ export class RunsService implements OnModuleInit {
 
   async retry(id: string, idempotencyKey: string) {
     const old = await this.get(id);
+    if (old.recovery) throw new ConflictException({ code: 'RECOVERY_NOT_RETRYABLE', message: '恢复记录不代表新的生成请求，请对原 Run 重试' });
     return this.begin({ provider: old.provider, canvasId: old.canvasId, nodeId: old.nodeId, shotId: old.shotId, parentRunId: old.id, capabilityId: old.capabilityId, capabilityVersion: old.capabilityVersion, inputSnapshot: old.inputSnapshot, inputAssetIds: old.inputAssetIds, actorType: old.actorType, actorId: old.actorId, attemptCount: old.attemptCount + 1, idempotencyKey });
   }
 

@@ -64,7 +64,7 @@ export interface Txt2ImgNodeData extends NodeCardMetadata {
   referenceMediaOrder?: Partial<Record<WorkflowReferenceGroup, string[]>>;
   promptMediaReferences?: Array<{ referenceId: string; group: WorkflowReferenceGroup; sourceNodeId?: string; edgeId?: string; token: string; displayName: string }>;
   /** 最近一次成功运行的平台资产引用（C6 写入） */
-  lastAssets?: { assetId: string; url: string; kind: string }[];
+  lastAssets?: { assetId: string; url: string; kind: string; filename?: string }[];
   [key: string]: unknown;
 }
 

@@ -6,6 +6,7 @@ import { Workflow } from '../workflows/workflow.entity';
 import { GenerationCandidateGroup, GenerationRun, GenerationRunHandoff, GenerationRunStatus } from './generation-run.entity';
 import { RunsController } from './runs.controller';
 import { RunsService } from './runs.service';
+import { RunRecoveryService } from './run-recovery.service';
 
 describe('Phase 1B run handoff (SQLite integration)', () => {
   let db: DataSource;
@@ -19,7 +20,7 @@ describe('Phase 1B run handoff (SQLite integration)', () => {
     const assets = { ensureCanvasPartition: jest.fn(), getCanvasAssetSizes: jest.fn(async () => ({})), deleteCanvas: jest.fn(), deleteGeneratedByNode: jest.fn() };
     canvas = new CanvasService(db.getRepository(CanvasDoc), db.getRepository(CanvasControlLease), db.getRepository(CanvasOperationReceipt), db.getRepository(CanvasOperationLog), db.getRepository(CanvasCheckpoint), db.getRepository(CanvasAssetGcJob), assets as any);
     runs = new RunsService(db.getRepository(GenerationRun), db.getRepository(GenerationRunHandoff), db.getRepository(GenerationCandidateGroup), db.getRepository(Asset));
-    controller = new RunsController(runs, canvas);
+    controller = new RunsController(runs, canvas, new RunRecoveryService(db.getRepository(GenerationRun), canvas, assets as any));
   });
 
   afterEach(async () => { await db.destroy(); });

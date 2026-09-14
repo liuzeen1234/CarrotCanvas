@@ -1,3 +1,4 @@
+import PublishOutputButton from './PublishOutputButton';
 import { ViewportImage, ViewportVideo, ViewportAudio } from './ViewportMedia';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Space, Tag, Typography, message } from 'antd';
@@ -7,10 +8,12 @@ import { RunDuration } from './RunTiming';
 import CanvasMediaPreview, { type CanvasMediaItem } from './CanvasMediaPreview';
 import { extractSeedValues } from '@/components/comfyui/types';
 import { AssetIdLabel } from './nodes/NodeCardFields';
+import RunRecovery, { RecoveryLabel, type RecoveryMetadata } from './RunRecovery';
 
 export interface NodeHistoryRun {
   id: string;
   status: string;
+  recovery?: RecoveryMetadata | null;
   outputAssetIds: string[];
   outputText: string | null;
   outputParts?: { positive: string; negative: string } | null;
@@ -22,10 +25,11 @@ export interface NodeHistoryRun {
   candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null;
 }
 
-export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeContext, readOnly, refreshKey, control, onSelectAsset, onSelectText, onObserveAsset, onObserveText, onRestoreSeeds }: {
+export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeContext, readOnly, refreshKey, control, currentAssetId, onSelectAsset, onSelectText, onObserveAsset, onObserveText, onRestoreSeeds }: {
   canvasId?: string; nodeId: string; kind: 'image' | 'video' | 'audio' | 'text'; readOnly: boolean; refreshKey?: unknown;
   promptModeContext?: 'text' | 'image' | 'edit' | 'analyze';
   control?: { leaseToken: string; leaseEpoch: number; expectedRevision: number };
+  currentAssetId?: string;
   onSelectAsset?: (asset: { assetId: string; url: string; kind: string }) => void;
   onSelectText?: (text: string, parts?: { positive: string; negative: string } | null) => void;
   onObserveAsset?: (asset: { assetId: string; url: string; kind: string }) => void;
@@ -33,12 +37,14 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeCo
   onRestoreSeeds?: (values: Record<string, number>) => void;
 }) {
   const [runs, setRuns] = useState<NodeHistoryRun[]>([]);
+  const [sourceRuns, setSourceRuns] = useState<NodeHistoryRun[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const mediaItems = useMemo<CanvasMediaItem[]>(() => kind === 'text' || kind === 'audio' ? [] : runs.flatMap((run) => run.outputAssetIds.map((assetId) => ({ assetId, url: `/api/assets/${assetId}`, kind }))), [kind, runs]);
   const load = async () => {
     if (!canvasId) return;
     try {
-      const result = await request<{ items: NodeHistoryRun[] }>(`/api/runs?canvasId=${encodeURIComponent(canvasId)}&nodeId=${encodeURIComponent(nodeId)}&status=succeeded&pageSize=20`);
+      const result = await request<{ items: NodeHistoryRun[]; recoverableRuns?: NodeHistoryRun[] }>(`/api/runs?canvasId=${encodeURIComponent(canvasId)}&nodeId=${encodeURIComponent(nodeId)}&status=succeeded&pageSize=20${kind === 'text' ? '' : '&includeRecoverable=true'}`);
+      setSourceRuns(result.recoverableRuns || []);
       const visibleRuns = result.items.filter((run) => run.outputAssetIds.length || run.outputText);
       setRuns(visibleRuns);
       if (readOnly) {
@@ -78,18 +84,19 @@ export default function NodeOutputHistory({ canvasId, nodeId, kind, promptModeCo
     </div>;
   };
 
-  if (!runs.length) return null;
+  if (!runs.length && !sourceRuns.some((run) => ['failed', 'cancelled', 'needs_attention'].includes(run.status))) return null;
   return <div className="canvas-node-history">
-    <Typography.Text type="secondary" style={{ fontSize: 12 }}>生成历史 · {runs.reduce((sum, run) => sum + Math.max(1, run.outputAssetIds.length), 0)}</Typography.Text>
+    <Space><Typography.Text type="secondary" style={{ fontSize: 12 }}>生成历史 · {runs.reduce((sum, run) => sum + Math.max(1, run.outputAssetIds.length), 0)}</Typography.Text><RunRecovery runs={sourceRuns} currentAssetId={currentAssetId} readOnly={readOnly} control={control} onRecovered={load} /></Space>
     <div className="canvas-node-history__rail">
-      {runs.flatMap((run) => kind === 'text' ? [<button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span><RunDuration timestamps={run} />{seedActions(run)}{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button>] : run.outputAssetIds.map((assetId) => {
+      {runs.flatMap((run) => kind === 'text' ? [<div key={run.id}><button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span><RunDuration timestamps={run} />{seedActions(run)}{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button><Space wrap><PublishOutputButton payload={{ runId: run.id, name: '历史文字输出' }} />{run.outputParts?.positive && <PublishOutputButton label="正向设为输出" payload={{ runId: run.id, textPart: 'positive', name: '历史正向提示词' }} />}{run.outputParts?.negative && <PublishOutputButton label="负向设为输出" payload={{ runId: run.id, textPart: 'negative', name: '历史负向提示词' }} />}</Space></div>] : run.outputAssetIds.map((assetId) => {
         const current = run.candidateGroup?.selectedAssetId === assetId;
         return <div key={assetId} className={`canvas-node-history__media${current ? ' is-current' : ''}`}>
           {kind === 'audio' ? <ViewportAudio controls src={`/api/assets/${assetId}`} style={{ width: '100%' }} /> : <button type="button" className="canvas-media-trigger canvas-media-trigger--history" onClick={() => setPreviewIndex(mediaItems.findIndex((item) => item.assetId === assetId))} aria-label={`放大预览${kind === 'video' ? '视频' : '图片'}`}>{kind === 'video' ? <><ViewportVideo src={`/api/assets/${assetId}`} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <ViewportImage src={`/api/assets/${assetId}`} alt="历史图片产物" />}</button>}
           <AssetIdLabel assetId={assetId} />
-          <RunDuration timestamps={run} />
-          {seedActions(run)}
-          <Space size={2}>{current ? <Tag color="blue" icon={<CheckOutlined />}>当前</Tag> : <Button size="small" disabled={readOnly} onClick={() => void chooseAsset(run, assetId)}>使用</Button>}<Button size="small" type="text" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download aria-label="下载历史产物" /></Space>
+          <RecoveryLabel recovery={run.recovery} />
+          {run.recovery ? <Typography.Text type="secondary" style={{ fontSize: 11 }}>补录时间：{new Date(run.recovery.recoveredAt).toLocaleString()}</Typography.Text> : <RunDuration timestamps={run} />}
+          {run.recovery ? null : seedActions(run)}
+          <Space size={2} wrap><PublishOutputButton payload={{ runId: run.id, assetId }} />{current ? <Tag color="blue" icon={<CheckOutlined />}>当前</Tag> : <Button size="small" disabled={readOnly} onClick={() => void chooseAsset(run, assetId)}>使用</Button>}<Button size="small" type="text" icon={<DownloadOutlined />} href={`/api/assets/${assetId}/download`} download aria-label="下载历史产物" /></Space>
         </div>;
       }))}
     </div>

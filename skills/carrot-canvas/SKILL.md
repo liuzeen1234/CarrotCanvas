@@ -55,7 +55,7 @@ node <绝对脚本路径> operations <canvasId> <JSON文件绝对路径>
 
 Codex2API 图片编辑与图像理解的 `image-target` 可接入参考图，连线与上传合计最多 16 张。`data.referenceImages` 只存直接上传到卡片的图片；连线图片从 `edges` 和上游当前资产获取，不重复写入此数组。连线 `referenceId=edge.id`，上传 `referenceId=asset:<assetId>`；`referenceImageOrder` 和 `promptImageReferences` 仍包含两类引用。Agent 提交时先组装全部连线与上传引用，按 `referenceId` 去重（连线优先），再按 `referenceImageOrder` 排序，未列出的引用稳定追加到末尾；用同一最终列表生成提交文件、同序 `inputAssetIds`、`imageReferenceMap` 和提示词序号。不要按 `assetId` 合并不同的合法引用。多图提示词必须把 `@` token 绑定到稳定 `referenceId`，增删或重排后在提交时重新编译。仍被提示词引用的图片必须先解除 token 与绑定再断线或删除。旧数组中的连线副本通过正常租约与 `update_node` 清理，保留连线、排序、提示词绑定和产物；详细结构与清理步骤见节点与操作约定。
 
-ComfyUI 的 `referenceMedia[group]` 同样只存卡片直接上传的素材，连线素材从 `edges` 获取，不复制进数组；各组排序与提示词绑定仍覆盖连线和上传。实现还兼容旧图片字段及 `formValues` 的文件引用；组内按 `referenceId` 去重，连线优先。ComfyUI 的槽位、映射与提示词序号保持组内一致，但当前 `inputAssetIds` 是去重的资产血缘集合，不代表引用位置；不得因此合并素材槽位。实现核对与旧数据清理边界见 [节点与操作约定](references/operations.md#codex-多图与稳定引用)。
+ComfyUI 的 `referenceMedia[group]` 同样只存卡片直接上传的素材，连线素材从 `edges` 获取，不复制进数组；各组排序与提示词绑定仍覆盖连线和上传。创建或运行图生视频多参考卡时，组引用解析得到的文件名只写入临时提交 API JSON，不回写 `data.formValues` 的旧首帧或参考文件槽位；创建时不要把同一首帧同时配置为组引用和旧文件字段。实现还兼容旧图片字段及独立 `formValues` 文件引用，不能盲目清空合法文件引用；接手旧卡先核对残留文件是否为迁移副本。组内按 `referenceId` 去重，连线优先。ComfyUI 的槽位、映射与提示词序号保持组内一致，但当前 `inputAssetIds` 是去重的资产血缘集合，不代表引用位置；不得因此合并素材槽位。保存后重读 agent-view，按真实组装规则确认引用数量、排序与绑定符合意图。实现核对、提交示例与旧数据清理边界见 [节点与操作约定](references/operations.md#codex-多图与稳定引用)。
 
 ComfyUI 的 MiniMax H3 高质量图生视频卡提供四组多参考入口：图片最多 9 张、视频最多 3 个、视频配音最多 3 路、独立音频最多 3 路。图片、视频和独立音频使用稳定 `@` 引用，提交时分别编译为 `<Picture N>`、`<Video N>`、`<Audio N>`；视频配音按当前位置与同序号参考视频配对。旧“全能参考”分类已从画布入口下线，不要创建或改绑到该工作流。Z-Image Turbo 通用图生图仅支持 1 张参考图。精确句柄、节点数据与提交转换见节点与操作约定；Agent 必须读取实时 workflow API JSON/inputConfig 确认能力，不能因为统一 UI 而假定其他 ComfyUI 工作流支持多媒体参考。
 
@@ -68,5 +68,7 @@ ComfyUI 未运行本身不是生成阻塞：已有有效托管启动配置时，
 音效生成使用已注册的 `txt2audio` ComfyUI 工作流，仍复用通用节点、平台 Run 和本机调度，不是 TTS 节点。创建音效节点、连接音频结果、填写参数或验收声音前，读取 [音效生成与验收](references/audio.md)；Stable Audio 3 的 SFX / One-shot 是扩写预设，关闭扩写时不能宣称类别提供独立模型控制。
 
 先核对 Run 终态、真实产物、画布引用与文件内容，再声明完成。下载使用 `download <assetId> <当前项目内绝对路径>`（拒绝覆盖已有文件），不要硬编码后端 data 目录。报告画布 ID/链接、Run ID、可用产物路径及未完成项；失败/needs_attention/超时不等于成功。
+
+操作项目集合、画布输入/输出或跨画布快照时，读取 [项目与画布输入输出](references/projects-io.md)。项目支持多对多关联；引入和项目成果均是独立快照，主动更新才变化，项目成果不能被引用。
 
 当前 Skill 封装现有画布和生成能力，不承诺自动分镜、时间轴剪辑或最终成片系统已实现。

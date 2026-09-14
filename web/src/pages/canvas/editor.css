@@ -11,10 +11,11 @@ body.canvas-editor-page .ant-pro-layout-content {
 
 .canvas-floating-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   z-index: 10;
-  max-width: calc(100% - 300px);
+  max-width: calc(100% - 32px);
   margin: 16px;
 }
 

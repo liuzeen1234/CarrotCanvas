@@ -111,7 +111,15 @@ const imageReferenceMap = references.map((item, index) => ({
 
 文件型兼容引用使用 `field:<group>:<comfyNodeId>::<param>`，来自已有 formValues，不应伪装为上传 asset 或复制进 referenceMedia；同槽有连线时不再投影文件。Agent 必须读取真实 workflow 配置验证槽位。提交时按组内最终列表逐槽写文件名、构造 `referenceMaps`（images 同时保存 `imageReferenceMap`）、编译标签；不同 referenceId 的同资产引用仍占不同槽位。当前 ComfyUI 实现用 `Set` 收集 `inputAssetIds`，它只是去重的资产血缘（文件型引用没有平台 assetId），不保证与槽位一一对应；不要把 Codex 同序数组合同误写成 ComfyUI 当前实现。此说明核对自 `editor.tsx#getUpstreamAssets`、`Txt2ImgNode.tsx` 的组装/上传/重排/提交及 `comfyui.controller.ts` 的快照保存。
 
-#### 旧重复数据的受控清理
+#### 创建和运行图生视频时预防重复
+
+创建使用多参考组的卡片时，连线只写 edges，直接上传只写 referenceMedia[group]；不要同时把同一首帧的已回灌文件名写进旧首帧字段（例如某工作流的 `114::image`，具体键必须从实时配置确认）。没有独立文件型引用意图的参考槽位在 canonical formValues 中显式置空，避免初始化时重新采用模板默认文件。合法独立 field 引用保留，并计入组内数量、排序及绑定。
+
+运行时基于当前引用组装临时 resolvedValues/apiJson，提交文件名和编译后的提示词都只属于本次请求与 Run 快照。不要把 resolvedValues、从 inputSnapshot 提取的运行文件名或编译提示词整体写回节点 formValues；图上保存的是原 token 提示词、稳定引用、排序及其他创作参数。恢复 seed 只更新 seed 字段。与当前 Txt2ImgNode.handleRun 一致，清空并填充参考槽位发生在 resolvedValues 副本中，不改变节点原始 formValues。
+
+创建、接手或更新后 refresh，按 connected → embedded → uploaded 的实际规则逐项确认引用数量和身份。发现同一首帧同时出现为 edge 与 field 时先核对来源：只有下面规定的迁移副本才能清理；不同合法 referenceId 不能自动合并。此检查不需要提交生成。
+
+#### 旧重复数据的受控清理步骤
 
 通过正常 `run`/session 取得租约并 refresh，基于最新 revision 用 `update_node.dataPatch` 清理目标数组中与当前连线 referenceId 相同的副本，上传数组内同 referenceId 也只保留首项。只删可确认的副本，不按 assetId 清理；未知身份或已断开的旧 edge 引用先报告并核对，不能猜成上传引用。ComfyUI 对各组及兼容 referenceImages 做同样核对，保留合法 field 文件配置。不要直接改 SQLite、绕过 lease 或用整图覆盖。
 
@@ -125,6 +133,8 @@ await s.operations([{ type: 'update_node', nodeId,
 ```
 
 ComfyUI 的 dataPatch 仅修改待清理数组；修改 `referenceMedia` 时必须展开原对象以保留其他组。清理不 disconnect、不删来源或资产，不改 `referenceImageOrder/referenceMediaOrder`、prompt、绑定、formValues、lastAssets/lastText/lastTextParts、Run 或候选产物。完成后 refresh，确认数组只保留直接上传引用，连线、完整排序、token 绑定和产物均保持；重新组装后的引用、顺序及提示词编号应与清理前一致。正常退出主动释放租约，无需生成验证。
+
+旧首帧迁入多参考组后，原 `formValues` 文件有时仍残留，产生独立 `field:` 引用；它与连线的 referenceId 不同，普通去重不会消除。不能按 assetId 或文件名直接合并。只有明确是旧首帧迁移副本、与当前连线文件逐字节或 SHA-256 相同，且该 field 引用没有独立排序项或提示词绑定时，才在正常租约下额外用 `update_node` 清空这一旧文件字段（展开原 formValues，保留其他参数），并记录清理原因。此时移除的是经确认的旧副本；合法独立 field 引用仍必须保留。验收确认首帧稳定引用、提示词编译序号与产物保持，不运行模型。
 
 ## 运行与媒体
 

@@ -6,6 +6,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Select,
   Spin,
   Tag,
   Typography,
@@ -25,6 +26,7 @@ const { Title, Text } = Typography;
 
 /** 画布列表项（后端只回元信息，不回大 graph） */
 interface CanvasListItem {
+  projects?: Array<{ id: string; name: string }>;
   id: string;
   name: string;
   createdAt: string;
@@ -64,6 +66,9 @@ export default function CanvasListPage() {
   const [list, setList] = useState<CanvasListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [projectFilter, setProjectFilter] = useState('all');
+  const projects = Array.from(new Map(list.flatMap(c => c.projects ?? []).map(p => [p.id,p])).values());
+  const visible = list.filter(c => projectFilter === 'all' || (projectFilter === 'none' ? !c.projects?.length : c.projects?.some(p => p.id === projectFilter)));
 
   // 重命名弹窗状态
   const [renameTarget, setRenameTarget] = useState<CanvasListItem | null>(null);
@@ -162,6 +167,7 @@ export default function CanvasListPage() {
         </Button>
       </div>
 
+      <Select style={{ width: 240, marginBottom: 16 }} value={projectFilter} onChange={setProjectFilter} options={[{value:'all',label:'全部画布'},{value:'none',label:'未关联项目'},...projects.map(p => ({value:p.id,label:p.name}))]} />
       {loading ? (
         <div style={{ textAlign: 'center', padding: 80 }}>
           <Spin size="large" />
@@ -182,7 +188,7 @@ export default function CanvasListPage() {
             gap: 16,
           }}
         >
-          {list.map((item) => (
+          {visible.map((item) => (
             <Card
               key={item.id}
               hoverable
@@ -227,6 +233,7 @@ export default function CanvasListPage() {
                 title={<span style={{ fontSize: 16 }}>{item.name}</span>}
                 description={
                   <div>
+                    <div style={{ marginBottom: 6 }}>{item.projects?.length ? item.projects.map(p => <Tag key={p.id} color="orange" onClick={e => { e.stopPropagation(); history.push(`/projects/${p.id}`); }}>{p.name}</Tag>) : <Tag>未关联项目</Tag>}</div>
                     <div>
                       <Tag color="blue">{item.nodeCount} 个节点</Tag>
                       <Tag color="green">资产 {formatBytes(item.assetSize)}</Tag>
