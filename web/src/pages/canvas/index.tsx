@@ -17,6 +17,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   ArrowRightOutlined,
+  CopyOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons';
 import { createClientUuid } from '@/utils/uuid';
@@ -231,21 +232,20 @@ export default function CanvasListPage() {
             >
               <Card.Meta
                 avatar={<FolderOpenOutlined style={{ fontSize: 28, color: '#fa8c16' }} />}
-                title={<span
-                  role="button"
-                  tabIndex={0}
-                  title={`${item.name}（单击复制标题）`}
-                  aria-label={`复制画布标题：${item.name}`}
-                  style={{ display: 'block', fontSize: 16, cursor: 'copy' }}
-                  onClick={(event) => { event.stopPropagation(); void copyCanvasTitle(item.name); }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void copyCanvasTitle(item.name);
-                    }
-                  }}
-                >{item.name}</span>}
+                title={<span style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: 4 }}>
+                  <span
+                    title={item.name}
+                    style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 16 }}
+                  >{item.name}</span>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CopyOutlined />}
+                    title="复制标题"
+                    aria-label={`复制画布标题：${item.name}`}
+                    onClick={(event) => { event.stopPropagation(); void copyCanvasTitle(item.name); }}
+                  />
+                </span>}
                 description={
                   <div>
                     <div style={{ marginBottom: 6 }}>{item.projects?.length ? item.projects.map(p => <Tag key={p.id} color="orange" onClick={e => { e.stopPropagation(); history.push(`/projects/${p.id}`); }}>{p.name}</Tag>) : <Tag>未关联项目</Tag>}</div>
