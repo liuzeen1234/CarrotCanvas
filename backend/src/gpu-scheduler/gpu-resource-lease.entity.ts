@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 export type LocalComputeProvider = 'comfyui' | 'cosyvoice3' | 'indextts2' | 'qwen3tts';
-export type LocalComputeLeaseStatus = 'waiting' | 'preparing' | 'active' | 'releasing' | 'released' | 'failed' | 'abandoned';
+export type LocalComputeLeaseStatus = 'waiting' | 'cooling' | 'preparing' | 'active' | 'releasing' | 'released' | 'failed' | 'abandoned';
 
 @Entity('local_compute_leases')
 @Index(['deviceKey', 'status'])

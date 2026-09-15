@@ -147,6 +147,8 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-15（GPU 降温闸门）：ComfyUI GenerationRun 在统一本机重型计算 FIFO 中排到队首后，先检查 `cuda:0` 温度；默认阈值 50°C，超温或遥测不可用时每 60 秒重试，最多等待 10 轮，期间租约状态为 `cooling` 且不会启动/准备 Provider 或提交 `/prompt`。最后一轮仍不合格时返回 `GPU_COOLDOWN_TIMEOUT` 或 `GPU_TEMPERATURE_UNAVAILABLE`，失败当前 Run 并一次性中止当时等待批次，避免后续视频各自再等十分钟；新的显式提交可重新评估。ComfyUI `startup:*` 轻量预热租约排除。`GET/PUT /api/local-compute-scheduler/thermal-policy` 提供持久策略，status 返回温控状态、最后温度、等待轮次与下次采样时间。22 suites / 194 tests、后端构建和 3100 重启通过；真实接口确认策略已持久化为 50°C / 60 秒 / 10 轮，验收时 GPU 0 为 35°C。
+
 - 2026-09-13（Skill 预防重复）：图生视频多参考组的解析文件名只进入临时 resolvedValues/apiJson 与 Run 快照；Agent 不把运行输入整体回写节点 formValues，不同时存组引用和旧首帧文件。无独立文件引用意图的参考槽位创建时显式置空，合法 field 引用继续保留。Skill 增加保存后重读与引用数量/身份核对；核对当前提交路径不回写 resolvedValues，未改运行实现、不生成。
 
 - 2026-09-13（旧首帧迁移副本）：指定业务画布 V01–V03 在多参考组连线之外仍保存 referenceMedia 连线副本及旧 formValues 114::image；后者以独立 field referenceId 展示，普通 referenceId 去重不消除。逐张 SHA-256 核对旧文件与连线图片一致且没有独立 field 排序/绑定后，通过正常 lease + update_node 清理这两处已确认副本，其他参数、边、绑定与视频产物不变；不修改组装规则、不合并合法独立引用，不执行生成。Skill 明确此有证据的清理例外，运行阶段状态不变。

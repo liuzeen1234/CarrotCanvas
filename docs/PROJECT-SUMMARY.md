@@ -208,7 +208,7 @@ pnpm start     # 生产运行后端（需先 build）
 ## 8. 2026-09-09 本地配音与本机重型计算调度增量
 
 - ✅ 新增 CosyVoice 3 / IndexTTS2 / Qwen3-TTS Python worker 和画布 `tts` 节点；worker 按需启动、同 Provider 可驻留、跨 Provider 必须退出旧进程后再启动新进程。
-- ✅ ComfyUI、CosyVoice 3、IndexTTS2、Qwen3-TTS 共用 SQLite FIFO 本机重型计算租约；提供 `/api/local-compute-scheduler/status`（旧 GPU 路径兼容）与各 Provider 可观测状态。
+- ✅ ComfyUI、CosyVoice 3、IndexTTS2、Qwen3-TTS 共用 SQLite FIFO 本机重型计算租约；正式生成在队首执行默认 `≤50°C` 的 GPU 温控检查（每分钟、最多 10 轮，超时中止当时等待批次），并提供 `/api/local-compute-scheduler/status`、持久温控策略接口（旧 GPU 路径兼容）与各 Provider 可观测状态。
 - ✅ 主模型与绝大部分辅助权重从 ModelScope 下载；只有 ModelScope 不存在的 Index BigVGAN 449 MB 辅助文件由官方加载器回退 hf-mirror。
 - ✅ 真实 CosyVoice、IndexTTS2、TTS→Z-Image 三段运行全部成功；画布音频结果支持播放、下载和历史候选。
 - ✅ ComfyUI 纳入进程托管：外部 Desktop/PID 必须弹窗确认，托管进程最多 3 次退出并核验 PID、端口、RAM/VRAM；失败时锁住队列而非继续加载下一 Provider。

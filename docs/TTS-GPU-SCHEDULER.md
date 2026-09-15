@@ -8,6 +8,7 @@
 
 ## 已拍板设计
 
+- 所有正式本机重型生成 Run 在 FIFO 队首、Provider 准备之前经过 `cuda:0` 温控闸门。默认要求温度 `≤ 50°C`；不满足或遥测不可用时每 60 秒复查，最多等待 10 轮。超时会失败当前 Run 并中止当时尚未开始的等待批次，不逐项重复等待；新的显式提交可重新评估。服务健康检查和 `startup:*` ComfyUI 轻量预热不属于生成 Run，不受闸门限制。
 - CosyVoice 3 与 IndexTTS2 使用各自独立的 Python 3.10 环境；Qwen3-TTS 复用 CosyVoice 的 CUDA/PyTorch 基础环境，并通过独立 overlay 隔离自身 Python 包。worker 均由调度器按需启动，切出时退出整个进程，不只调用模型 `/unload`。
 - TTS 进程退出最多尝试 3 次：先请求优雅关闭，再升级到结束进程；每次记录 PID、端口、RSS 与 CUDA reserved。只有端口消失且原 PID 不存在才算释放成功。
 - ComfyUI 运行也必须先取得相同的持久化 FIFO 租约。调度器托管的 ComfyUI 切出时等待队列清空，再按进程树退出，并在每次尝试前后记录端口所有者、working set/private bytes、Comfy allocator 与 `nvidia-smi` 整卡显存。
@@ -37,6 +38,7 @@
 ## 接口与画布节点
 
 - `GET /api/local-compute-scheduler/status`：当前租约、驻留 Provider 与等待队列；旧 `/api/gpu-scheduler/status` 暂作兼容入口。
+- `GET/PUT /api/local-compute-scheduler/thermal-policy`：读取或持久化温控策略（`enabled`、`thresholdC`、`retryIntervalMs`、`maxWaitRounds`）；status 的 `thermal` 同时公开当前降温状态。
 - `GET /api/tts/providers`：三个 worker 的在线及模型加载状态；Qwen3-TTS 额外报告当前 `modelVariant`。
 - `GET /api/comfyui/process-status`：8188 所有者、Desktop 进程、进程内存及显存观测；`managed` 明确表示当前监听进程是否被识别为 CarrotCanvas 托管实例。
 - `POST /api/comfyui/takeover/confirmation`：针对当前端口所有者和 Desktop 进程集合签发 5 分钟有效、一次性使用的确认令牌，并返回供页面或 AI 对话展示的快照。
@@ -58,6 +60,7 @@ CosyVoice 3 零样本克隆必须填写参考音频的逐字稿；IndexTTS2 可�
 
 ## 故障边界
 
+- 温控等待达到上限时返回 `GPU_COOLDOWN_TIMEOUT`；温度连续不可读时返回 `GPU_TEMPERATURE_UNAVAILABLE`。两者都会把持久 Run 和本机计算租约写为失败，并排空当时等待批次，但不会形成永久调度锁；用户稍后显式重试时重新测温。
 - ComfyUI 队列 120 秒内没有清空时拒绝切换，不会强杀现有生成。
 - Provider 进程连续 3 次未退出时中断切换，不继续处理排队任务；错误记录包含各次 PID/端口/RAM/VRAM 证据。
 - 调度器无法证明 8188 进程是自己启动时绝不自动结束；只有确认接管接口能关闭 Desktop。

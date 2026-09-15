@@ -33,7 +33,11 @@ describe('ComfyUI run cold start (real persistence, scheduler and runner)', () =
     db = await new DataSource({ type: 'better-sqlite3', database: ':memory:', synchronize: true,
       entities: [GenerationRun, GenerationRunHandoff, GenerationCandidateGroup, Asset, LocalComputeLease] }).initialize();
     runs = new RunsService(db.getRepository(GenerationRun), db.getRepository(GenerationRunHandoff), db.getRepository(GenerationCandidateGroup), db.getRepository(Asset));
-    scheduler = new LocalComputeSchedulerService(db.getRepository(LocalComputeLease));
+    scheduler = new LocalComputeSchedulerService(
+      db.getRepository(LocalComputeLease),
+      { snapshot: jest.fn(async () => ({ sampledAt: Date.now(), gpu: { devices: [{ index: 0, temperatureC: 40 }], error: null } })) } as any,
+      { get: jest.fn(async () => null), set: jest.fn() } as any,
+    );
     client = {
       getObjectInfo: jest.fn(async () => {
         events.push('object-info');

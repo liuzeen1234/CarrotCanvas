@@ -1,7 +1,31 @@
-import { ConflictException, HttpException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LocalComputeLease, LocalComputeProvider } from './gpu-resource-lease.entity';
+import { SettingsService } from '../settings/settings.service';
+import { SystemResourcesService } from '../system-resources/system-resources.service';
+
+const THERMAL_POLICY_KEY = 'local-compute-thermal-policy';
+const DEFAULT_THERMAL_POLICY: ThermalPolicy = { enabled: true, thresholdC: 50, retryIntervalMs: 60_000, maxWaitRounds: 10 };
+
+export interface ThermalPolicy {
+  enabled: boolean;
+  thresholdC: number;
+  retryIntervalMs: number;
+  maxWaitRounds: number;
+}
+
+export type ThermalPolicyInput = Partial<ThermalPolicy>;
+
+interface ThermalState {
+  status: 'idle' | 'checking' | 'cooling' | 'timed_out';
+  runId: string | null;
+  temperatureC: number | null;
+  sampledAt: number | null;
+  waitedRounds: number;
+  nextCheckAt: number | null;
+  error: string | null;
+}
 
 export interface LocalComputeProviderLifecycle {
   prepare(): Promise<void>;
@@ -29,16 +53,23 @@ export class LocalComputeSchedulerService implements OnModuleInit {
   private residentProvider: LocalComputeProvider | null = null;
   private advancing = false;
   private blocked: Record<string, unknown> | null = null;
+  private thermalPolicy: ThermalPolicy = { ...DEFAULT_THERMAL_POLICY };
+  private thermalState: ThermalState = this.idleThermalState();
 
-  constructor(@InjectRepository(LocalComputeLease) private readonly leases: Repository<LocalComputeLease>) {}
+  constructor(
+    @InjectRepository(LocalComputeLease) private readonly leases: Repository<LocalComputeLease>,
+    private readonly resources: SystemResourcesService,
+    private readonly settings: SettingsService,
+  ) {}
 
   async onModuleInit() {
+    await this.loadThermalPolicy();
     await this.migrateLegacyGpuLeases();
     await this.leases.createQueryBuilder().update().set({
       status: 'abandoned',
       releasedAt: Date.now(),
       error: { code: 'SCHEDULER_RESTARTED', message: '后端重启后资源所有权需要重新核实' },
-    }).where('status IN (:...statuses)', { statuses: ['waiting', 'preparing', 'active', 'releasing'] }).execute();
+    }).where('status IN (:...statuses)', { statuses: ['waiting', 'cooling', 'preparing', 'active', 'releasing'] }).execute();
   }
 
   registerProvider(name: LocalComputeProvider, lifecycle: LocalComputeProviderLifecycle) {
@@ -65,7 +96,17 @@ export class LocalComputeSchedulerService implements OnModuleInit {
       residentProvider: this.residentProvider,
       waiting: this.queue.map(({ lease }) => lease),
       blocked: this.blocked,
+      thermal: { policy: this.thermalPolicy, state: this.thermalState },
     };
+  }
+
+  getThermalPolicy() { return { ...this.thermalPolicy }; }
+
+  async updateThermalPolicy(input: ThermalPolicyInput) {
+    const policy = validateThermalPolicy({ ...this.thermalPolicy, ...input });
+    await this.settings.set(THERMAL_POLICY_KEY, JSON.stringify(policy));
+    this.thermalPolicy = policy;
+    return this.getThermalPolicy();
   }
 
   clearBlock() { this.blocked = null; void this.advance(); }
@@ -82,6 +123,7 @@ export class LocalComputeSchedulerService implements OnModuleInit {
         await this.providers.get(this.residentProvider)?.release();
         this.residentProvider = null;
       }
+      await this.waitForSafeTemperature(waiter);
       preparingProvider = true;
       await this.providers.get(waiter.lease.provider)?.prepare();
       this.residentProvider = waiter.lease.provider;
@@ -129,6 +171,79 @@ export class LocalComputeSchedulerService implements OnModuleInit {
     }
   }
 
+  private async waitForSafeTemperature(waiter: Waiter) {
+    const policy = { ...this.thermalPolicy };
+    if (!policy.enabled || waiter.lease.runId.startsWith('startup:')) {
+      this.thermalState = this.idleThermalState();
+      return;
+    }
+    waiter.lease.status = 'cooling';
+    await this.leases.save(waiter.lease);
+    for (let waitedRounds = 0; waitedRounds <= policy.maxWaitRounds; waitedRounds += 1) {
+      this.thermalState = { status: 'checking', runId: waiter.lease.runId, temperatureC: null,
+        sampledAt: null, waitedRounds, nextCheckAt: null, error: null };
+      const sample = await this.sampleCuda0Temperature();
+      if (sample.temperatureC != null && sample.temperatureC <= policy.thresholdC) {
+        this.thermalState = { status: 'idle', runId: null, temperatureC: sample.temperatureC,
+          sampledAt: sample.sampledAt, waitedRounds, nextCheckAt: null, error: null };
+        return;
+      }
+      if (waitedRounds === policy.maxWaitRounds) {
+        const code = sample.temperatureC == null ? 'GPU_TEMPERATURE_UNAVAILABLE' : 'GPU_COOLDOWN_TIMEOUT';
+        const message = sample.temperatureC == null
+          ? `连续 ${policy.maxWaitRounds} 轮无法读取 GPU 0 温度，已中止本批本机重型计算任务`
+          : `GPU 0 温度 ${sample.temperatureC}°C，等待 ${policy.maxWaitRounds} 轮后仍高于 ${policy.thresholdC}°C，已中止本批本机重型计算任务`;
+        const reason = { code, message, deviceKey: 'cuda:0', thresholdC: policy.thresholdC,
+          lastTemperatureC: sample.temperatureC, waitedRounds, waitedMs: waitedRounds * policy.retryIntervalMs,
+          telemetryError: sample.error };
+        this.thermalState = { status: 'timed_out', runId: waiter.lease.runId, temperatureC: sample.temperatureC,
+          sampledAt: sample.sampledAt, waitedRounds, nextCheckAt: null, error: message };
+        await this.rejectWaitingBatch(reason);
+        throw new ConflictException(reason);
+      }
+      const nextCheckAt = Date.now() + policy.retryIntervalMs;
+      this.thermalState = { status: 'cooling', runId: waiter.lease.runId, temperatureC: sample.temperatureC,
+        sampledAt: sample.sampledAt, waitedRounds, nextCheckAt, error: sample.error };
+      await this.sleep(policy.retryIntervalMs);
+    }
+  }
+
+  private async sampleCuda0Temperature() {
+    try {
+      const snapshot = await this.resources.snapshot();
+      const device = snapshot.gpu.devices.find((item) => item.index === 0);
+      return { temperatureC: device?.temperatureC ?? null, sampledAt: snapshot.sampledAt,
+        error: device?.temperatureC == null ? snapshot.gpu.error || 'GPU 0 温度不可用' : null };
+    } catch (error) {
+      return { temperatureC: null, sampledAt: Date.now(), error: (error as Error).message };
+    }
+  }
+
+  private async rejectWaitingBatch(reason: Record<string, unknown>) {
+    const pending = this.queue.splice(0);
+    await Promise.all(pending.map(async (waiter) => {
+      waiter.lease.status = 'failed';
+      waiter.lease.error = reason;
+      waiter.lease.releasedAt = Date.now();
+      await this.leases.save(waiter.lease);
+      waiter.reject(new ConflictException(reason));
+    }));
+  }
+
+  private sleep(ms: number) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+  private idleThermalState(): ThermalState {
+    return { status: 'idle', runId: null, temperatureC: null, sampledAt: null,
+      waitedRounds: 0, nextCheckAt: null, error: null };
+  }
+
+  private async loadThermalPolicy() {
+    const row = await this.settings.get(THERMAL_POLICY_KEY);
+    if (!row?.value) return;
+    try { this.thermalPolicy = validateThermalPolicy(JSON.parse(row.value)); }
+    catch (error) { this.logger.warn(`忽略无效温控配置：${(error as Error).message}`); }
+  }
+
   private async failClosed(reason: Record<string, unknown>) {
     this.blocked = reason;
     const pending = this.queue.splice(0);
@@ -169,4 +284,13 @@ function serializeError(error: unknown) {
 
 function isFailClosed(error: Record<string, unknown>) {
   return ['PROVIDER_RELEASE_FAILED', 'PROVIDER_STATE_UNCONFIRMED', 'COMFYUI_TAKEOVER_REQUIRED', 'COMFYUI_TAKEOVER_FAILED'].includes(String(error.code || ''));
+}
+
+function validateThermalPolicy(input: ThermalPolicyInput): ThermalPolicy {
+  const policy = { ...DEFAULT_THERMAL_POLICY, ...input };
+  if (typeof policy.enabled !== 'boolean') throw new BadRequestException('enabled 必须是布尔值');
+  if (!Number.isFinite(policy.thresholdC) || policy.thresholdC < 30 || policy.thresholdC > 90) throw new BadRequestException('thresholdC 必须在 30–90°C');
+  if (!Number.isInteger(policy.retryIntervalMs) || policy.retryIntervalMs < 1_000 || policy.retryIntervalMs > 600_000) throw new BadRequestException('retryIntervalMs 必须在 1000–600000 毫秒');
+  if (!Number.isInteger(policy.maxWaitRounds) || policy.maxWaitRounds < 1 || policy.maxWaitRounds > 60) throw new BadRequestException('maxWaitRounds 必须在 1–60');
+  return policy;
 }
