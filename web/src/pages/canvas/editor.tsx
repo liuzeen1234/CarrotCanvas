@@ -171,6 +171,18 @@ function CanvasEditorInner() {
   // 受控节点图：C5 编辑器内可添加/删除/连线；自动保存由 C7 落地
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const [previewTopNodeId, setPreviewTopNodeId] = useState<string | null>(null);
+  // 只读置顶仅投影到 React Flow，原始 nodes 仍用于保存和 revision 比较。
+  const displayedNodes = useMemo(() => {
+    if (canWrite || !previewTopNodeId || !nodes.some((node) => node.id === previewTopNodeId)) return nodes;
+    const topZIndex = Math.max(1000, ...nodes.map((node) => node.zIndex ?? 0)) + 1;
+    return nodes.map((node) => node.id === previewTopNodeId ? {
+      ...node,
+      zIndex: topZIndex,
+      className: [node.className, 'canvas-readonly-preview-active'].filter(Boolean).join(' '),
+    } : node);
+  }, [canWrite, nodes, previewTopNodeId]);
+  useEffect(() => { if (canWrite) setPreviewTopNodeId(null); }, [canWrite]);
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const [interactionMode, setInteractionMode] = useState<'hand' | 'pointer'>('hand');
   const [spacePanActive, setSpacePanActive] = useState(false);
@@ -301,6 +313,7 @@ function CanvasEditorInner() {
     setReady(false);
     setNodes([]);
     setEdges([]);
+    setPreviewTopNodeId(null);
     setViewport(null);
     setSaveStatus('idle');
     setControlReady(false);
@@ -1366,7 +1379,7 @@ function CanvasEditorInner() {
         ) : doc && ready ? (
           <CanvasNodeDataContext.Provider value={nodeDataApi}>
             <ReactFlow
-              nodes={nodes}
+              nodes={displayedNodes}
               edges={edges}
               nodesDraggable={canWrite}
               nodesConnectable={canWrite}
@@ -1374,7 +1387,9 @@ function CanvasEditorInner() {
               panOnDrag={effectiveInteractionMode === 'hand'}
               selectionOnDrag={effectiveInteractionMode === 'pointer'}
               selectionMode={SelectionMode.Partial}
+              onNodeClick={(_event, node) => { if (!canWrite) setPreviewTopNodeId(node.id); }}
               onPaneClick={() => {
+                setPreviewTopNodeId(null);
                 if (effectiveInteractionMode !== 'pointer') return;
                 setNodes((items) => items.map((node) => node.selected ? { ...node, selected: false } : node));
                 setEdges((items) => items.map((edge) => edge.selected ? { ...edge, selected: false } : edge));

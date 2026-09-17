@@ -50,6 +50,25 @@ body.canvas-editor-page .ant-pro-layout-content {
   white-space: nowrap;
 }
 
+.react-flow__node.canvas-readonly-preview-active {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(22, 119, 255, 0.3), 0 0 14px 4px rgba(22, 119, 255, 0.35);
+}
+
+.react-flow__node.canvas-readonly-preview-active::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 13px;
+  padding: 3px;
+  background: conic-gradient(from 25deg, #a9dcff, #1677ff, #69b1ff, #0958d9, #a9dcff);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
 .canvas-floating-title .canvas-title-copy-button {
   flex: 0 0 auto;
   width: 24px;
