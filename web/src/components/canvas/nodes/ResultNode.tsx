@@ -30,6 +30,7 @@ function ResultPreviewNode(props: NodeProps) {
   const previewItems = (kind === 'video' ? videos : kind === 'image' ? images : []) as CanvasMediaItem[];
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
+
   return <div className={`canvas-node canvas-node--result${props.selected ? ' selected' : ''}`}>
     <Handle type="target" position={Position.Left} id={resultTargetHandle(kind)} className={`canvas-handle--${kind}`} title={`${kindLabel}输入`} />
     <Handle type="source" position={Position.Right} id={resultSourceHandle(kind)} className={`canvas-handle--${kind}`} title={`${kindLabel}输出`} />

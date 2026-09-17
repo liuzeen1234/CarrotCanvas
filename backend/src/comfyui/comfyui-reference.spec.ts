@@ -25,6 +25,22 @@ describe('ComfyUI reference and connected scalar inputs', () => {
     expect(raw.r.inputs['ref_videos.ref_video_0']).toBe('test.mp4');
     expect(prepareComfyInputs(prepared, service.analyze(prepared, info))).toEqual(prepared);
   });
+  it('restores the required audio VAE connection when upgrading a legacy MiniMax H3 workflow', () => {
+    const raw = {
+      h3: { class_type: 'MiniMaxH3ReferenceToVideo', inputs: {} },
+      sampler: { class_type: 'SamplerCustomAdvanced', inputs: { latent_image: ['h3', 1] } },
+      audioVae: { class_type: 'VAELoader', inputs: { vae_name: 'minimax_h3_audio_vae_fp32.safetensors' } },
+      audioDecode: { class_type: 'VAEDecodeAudio', inputs: { samples: ['sampler', 0], vae: ['audioVae', 0] } },
+    };
+    const prepared = prepareComfyInputs(raw, service.analyze(raw, info)) as Record<string, any>;
+    expect(prepared.h3.inputs.audio_vae).toEqual(['audioVae', 0]);
+    expect(Object.values(prepared)).toContainEqual(expect.objectContaining({
+      class_type: 'SaveAudio',
+      inputs: { audio: ['audioDecode', 0], filename_prefix: 'audio/MiniMax_H3' },
+    }));
+    expect(raw.h3.inputs).toEqual({});
+    expect(prepareComfyInputs(prepared, service.analyze(prepared, info))).toEqual(prepared);
+  });
   it('converts connected numeric, boolean and enum text and rejects invalid values', () => {
     const raw = { c: { class_type: 'Controls', inputs: { steps: '4', turbo: 'false', ratio: '16:9' } } };
     const prepared = prepareComfyInputs(raw, service.analyze(raw, info)) as Record<string, any>;

@@ -9,6 +9,40 @@ export const REFERENCE_INPUTS = [
   { prefix: 'ref_audios.ref_audio_', count: 3, kind: 'audio', label: '独立参考音频' },
 ] as const;
 
+function inferMiniMaxAudioChain(graph: Record<string, any>, h3NodeId: string): { audioVae: unknown[]; decoderId: string } | null {
+  const samplerIds = Object.entries(graph)
+    .filter(([, node]) => Array.isArray(node?.inputs?.latent_image) && node.inputs.latent_image[0] === h3NodeId)
+    .map(([id]) => id);
+  const connected = Object.entries(graph)
+    .filter(([, node]) => node?.class_type === 'VAEDecodeAudio'
+      && Array.isArray(node?.inputs?.samples)
+      && samplerIds.includes(node.inputs.samples[0])
+      && Array.isArray(node?.inputs?.vae))
+    .map(([decoderId, node]) => ({ audioVae: node.inputs.vae as unknown[], decoderId }));
+  if (connected.length === 1) return connected[0];
+
+  const allAudioDecoders = Object.entries(graph)
+    .filter(([, node]) => node?.class_type === 'VAEDecodeAudio' && Array.isArray(node?.inputs?.vae))
+    .map(([decoderId, node]) => ({ audioVae: node.inputs.vae as unknown[], decoderId }));
+  return allAudioDecoders.length === 1 ? allAudioDecoders[0] : null;
+}
+
+function ensureMiniMaxAudioOutput(graph: Record<string, any>, h3NodeId: string, h3Node: any) {
+  const chain = inferMiniMaxAudioChain(graph, h3NodeId);
+  if (!chain) return;
+  if (!Array.isArray(h3Node.inputs.audio_vae)) h3Node.inputs.audio_vae = chain.audioVae;
+  const alreadySaved = Object.values(graph).some(node => /^SaveAudio(?:Advanced|MP3|Opus)?$/.test(node?.class_type)
+    && Array.isArray(node?.inputs?.audio) && node.inputs.audio[0] === chain.decoderId);
+  if (alreadySaved) return;
+  let outputId = `carrot_h3_audio_${h3NodeId.replace(/\W/g, '_')}`;
+  while (graph[outputId]) outputId += '_';
+  graph[outputId] = {
+    class_type: 'SaveAudio',
+    inputs: { audio: [chain.decoderId, 0], filename_prefix: 'audio/MiniMax_H3' },
+    _meta: { title: 'H3 独立音频' },
+  };
+}
+
 /** Resolve filename-valued reference sockets before freezing the provider snapshot. */
 export function prepareComfyInputs(raw: Record<string, unknown>, schema: SchemaAnalysis): Record<string, unknown> {
   const graph = JSON.parse(JSON.stringify(raw)) as Record<string, any>;
@@ -47,6 +81,7 @@ export function prepareComfyInputs(raw: Record<string, unknown>, schema: SchemaA
   }
   for (const [nodeId, node] of Object.entries(graph)) {
     if (node.class_type !== 'MiniMaxH3ReferenceToVideo') continue;
+    ensureMiniMaxAudioOutput(graph, nodeId, node);
     for (const spec of REFERENCE_INPUTS) {
       const present = (i: number) => { const v = node.inputs[`${spec.prefix}${i}`]; return v !== undefined && v !== null && v !== ''; };
       for (let i = 0; i < spec.count; i++) if (present(i)) {

@@ -1,5 +1,5 @@
 import { ViewportImage, ViewportVideo, ViewportAudio } from './ViewportMedia';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Space, Tag, Typography, message } from 'antd';
 import { CheckOutlined, CopyOutlined, DownloadOutlined, PlayCircleFilled, UndoOutlined } from '@ant-design/icons';
 import { request } from 'umi';
@@ -14,6 +14,7 @@ export interface NodeHistoryRun {
   status: string;
   recovery?: RecoveryMetadata | null;
   outputAssetIds: string[];
+  outputAssets?: Array<{ assetId: string; kind: string; filename?: string; mime?: string }>;
   outputText: string | null;
   outputParts?: { positive: string; negative: string } | null;
   inputSnapshot?: { carrotOutputMode?: string; carrotPromptIntent?: string } | null;
@@ -38,13 +39,16 @@ export default function NodeOutputHistory({ canvasId, nodeId, cardName, kind, pr
   const [runs, setRuns] = useState<NodeHistoryRun[]>([]);
   const [sourceRuns, setSourceRuns] = useState<NodeHistoryRun[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const mediaItems = useMemo<CanvasMediaItem[]>(() => kind === 'text' || kind === 'audio' ? [] : runs.flatMap((run) => run.outputAssetIds.map((assetId) => ({ assetId, url: `/api/assets/${assetId}`, kind }))), [kind, runs]);
+  const assetIdsForKind = useCallback((run: NodeHistoryRun) => run.outputAssets?.length
+    ? run.outputAssets.filter((asset) => asset.kind === kind).map((asset) => asset.assetId)
+    : run.outputAssetIds, [kind]);
+  const mediaItems = useMemo<CanvasMediaItem[]>(() => kind === 'text' || kind === 'audio' ? [] : runs.flatMap((run) => assetIdsForKind(run).map((assetId) => ({ assetId, url: `/api/assets/${assetId}`, kind }))), [assetIdsForKind, kind, runs]);
   const load = async () => {
     if (!canvasId) return;
     try {
       const result = await request<{ items: NodeHistoryRun[]; recoverableRuns?: NodeHistoryRun[] }>(`/api/runs?canvasId=${encodeURIComponent(canvasId)}&nodeId=${encodeURIComponent(nodeId)}&status=succeeded&pageSize=20${kind === 'text' ? '' : '&includeRecoverable=true'}`);
       setSourceRuns(result.recoverableRuns || []);
-      const visibleRuns = result.items.filter((run) => run.outputAssetIds.length || run.outputText);
+      const visibleRuns = result.items.filter((run) => assetIdsForKind(run).length || run.outputText);
       setRuns(visibleRuns);
       if (readOnly) {
         if (kind === 'text') {
@@ -58,7 +62,7 @@ export default function NodeOutputHistory({ canvasId, nodeId, cardName, kind, pr
     }
     catch { /* 历史不可用不影响节点运行 */ }
   };
-  useEffect(() => { void load(); }, [canvasId, nodeId, readOnly, refreshKey]);
+  useEffect(() => { void load(); }, [canvasId, nodeId, readOnly, refreshKey, assetIdsForKind]);
 
   const chooseAsset = async (run: NodeHistoryRun, assetId: string) => {
     if (!canvasId || readOnly) return;
@@ -85,9 +89,9 @@ export default function NodeOutputHistory({ canvasId, nodeId, cardName, kind, pr
 
   if (!runs.length && !sourceRuns.some((run) => ['failed', 'cancelled', 'needs_attention'].includes(run.status))) return null;
   return <div className="canvas-node-history">
-    <Space><Typography.Text type="secondary" style={{ fontSize: 12 }}>生成历史 · {runs.reduce((sum, run) => sum + Math.max(1, run.outputAssetIds.length), 0)}</Typography.Text><RunRecovery runs={sourceRuns} currentAssetId={currentAssetId} readOnly={readOnly} control={control} onRecovered={load} /></Space>
+    <Space><Typography.Text type="secondary" style={{ fontSize: 12 }}>生成历史 · {runs.reduce((sum, run) => sum + Math.max(1, assetIdsForKind(run).length), 0)}</Typography.Text><RunRecovery runs={sourceRuns} currentAssetId={currentAssetId} readOnly={readOnly} control={control} onRecovered={load} /></Space>
     <div className="canvas-node-history__rail">
-      {runs.flatMap((run) => kind === 'text' ? [<div key={run.id}><button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span><RunDuration timestamps={run} />{seedActions(run)}{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button></div>] : run.outputAssetIds.map((assetId) => {
+      {runs.flatMap((run) => kind === 'text' ? [<div key={run.id}><button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span><RunDuration timestamps={run} />{seedActions(run)}{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button></div>] : assetIdsForKind(run).map((assetId) => {
         const current = run.candidateGroup?.selectedAssetId === assetId;
         return <div key={assetId} className={`canvas-node-history__media${current ? ' is-current' : ''}`}>
           {kind === 'audio' ? <ViewportAudio controls src={`/api/assets/${assetId}`} style={{ width: '100%' }} /> : <button type="button" className="canvas-media-trigger canvas-media-trigger--history" onClick={() => setPreviewIndex(mediaItems.findIndex((item) => item.assetId === assetId))} aria-label={`放大预览${kind === 'video' ? '视频' : '图片'}`}>{kind === 'video' ? <><ViewportVideo src={`/api/assets/${assetId}`} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <ViewportImage src={`/api/assets/${assetId}`} alt="历史图片产物" />}</button>}

@@ -8,6 +8,8 @@ export interface IoSnapshot {
 }
 export interface IoInputGroup {
   id: string; name: string; note: string; sourceType: 'file' | 'canvas'; sourceCanvasId?: string; sourceCanvasName?: string;
+  /** 单项画布输出订阅；缺省表示跟踪来源画布的完整输出清单。 */
+  sourceItemKey?: string;
   activeSnapshotId: string; snapshots: IoSnapshot[];
 }
 export interface CanvasIoState { schemaVersion: 1; inputs: IoInputGroup[]; removedInputs?: IoInputGroup[]; outputs: IoSnapshot[]; }

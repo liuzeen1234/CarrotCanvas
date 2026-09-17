@@ -4,8 +4,11 @@ export type GenerationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' 
 
 /** Success refers to registering a recovered output, not to a new provider invocation. */
 export interface RunRecovery {
+  kind?: 'recovery' | 'canvas_migration';
   sourceRunId: string;
   sourceStatus: GenerationRunStatus;
+  sourceCanvasId?: string;
+  sourceAssetId?: string;
   reason: string;
   evidence: string;
   recoveredAt: number;

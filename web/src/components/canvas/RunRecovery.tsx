@@ -3,14 +3,15 @@ import { Alert, Button, Form, Input, Modal, Select, Space, Tag, Typography, mess
 import { request } from 'umi';
 
 export interface RecoveryMetadata {
-  sourceRunId: string; sourceStatus: string; reason: string; evidence: string; recoveredAt: number;
+  kind?: 'recovery' | 'canvas_migration'; sourceRunId: string; sourceStatus: string; sourceCanvasId?: string; sourceAssetId?: string; reason: string; evidence: string; recoveredAt: number;
 }
 export interface RecoverableRun { id: string; status: string; createdAt?: string; recovery?: RecoveryMetadata | null; }
 export const isRecoverableRun = (run: RecoverableRun) => !run.recovery && ['failed', 'cancelled', 'needs_attention'].includes(run.status);
 
 export function RecoveryLabel({ recovery }: { recovery?: RecoveryMetadata | null }) {
   if (!recovery) return null;
-  return <Tag color="purple" title={`原 Run：${recovery.sourceRunId}\n原状态：${recovery.sourceStatus}\n原因：${recovery.reason}\n来源与关联依据：${recovery.evidence}`}>补录恢复</Tag>;
+  const migrated = recovery.kind === 'canvas_migration';
+  return <Tag color="purple" title={`原 Run：${recovery.sourceRunId}\n原状态：${recovery.sourceStatus}${recovery.sourceCanvasId ? `\n来源画布：${recovery.sourceCanvasId}` : ''}${recovery.sourceAssetId ? `\n来源资产：${recovery.sourceAssetId}` : ''}\n原因：${recovery.reason}\n来源与关联依据：${recovery.evidence}`}>{migrated ? '画布迁移' : '补录恢复'}</Tag>;
 }
 
 /** Shared UI for node history and canvas timeline. Never invokes a generation provider. */

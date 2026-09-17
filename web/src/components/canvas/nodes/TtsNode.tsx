@@ -6,7 +6,7 @@ import { Alert, Button, InputNumber, Popconfirm, Select, Space, Tag, Typography 
 import { DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { request } from 'umi';
 import { CanvasNodeDataContext } from '../context';
-import { ImeSafeInput, ImeSafeTextArea } from '../ImeSafeInput';
+import { ImeSafeTextArea } from '../ImeSafeInput';
 import NodeOutputHistory from '../NodeOutputHistory';
 import { resultSourceHandle, resultTargetHandle, type TtsNodeData } from './types';
 import { confirmComfyTakeover } from '../../comfyui/comfyTakeover';
@@ -27,6 +27,8 @@ export default function TtsNode(props: NodeProps) {
   const pauseError = useMemo(() => validatePauseText(effectiveText), [effectiveText]);
   const voiceMode = data.voiceMode ?? 'custom';
   const compatiblePresets = voicePresets.filter((item) => item.providers.includes(data.provider));
+  const providerLabel = data.provider === 'cosyvoice3' ? 'CosyVoice 3' : data.provider === 'indextts2' ? 'IndexTTS2' : 'Qwen3-TTS';
+  const modeLabel = voiceMode === 'custom' ? `自定义参考音色${voice ? '（已连接参考）' : '（缺少参考）'}` : voiceMode === 'design' ? '文字设计音色（无需参考）' : '官方预设音色（无需参考）';
   const update = (patch: Partial<TtsNodeData>) => updateNodeData(props.id, patch);
 
   useEffect(() => {
@@ -76,6 +78,7 @@ export default function TtsNode(props: NodeProps) {
       <NodeCardFields name={data.cardName} note={data.note} readOnly={readOnly} onChange={update} />
       <Select value={data.provider} disabled={readOnly || busy} onChange={(provider) => update({ provider, voiceMode: provider === 'qwen3tts' ? 'preset' : voiceMode === 'design' ? 'preset' : voiceMode, presetVoiceId: provider === 'qwen3tts' ? 'qwen-vivian' : 'cosyvoice-demo-female' })} options={[{ value: 'cosyvoice3', label: 'CosyVoice 3 · 自然旁白' }, { value: 'indextts2', label: 'IndexTTS2 · 情绪对白' }, { value: 'qwen3tts', label: 'Qwen3-TTS · 多音色 / 文字设计' }]} style={{ width: '100%' }} />
       <Select value={voiceMode} disabled={readOnly || busy} onChange={(value) => update({ voiceMode: value })} options={data.provider === 'qwen3tts' ? [{ value: 'preset', label: '官方预设音色' }, { value: 'design', label: '文字设计音色 · 无需参考音频' }] : [{ value: 'preset', label: '预设音色 · 无需参考音频' }, { value: 'custom', label: '自定义音色 · 参考音频克隆' }]} style={{ width: '100%' }} />
+      <Typography.Text type="secondary" className="canvas-node__tts-mode">当前运行方式：{providerLabel} · {modeLabel}</Typography.Text>
       {voiceMode === 'preset' ? <Select value={data.presetVoiceId} disabled={readOnly || busy} placeholder="选择音色" onChange={(presetVoiceId) => update({ presetVoiceId })} options={compatiblePresets.map((item) => ({ value: item.id, label: `${item.name} · ${item.description}` }))} style={{ width: '100%' }} /> : voiceMode === 'custom' ? <Tag color={voice ? 'success' : 'warning'}>{voice ? '已连接音色参考' : '请连接音频输入作为音色参考'}</Tag> : <Tag color="blue">用文字描述性别、年龄、音色、口音与表演方式</Tag>}
       {data.provider === 'indextts2' && emotion ? <Tag color="purple">已连接情绪参考</Tag> : null}
       {upstreamText.connected ? <Typography.Text type="secondary">配音文本来自上游</Typography.Text> : <ImeSafeTextArea value={data.text} onChange={(text) => update({ text })} disabled={readOnly} autoSize={{ minRows: 3, maxRows: 8 }} placeholder={'输入文本；精确停顿用 <pause ms="800"/>'} />}
@@ -83,7 +86,7 @@ export default function TtsNode(props: NodeProps) {
       {pauseError ? <Alert type="error" showIcon message={pauseError} /> : null}
       {data.provider === 'cosyvoice3' && voiceMode === 'custom' ? <ImeSafeTextArea value={data.referenceText} onChange={(referenceText) => update({ referenceText })} disabled={readOnly} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="参考音频对应的准确文字（必填）" /> : null}
       {data.provider === 'qwen3tts' ? <Select value={data.language || 'Auto'} disabled={readOnly || busy} onChange={(language) => update({ language })} options={['Auto','Chinese','English','Japanese','Korean','German','French','Russian','Portuguese','Spanish','Italian'].map((value) => ({ value, label: value }))} style={{ width: '100%' }} /> : null}
-      <ImeSafeInput value={data.instruction} onChange={(instruction) => update({ instruction })} disabled={readOnly} placeholder={voiceMode === 'design' ? '例：30 岁低沉磁性男声，冷静克制，略带沙哑（必填）' : data.provider === 'cosyvoice3' ? '风格指令（可选）' : '情绪 / 表演描述（可选）'} />
+      <ImeSafeTextArea className="canvas-node__tts-instruction" value={data.instruction} onChange={(instruction) => update({ instruction })} disabled={readOnly} autoSize={{ minRows: 2 }} placeholder={voiceMode === 'design' ? '例：30 岁低沉磁性男声，冷静克制，略带沙哑（必填）' : data.provider === 'cosyvoice3' ? '风格指令（可选）' : '情绪 / 表演描述（可选）'} />
       {data.provider === 'cosyvoice3' ? <InputNumber value={data.speed} min={0.5} max={2} step={0.05} disabled={readOnly} onChange={(speed) => update({ speed: speed || 1 })} addonBefore="语速" style={{ width: '100%' }} /> : null}
       {busy ? <Tag color="processing">正在等待本机重型计算资源或生成配音</Tag> : null}
       {error ? <Alert type="error" showIcon message={error} /> : null}

@@ -82,6 +82,31 @@ describe('Projects and independent canvas IO snapshots (SQLite + real files)', (
     await canvas.remove(a.id, await proof(a)); expect(await readFile((await assets.read(local.assetId)).absPath, 'utf8')).toBe('旧文字');
     expect((await io.preview(b.id, group.id)).available).toBe(false); expect((await io.command(b.id, request, 'input.capture', payload)).replayed).toBe(true);
   });
+  it('selects one canvas output and atomically binds it to the existing empty input node', async () => {
+    const source = await make('素材画布'); const target = await make('工作画布');
+    await command(source, 'output.publish', { items: [{ text: '第一项', name: '台词一' }, { text: '第二项', name: '台词二' }] });
+    const placeholderId = randomUUID();
+    await canvas.applyOperations(target.id, { ...await proof(target), operations: [{ type: 'create_node', node: { id: placeholderId, type: 'result', position: { x: 30, y: 40 }, data: { inputMode: true, kind: 'text', lastText: '', lastAssets: [], note: '' } } }] });
+    const published = await output(source); const picked = published.items[1];
+    await command(target, 'input.capture', { sourceCanvasId: source.id, sourceOutputsVersion: published.version, sourceItemKey: picked.itemKey, bindNodeId: placeholderId });
+    const doc = await canvas.findOne(target.id); const group = doc.io.inputs[0]; const local = group.snapshots[0].items[0];
+    expect(doc.graph.nodes).toHaveLength(1); expect(doc.graph.nodes[0].id).toBe(placeholderId);
+    expect(doc.graph.nodes[0].data).toMatchObject({ inputMode: true, inputGroupId: group.id, inputItemKey: picked.itemKey, kind: 'text', lastText: '第二项' });
+    expect(group.snapshots[0].items).toHaveLength(1); expect(local.sourceAssetId).toBe(picked.assetId); expect(local.assetId).not.toBe(picked.assetId);
+    expect((await assets.read(local.assetId)).asset.canvasId).toBe(target.id);
+    await command(source, 'output.publish', { text: '第三项', name: '不应进入单项输入' });
+    expect((await io.preview(target.id, group.id)).changes).toHaveLength(0);
+    await command(target, 'input.update', { groupId: group.id });
+    const updated = (await io.get(target.id)).inputs[0]; expect(updated.sourceItemKey).toBe(picked.itemKey); expect(updated.snapshots.at(-1).items).toHaveLength(1);
+  });
+  it('rejects a canvas output whose type does not match the empty input node', async () => {
+    const source = await make(); const target = await make(); await command(source, 'output.publish', { text: '文字' });
+    const placeholderId = randomUUID();
+    await canvas.applyOperations(target.id, { ...await proof(target), operations: [{ type: 'create_node', node: { id: placeholderId, type: 'result', position: { x: 0, y: 0 }, data: { inputMode: true, kind: 'image', lastText: '', lastAssets: [] } } }] });
+    const published = await output(source); const before = (await canvas.findOne(target.id)).revision;
+    await expect(command(target, 'input.capture', { sourceCanvasId: source.id, sourceItemKey: published.items[0].itemKey, bindNodeId: placeholderId })).rejects.toMatchObject({ response: { code: 'INPUT_BINDING_MISMATCH' } });
+    expect((await canvas.findOne(target.id)).revision).toBe(before); expect((await io.get(target.id)).inputs).toHaveLength(0);
+  });
   it('explicit update makes a new version, preserves bindings and old run inputs, and supports rollback', async () => {
     const a = await make(); const b = await make(); await command(a, 'output.publish', { text: '第一版' });
     await command(b, 'input.capture', { sourceCanvasId: a.id }); let group = (await io.get(b.id)).inputs[0]; const old = group.snapshots[0];

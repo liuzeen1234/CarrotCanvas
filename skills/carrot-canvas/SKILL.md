@@ -59,6 +59,8 @@ ComfyUI 的 `referenceMedia[group]` 同样只存卡片直接上传的素材，�
 
 ComfyUI 的 MiniMax H3 高质量图生视频卡提供四组多参考入口：图片最多 9 张、视频最多 3 个、视频配音最多 3 路、独立音频最多 3 路。图片、视频和独立音频使用稳定 `@` 引用，提交时分别编译为 `<Picture N>`、`<Video N>`、`<Audio N>`；视频配音按当前位置与同序号参考视频配对。旧“全能参考”分类已从画布入口下线，不要创建或改绑到该工作流。Z-Image Turbo 通用图生图仅支持 1 张参考图。精确句柄、节点数据与提交转换见节点与操作约定；Agent 必须读取实时 workflow API JSON/inputConfig 确认能力，不能因为统一 UI 而假定其他 ComfyUI 工作流支持多媒体参考。
 
+AI 直接为 MiniMax H3 卡片新写、扩写、改写或审查生成提示词时，必须先读 [MiniMax H3 提示词写作](references/minimax-h3-prompting.md)。按实时工作流和素材角色选择基础/关键帧模式或 Ref2VA，不把通用视频模型的正负提示词格式套给 H3。卡片 canonical prompt 保留稳定 `@` token，由提交路径按当时组内顺序编译官方标签；不得把会因重排漂移的 `<Picture N>`、`<Video N>`、`<Audio N>` 直接当作稳定素材身份写回。只调整参数、引用、运行或查看历史且不创作提示词时，不加载该参考。
+
 运行提交必须带 canvasId/nodeId、当前 proof 与稳定幂等键，通过平台记录 Run，不能绕过平台直调 provider 冒充画布生成。采用 [运行与媒体约定](references/operations.md#运行与媒体)；生成等待也保持生命周期，不能靠 TTL 正常释放。接手时检查已有 Run 的 Handoff，必要时 adopt 原 Run，禁止以重新提交代替接手。取消前读取 `capabilities.cancel`；TTS 支持 speech 片段边界取消，其他 provider 以实时能力为准。
 
 ComfyUI、CosyVoice 3、IndexTTS2、Qwen3-TTS 共用一张 FIFO 本机重型计算租约。提交这些 Provider 前读取 `/local-compute-scheduler/status`；`blocked` 非空时停止提交并报告结构化原因。Qwen3-TTS 的预设 speaker 与文字设计音色均无需参考音频，具体节点和提交合同见运行与媒体约定。

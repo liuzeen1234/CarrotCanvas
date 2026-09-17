@@ -147,7 +147,13 @@ CarrotCanvas 已具备 ComfyUI API（工作流）的**管理**能力（导入 / 
 
 ## 6. 变更日志
 
+- 2026-09-15（MiniMax H3 视频+音频双输出）：图生视频提交图在已有 `VAEDecodeAudio` 后自动追加幂等 `SaveAudio`，因此一次 H3 生成会同时捕获视频与无损独立音频资产。卡片保留 `video-source` 并新增 `audio-source` 导出点，音频可连到 TTS 自定义音色参考、结果卡或其他音频入参；卡片当前产物与画布输出发布也可分别播放/下载/发布两种媒体。历史按真实资产类型过滤，避免双输出 Run 把音频误当视频预览。专项 7 tests、后端完整 22 suites / 198 tests、前后端生产构建、3100 重启健康与 8000 可访问验证通过；未为验收额外提交昂贵的真实 H3 视频任务。
+
+- 2026-09-15（MiniMax H3 旧工作流兼容）：修复「MiniMax H3 高质量图生视频」由旧 `MiniMaxH3ImageToVideo` 升级为 `MiniMaxH3ReferenceToVideo` 时遗漏新版必填 `audio_vae` 连接的问题。前端升级时从现有 `VAEDecodeAudio` 复用 VAE 输入，后端在冻结提交图前按 H3 采样链补全并提供单一解码器回退，避免 ComfyUI `/prompt` 返回 `Required input is missing: audio_vae`。新增回归测试覆盖连接补全且不修改原始模板；后端 22 suites / 198 tests、前后端构建、3100 重启健康与 8000 可访问均通过。未自动重跑真实视频，避免无需的重型生成。
+
 - 2026-09-15（GPU 降温闸门）：ComfyUI GenerationRun 在统一本机重型计算 FIFO 中排到队首后，先检查 `cuda:0` 温度；默认阈值 50°C，超温或遥测不可用时每 60 秒重试，最多等待 10 轮，期间租约状态为 `cooling` 且不会启动/准备 Provider 或提交 `/prompt`。最后一轮仍不合格时返回 `GPU_COOLDOWN_TIMEOUT` 或 `GPU_TEMPERATURE_UNAVAILABLE`，失败当前 Run 并一次性中止当时等待批次，避免后续视频各自再等十分钟；新的显式提交可重新评估。ComfyUI `startup:*` 轻量预热租约排除。`GET/PUT /api/local-compute-scheduler/thermal-policy` 提供持久策略，status 返回温控状态、最后温度、等待轮次与下次采样时间。22 suites / 194 tests、后端构建和 3100 重启通过；真实接口确认策略已持久化为 50°C / 60 秒 / 10 轮，验收时 GPU 0 为 35°C。
+
+- 2026-09-15（图生视频默认清晰度）：将「MiniMax H3 高质量图生视频」工作流的成片分辨率参数 `115.megapixels` 默认值从 `0.4` 调整为 `1`，以成片质量优先；输入图预缩放节点 `119.megapixels=0.9` 保持不变。新增画布节点使用新默认值，已有节点保留其已持久化的自定义值。
 
 - 2026-09-13（Skill 预防重复）：图生视频多参考组的解析文件名只进入临时 resolvedValues/apiJson 与 Run 快照；Agent 不把运行输入整体回写节点 formValues，不同时存组引用和旧首帧文件。无独立文件引用意图的参考槽位创建时显式置空，合法 field 引用继续保留。Skill 增加保存后重读与引用数量/身份核对；核对当前提交路径不回写 resolvedValues，未改运行实现、不生成。
 

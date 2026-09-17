@@ -9,6 +9,9 @@ import { RunsService } from './runs.service';
 import { RunsController } from './runs.controller';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 describe('Run recovery (SQLite authorization and atomic persistence)', () => {
   let db: DataSource;
@@ -180,5 +183,41 @@ describe('Run recovery (SQLite authorization and atomic persistence)', () => {
       const original = await request(app.getHttpServer()).get(`/api/runs/${source.id}`).expect(200);
       expect(original.body).toMatchObject({ status: 'failed', outputAssetIds: [] });
     } finally { await app.close(); }
+  });
+
+  it('migrates a byte-identical successful output to a replacement canvas without replacing its current candidate', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'carrot-run-migration-'));
+    try {
+      const sourcePath = join(directory, 'source.wav');
+      const targetPath = join(directory, 'target.wav');
+      await writeFile(sourcePath, Buffer.from('same-wave-bytes'));
+      await writeFile(targetPath, Buffer.from('different-wave-bytes'));
+      const target = await canvas.create({ name: 'Replacement' });
+      const targetLease = await canvas.acquire(target.id, { holderType: 'agent', holderId: 'migration-agent' });
+      const targetProof = { leaseToken: targetLease.leaseToken, leaseEpoch: targetLease.epoch, expectedRevision: 0 };
+      await canvas.applyOperations(target.id, { ...targetProof, idempotencyKey: 'target-node', operations: [{ type: 'create_node', node: {
+        id: 'n1', type: 'codex-capability', position: { x: 0, y: 0 }, data: { capability: 'edit', prompt: 'migrated', model: 'codex', lastAssets: [{ assetId: 'current', url: '/api/assets/current', kind: 'image' }] },
+      } }] });
+      targetProof.expectedRevision = 1;
+      await runs.patch(source.id, { status: 'succeeded', outputAssetIds: ['source-a'], error: null });
+      await db.getRepository(Asset).save([
+        { id: 'source-a', canvasId: doc.id, nodeId: 'n1', kind: 'image', source: 'generated', relPath: 'generated/source.wav' },
+        { id: 'target-a', canvasId: target.id, nodeId: 'n1', kind: 'image', source: 'upload', relPath: 'upload/target.wav' },
+        { id: 'current', canvasId: target.id, nodeId: 'n1', kind: 'image', source: 'generated', relPath: 'generated/current.png' },
+      ]);
+      await db.getRepository(GenerationCandidateGroup).save({ canvasId: target.id, nodeId: 'n1', shotId: null, candidateAssetIds: ['current'], selectedAssetId: 'current', selectedRunId: 'current-run', approvedAssetId: null });
+      assets.read.mockImplementation(async (id: string) => {
+        const asset = await db.getRepository(Asset).findOneByOrFail({ id });
+        return { asset, absPath: id === 'source-a' ? sourcePath : targetPath };
+      });
+      const migrationInput = { ...targetProof, targetCanvasId: target.id, targetNodeId: 'n1', targetAssetId: 'target-a', sourceAssetId: 'source-a', reason: '拆分画布并保留原生成历史' };
+      await expect(service.migrate(source.id, migrationInput)).rejects.toMatchObject({ response: { code: 'RUN_MIGRATION_CONTENT_MISMATCH' } });
+      await writeFile(targetPath, Buffer.from('same-wave-bytes'));
+      const migrated = await service.migrate(source.id, migrationInput);
+      expect(migrated.run).toMatchObject({ status: 'succeeded', canvasId: target.id, nodeId: 'n1', parentRunId: source.id, outputAssetIds: ['target-a'], recovery: { kind: 'canvas_migration', sourceCanvasId: doc.id, sourceAssetId: 'source-a' } });
+      expect((await runs.group(target.id, 'n1'))).toMatchObject({ candidateAssetIds: ['current', 'target-a'], selectedAssetId: 'current', selectedRunId: 'current-run' });
+      expect((await service.migrate(source.id, migrationInput))).toMatchObject({ replay: true, run: { id: migrated.run.id } });
+      expect(await runs.get(source.id)).toMatchObject({ canvasId: doc.id, status: 'succeeded', outputAssetIds: ['source-a'] });
+    } finally { await rm(directory, { recursive: true, force: true }); }
   });
 });

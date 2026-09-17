@@ -27,7 +27,7 @@ export class CanvasIoService {
     const source = await this.docs.findOne({ where: { id: group.sourceCanvasId } });
     if (!source) return { available: false, message: '来源已删除，无法更新', changes: [] };
     const output = currentOutput(source.io ?? emptyCanvasIo());
-    const items = output?.items ?? []; const before = activeInput(group);
+    const items = group.sourceItemKey ? (output?.items ?? []).filter(item => item.itemKey === group.sourceItemKey) : (output?.items ?? []); const before = activeInput(group);
     const changes = diffItems(before.items, items);
     return { available: true, sourceName: source.name, sourceOutputsVersion: output?.version ?? 0, previousVersion: before.sourceOutputsVersion, changes, hasUpdate: before.sourceOutputsVersion !== (output?.version ?? 0), items };
   }
@@ -131,18 +131,37 @@ export class CanvasIoService {
       const version = output?.version ?? 0;
       if (payload.sourceOutputsVersion != null && payload.sourceOutputsVersion !== version) throw new ConflictException({ code: 'SOURCE_VERSION_CHANGED', message: '来源输出已变化，请重新预览' });
       if (group && activeInput(group).sourceOutputsVersion === version) return { canvas: target, baseRevision: target.revision, resultRevision: target.revision, noOp: true };
+      if (group && (payload.sourceItemKey || payload.bindNodeId)) invalid('更新已有输入组时不能改为单项绑定');
+      if (payload.bindNodeId && !payload.sourceItemKey) invalid('绑定现有输入节点时必须选择一个来源输出');
+      const sourceItemKey = group?.sourceItemKey ?? payload.sourceItemKey;
+      const sourceItems = sourceItemKey
+        ? (output?.items ?? []).filter(item => item.itemKey === sourceItemKey)
+        : (output?.items ?? []);
+      if (!group && payload.sourceItemKey && !sourceItems.length) invalid('所选输出不存在或已撤下', 'SOURCE_OUTPUT_NOT_FOUND');
+      const placeholder = payload.bindNodeId ? target.graph.nodes.find(node => node.id === payload.bindNodeId) : undefined;
+      if (payload.bindNodeId && (!placeholder || placeholder.type !== 'result' || !placeholder.data.inputMode || placeholder.data.inputGroupId)) invalid('只能绑定当前画布中尚未选择资源的输入节点', 'INPUT_BINDING_MISMATCH');
+      if (placeholder && placeholder.data.kind !== sourceItems[0].kind) invalid('所选输出类型与输入节点不一致', 'INPUT_BINDING_MISMATCH');
       const prepared: Asset[] = []; const items: IoItem[] = [];
       try {
-        for (const item of output?.items ?? []) {
+        for (const item of sourceItems) {
           const copied = await this.assets.prepareCopy(id, item.assetId); prepared.push(copied.asset);
           if (copied.hash !== item.hash) invalid('来源文件校验失败', 'SNAPSHOT_COPY_FAILED');
           items.push({ ...clone(item), assetId: copied.asset.id, sourceCanvasId: sourceId, sourceCanvasName: source.name, sourceOutputId: item.itemKey, sourceOutputsVersion: version, sourceAssetId: item.assetId });
         }
         const captured = snapshot(items, (group?.snapshots.length ?? 0) + 1, proof.actorId ?? '', version);
+        const newGroupId = randomUUID();
         return await this.canvas.applyIoCommand(id, proof, command, payload, async (draft, manager) => {
           draft.io ??= emptyCanvasIo(); await manager.getRepository(Asset).save(prepared);
           if (group) { const current = this.group(draft.io, group.id); current.snapshots.push(captured); current.activeSnapshotId = captured.id; this.projectBindings(draft, current); }
-          else draft.io.inputs.push({ id: randomUUID(), name: bounded(payload.name, source.name), note: '', sourceType: 'canvas', sourceCanvasId: sourceId, sourceCanvasName: source.name, activeSnapshotId: captured.id, snapshots: [captured] });
+          else {
+            const created = { id: newGroupId, name: bounded(payload.name, source.name), note: '', sourceType: 'canvas' as const, sourceCanvasId: sourceId, sourceCanvasName: source.name, ...(payload.sourceItemKey ? { sourceItemKey: payload.sourceItemKey } : {}), activeSnapshotId: captured.id, snapshots: [captured] };
+            draft.io.inputs.push(created);
+            if (payload.bindNodeId) {
+              const node = draft.graph.nodes.find(candidate => candidate.id === payload.bindNodeId)!;
+              const item = captured.items[0];
+              node.data = { ...node.data, inputGroupId: created.id, inputItemKey: item.itemKey, cardName: item.name, note: created.note, ...bindingData(created, item) };
+            }
+          }
         });
       } finally { await this.assets.discardPrepared(prepared); }
     });

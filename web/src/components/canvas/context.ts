@@ -44,6 +44,8 @@ export interface CanvasNodeDataApi {
   canvasId?: string;
   /** 发布明确的当前或历史产物，复用编辑器的保存与 IO 写入队列。 */
   publishOutput?: (payload: Record<string, unknown>) => Promise<unknown>;
+  /** 把其他画布的一个已发布输出复制为本地快照，并绑定到现有空输入节点。 */
+  bindCanvasOutput?: (payload: { sourceCanvasId: string; sourceOutputsVersion: number; sourceItemKey: string; bindNodeId: string }) => Promise<unknown>;
   publishedAssetIds?: string[];
   publishedOutputs?: Array<{ assetId: string; text?: string; sourceNodeId?: string; outputSlot?: string; kind: string }>;
   ensureResultNode: (sourceNodeId: string, kind?: 'image' | 'video' | 'audio') => void;

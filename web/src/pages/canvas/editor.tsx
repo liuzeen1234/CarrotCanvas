@@ -23,7 +23,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button, Drawer, Image, Input, List, Popconfirm, Popover, Segmented, Space, Spin, Tag, Tooltip, Typography, message } from 'antd';
-import { ArrowLeftOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, DragOutlined, EnvironmentOutlined, HistoryOutlined, PictureOutlined, SaveOutlined, SelectOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, BellOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, DragOutlined, EnvironmentOutlined, HistoryOutlined, PictureOutlined, SaveOutlined, SelectOutlined } from '@ant-design/icons';
 import { Link, useParams, request } from 'umi';
 import { CanvasNodeDataContext, type CanvasResultState } from '@/components/canvas/context';
 import { canvasNodeTypes } from '@/components/canvas/nodes';
@@ -42,6 +42,9 @@ import { findInputPosition, resolveOverlaps } from '@/components/canvas/resolveO
 import './editor.css';
 
 const { Text } = Typography;
+const RUN_COMPLETION_NOTIFICATION_PREFERENCE = 'carrot-canvas:run-completion-notifications';
+const NOTIFIED_RUN_COMPLETIONS = 'carrot-canvas:notified-run-completions';
+const ACTIVE_RUN_STATUSES = new Set(['queued', 'running']);
 
 /** 画布文档（含完整 graph） */
 interface CanvasDoc {
@@ -81,6 +84,23 @@ function humanHolderId() {
 function isTextEditingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || Boolean(target.closest('input, textarea, select, [contenteditable], [role="textbox"]'));
+}
+
+function recordRunCompletionNotification(runId: string) {
+  try {
+    const recorded = JSON.parse(window.localStorage.getItem(NOTIFIED_RUN_COMPLETIONS) || '[]');
+    const ids = Array.isArray(recorded) ? recorded.filter((value): value is string => typeof value === 'string') : [];
+    if (ids.includes(runId)) return false;
+    window.localStorage.setItem(NOTIFIED_RUN_COMPLETIONS, JSON.stringify([...ids, runId].slice(-200)));
+  } catch { /* 本地存储不可用时仍允许当前页面通知，tag 会合并同一 Run。 */ }
+  return true;
+}
+
+async function claimRunCompletionNotification(runId: string) {
+  if ('locks' in navigator) {
+    return navigator.locks.request(`carrot-canvas:notify:${runId}`, () => recordRunCompletionNotification(runId));
+  }
+  return recordRunCompletionNotification(runId);
 }
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -184,7 +204,13 @@ function CanvasEditorInner() {
   }, [canWrite, nodes, previewTopNodeId]);
   useEffect(() => { if (canWrite) setPreviewTopNodeId(null); }, [canWrite]);
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  const [interactionMode, setInteractionMode] = useState<'hand' | 'pointer'>('hand');
+  const [interactionMode, setInteractionMode] = useState<'hand' | 'pointer'>(() => {
+    try {
+      const stored = window.localStorage.getItem('carrot-canvas:interaction-mode');
+      return stored === 'pointer' ? stored : 'hand';
+    }
+    catch { return 'hand'; }
+  });
   const [spacePanActive, setSpacePanActive] = useState(false);
   const effectiveInteractionMode = interactionMode === 'pointer' && spacePanActive ? 'hand' : interactionMode;
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -199,6 +225,20 @@ function CanvasEditorInner() {
   const [generationRuns, setGenerationRuns] = useState<GenerationRunItem[]>([]);
   const [generationHistoryVersion, setGenerationHistoryVersion] = useState(0);
   const generationHistorySignatureRef = useRef('');
+  const [completionNotificationsEnabled, setCompletionNotificationsEnabled] = useState(() => {
+    try {
+      return window.isSecureContext && 'Notification' in window && Notification.permission === 'granted'
+        && window.localStorage.getItem(RUN_COMPLETION_NOTIFICATION_PREFERENCE) === 'enabled';
+    } catch { return false; }
+  });
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => {
+    if (!window.isSecureContext || !('Notification' in window)) return 'unsupported';
+    return Notification.permission;
+  });
+  const knownRunStatusesRef = useRef<Map<string, string>>(new Map());
+  const runNotificationWatchStartedAtRef = useRef(Date.now());
+  const canvasNameRef = useRef(canvasName);
+  canvasNameRef.current = canvasName;
   /** 运行态只驻留内存，不进入 graph；结果节点通过 Context 读取上游状态。 */
   const [nodeRuns, setNodeRuns] = useState<Record<string, RunStateData | null>>({});
   const [newlyAddedNodeIds, setNewlyAddedNodeIds] = useState<string[]>([]);
@@ -236,6 +276,9 @@ function CanvasEditorInner() {
 
   /** 右键分级菜单状态（右键屏幕坐标；null = 关闭） */
   const [menu, setMenu] = useState<CanvasContextMenuState | null>(null);
+  useEffect(() => {
+    try { window.localStorage.setItem('carrot-canvas:interaction-mode', interactionMode); } catch { /* 本地偏好不可用不影响画布 */ }
+  }, [interactionMode]);
 
   /** 窄屏（移动端）标志：切换顶栏/内边距布局，避免被挤成竖排 */
   const [isNarrow, setIsNarrow] = useState(
@@ -473,6 +516,47 @@ function CanvasEditorInner() {
     finally { setGenerationHistoryLoading(false); }
   }, [id]);
 
+  const toggleCompletionNotifications = useCallback(async () => {
+    if (!window.isSecureContext || !('Notification' in window)) {
+      setNotificationPermission('unsupported');
+      message.error('当前地址不支持浏览器通知，请使用 http://localhost、127.0.0.1 或 HTTPS');
+      return;
+    }
+    if (completionNotificationsEnabled) {
+      setCompletionNotificationsEnabled(false);
+      window.localStorage.setItem(RUN_COMPLETION_NOTIFICATION_PREFERENCE, 'disabled');
+      message.success('任务完成通知已关闭');
+      return;
+    }
+    let permission = Notification.permission;
+    if (permission === 'default') permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission !== 'granted') {
+      message.error(permission === 'denied' ? 'Chrome 已阻止通知，请在地址栏左侧的网站设置中重新允许' : '未获得通知权限');
+      return;
+    }
+    window.localStorage.setItem(RUN_COMPLETION_NOTIFICATION_PREFERENCE, 'enabled');
+    setCompletionNotificationsEnabled(true);
+    message.success('任务完成通知已开启');
+  }, [completionNotificationsEnabled]);
+
+  useEffect(() => {
+    const refreshPermission = () => {
+      if (!window.isSecureContext || !('Notification' in window)) {
+        setNotificationPermission('unsupported');
+        return;
+      }
+      setNotificationPermission(Notification.permission);
+      if (Notification.permission !== 'granted') setCompletionNotificationsEnabled(false);
+    };
+    window.addEventListener('focus', refreshPermission);
+    document.addEventListener('visibilitychange', refreshPermission);
+    return () => {
+      window.removeEventListener('focus', refreshPermission);
+      document.removeEventListener('visibilitychange', refreshPermission);
+    };
+  }, []);
+
   const adoptCanvas = useCallback((canvas: CanvasDoc) => {
     revisionRef.current = canvas.revision; setDoc(canvas); setCanvasName(canvas.name);
     setSaveStatus('saved'); setLastSavedAt(new Date(canvas.updatedAt)); setSaveError('');
@@ -518,6 +602,7 @@ function CanvasEditorInner() {
 
   const executeIoRef = useRef(executeIo); executeIoRef.current = executeIo;
   const publishOutput = useCallback((payload: Record<string, unknown>) => executeIoRef.current('output.publish', payload), []);
+  const bindCanvasOutput = useCallback((payload: { sourceCanvasId: string; sourceOutputsVersion: number; sourceItemKey: string; bindNodeId: string }) => executeIoRef.current('input.capture', payload), []);
 
   const createCheckpoint = useCallback(async () => {
     const current = leaseRef.current; if (!id || !current) return;
@@ -694,6 +779,11 @@ function CanvasEditorInner() {
    * 只读观察者自动跟随 canonical graph；所有控制者持续读取共享 ComfyUI 运行态。
    */
   useEffect(() => {
+    knownRunStatusesRef.current.clear();
+    runNotificationWatchStartedAtRef.current = Date.now();
+  }, [id]);
+
+  useEffect(() => {
     if (!id || !ready) return;
     let cancelled = false;
     const syncReadOnlyState = async () => {
@@ -714,6 +804,37 @@ function CanvasEditorInner() {
           request<{ items: GenerationRunItem[] }>(`/api/runs?canvasId=${encodeURIComponent(id)}&pageSize=100`),
         ]);
         if (cancelled) return;
+        const persistentRuns = persistent.items ?? [];
+        const completed = persistentRuns.filter((run) => {
+          if (run.status !== 'succeeded' || run.recovery) return false;
+          const previous = knownRunStatusesRef.current.get(run.id);
+          const beganAt = Number(run.queuedAt) || Date.parse(run.createdAt);
+          return ACTIVE_RUN_STATUSES.has(previous ?? '')
+            || (previous === undefined && Number.isFinite(beganAt) && beganAt >= runNotificationWatchStartedAtRef.current);
+        });
+        if (completionNotificationsEnabled && Notification.permission === 'granted') {
+          for (const run of completed) {
+            if (!await claimRunCompletionNotification(run.id)) continue;
+            const node = run.nodeId ? nodesRef.current.find((item) => item.id === run.nodeId) : null;
+            const nodeData = (node?.data ?? {}) as Record<string, unknown>;
+            const taskName = String(nodeData.cardName || nodeData.workflowName || run.capabilityId || '输出任务');
+            try {
+              const notification = new Notification('CarrotCanvas 任务已完成', {
+                body: `${canvasNameRef.current || '当前画布'} · ${taskName}`,
+                tag: `carrot-canvas-run-${run.id}`,
+              });
+              notification.onclick = () => {
+                window.focus();
+                setGenerationHistoryOpen(true);
+                void loadGenerationHistory();
+                notification.close();
+              };
+            } catch (error) {
+              console.warn('显示任务完成通知失败', error);
+            }
+          }
+        }
+        for (const run of persistentRuns) knownRunStatusesRef.current.set(run.id, run.status);
         const historySignature = JSON.stringify((persistent.items ?? []).map((run) => [
           run.id, run.status, run.finishedAt, run.outputAssetIds, run.outputText,
           run.candidateGroup?.selectedAssetId, run.candidateGroup?.selectedRunId,
@@ -752,7 +873,7 @@ function CanvasEditorInner() {
     void syncReadOnlyState();
     const timer = window.setInterval(() => void syncReadOnlyState(), 2000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [canWrite, id, ready]);
+  }, [canWrite, completionNotificationsEnabled, id, loadGenerationHistory, ready]);
 
   /** 节点、连线或视口变化后 800ms 防抖保存。 */
   useEffect(() => {
@@ -801,7 +922,7 @@ function CanvasEditorInner() {
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       if (!changes.some((change) => change.type === 'remove')) {
-        setNodes((nds) => applyNodeChanges(canWrite ? changes : changes.filter((change) => change.type === 'select' || change.type === 'dimensions'), nds));
+        setNodes((nds) => applyNodeChanges(canWrite ? changes : changes.filter((change) => change.type === 'dimensions'), nds));
         return;
       }
       const deleting = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
@@ -814,14 +935,14 @@ function CanvasEditorInner() {
       const blocked = changes.some((change) => change.type === 'remove' && protectedSources.has(change.id));
       if (blocked) message.error('该节点的图片仍被提示词 @ 引用，请先解除引用');
       const allowed = changes.filter((change) => change.type !== 'remove' || !protectedSources.has(change.id));
-      setNodes((nds) => applyNodeChanges(canWrite ? allowed : allowed.filter((change) => change.type === 'select' || change.type === 'dimensions'), nds));
+      setNodes((nds) => applyNodeChanges(canWrite ? allowed : allowed.filter((change) => change.type === 'dimensions'), nds));
     },
     [canWrite],
   );
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       if (!changes.some((change) => change.type === 'remove')) {
-        setEdges((eds) => applyEdgeChanges(canWrite ? changes : changes.filter((change) => change.type === 'select'), eds));
+        setEdges((eds) => applyEdgeChanges(canWrite ? changes : [] , eds));
         return;
       }
       const protectedEdges = new Set(nodesRef.current.flatMap((node) => {
@@ -833,7 +954,7 @@ function CanvasEditorInner() {
       const blocked = changes.some((change) => change.type === 'remove' && protectedEdges.has(change.id));
       if (blocked) message.error('该图片连线仍被提示词 @ 引用，请先解除引用');
       const allowed = changes.filter((change) => change.type !== 'remove' || !protectedEdges.has(change.id));
-      setEdges((eds) => applyEdgeChanges(canWrite ? allowed : allowed.filter((change) => change.type === 'select'), eds));
+      setEdges((eds) => applyEdgeChanges(canWrite ? allowed : [], eds));
     },
     [canWrite],
   );
@@ -1130,9 +1251,10 @@ function CanvasEditorInner() {
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
       event.preventDefault();
+      if (!canWrite) return;
       openMenu((event as MouseEvent).clientX, (event as MouseEvent).clientY);
     },
-    [openMenu],
+    [canWrite, openMenu],
   );
 
   // ── 移动端长按 = 右键替代（能用即可）──
@@ -1159,7 +1281,7 @@ function CanvasEditorInner() {
     };
 
     const onStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) {
+      if (!canWrite || e.touches.length !== 1) {
         clear();
         return;
       }
@@ -1200,7 +1322,7 @@ function CanvasEditorInner() {
       el.removeEventListener('touchend', clear, { capture: true } as any);
       el.removeEventListener('touchcancel', clear, { capture: true } as any);
     };
-  }, [ready]);
+  }, [canWrite, ready]);
 
   // 长按打开菜单后，抑制紧随的合成 click（捕获阶段拦下）
   const onContainerClickCapture = useCallback((e: React.MouseEvent) => {
@@ -1282,6 +1404,7 @@ function CanvasEditorInner() {
     newlyAddedNodeIds,
     canvasId: id,
     publishOutput,
+    bindCanvasOutput,
     publishedAssetIds,
     publishedOutputs: doc?.io?.outputs.at(-1)?.items ?? [],
     readOnly: !canWrite,
@@ -1298,7 +1421,7 @@ function CanvasEditorInner() {
     disconnectEdge: deleteEdge,
     getUpstreamText,
     generationHistoryVersion,
-  }), [id, newlyAddedNodeIds, publishOutput, publishedAssetIds, doc?.io, canWrite, lease, revisionRef.current, handleUpdateNodeData, handleObserveNodeData, handleDeleteNode,
+  }), [id, newlyAddedNodeIds, publishOutput, bindCanvasOutput, publishedAssetIds, doc?.io, canWrite, lease, revisionRef.current, handleUpdateNodeData, handleObserveNodeData, handleDeleteNode,
     ensureResultNode, setNodeRunState, getNodeRunState, getResultState, getUpstreamAsset,
     getUpstreamAssets, deleteEdge, getUpstreamText, generationHistoryVersion]);
   const selectedEdge = edges.find((edge) => edge.selected);
@@ -1383,7 +1506,6 @@ function CanvasEditorInner() {
               edges={edges}
               nodesDraggable={canWrite}
               nodesConnectable={canWrite}
-              elementsSelectable
               panOnDrag={effectiveInteractionMode === 'hand'}
               selectionOnDrag={effectiveInteractionMode === 'pointer'}
               selectionMode={SelectionMode.Partial}
@@ -1521,11 +1643,26 @@ function CanvasEditorInner() {
                 <Button icon={<PictureOutlined />} onClick={() => { setGenerationHistoryOpen(true); void loadGenerationHistory(); }} aria-label="画布生成流水">
                   {isNarrow ? null : '生成历史'}
                 </Button>
+                <Tooltip title={notificationPermission === 'unsupported'
+                  ? '当前地址不支持浏览器通知，请使用 localhost、127.0.0.1 或 HTTPS'
+                  : notificationPermission === 'denied'
+                    ? 'Chrome 已阻止通知，请在网站设置中重新允许'
+                    : completionNotificationsEnabled ? '输出任务完成时弹出 Chrome 通知' : '开启输出任务完成通知'}>
+                  <Button
+                    type={completionNotificationsEnabled ? 'primary' : 'default'}
+                    icon={<BellOutlined />}
+                    aria-label={completionNotificationsEnabled ? '关闭任务完成通知' : '开启任务完成通知'}
+                    aria-pressed={completionNotificationsEnabled}
+                    onClick={() => void toggleCompletionNotifications()}
+                  >
+                    {isNarrow ? null : completionNotificationsEnabled ? '完成通知已开' : '完成通知'}
+                  </Button>
+                </Tooltip>
               </Panel>
               <Panel position="bottom-left" className="canvas-resource-monitor nodrag" style={{ marginLeft: 64, marginBottom: 60 }}>
                 <SystemResourceMonitor />
               </Panel>
-              {selectedEdge ? (
+              {selectedEdge && canWrite ? (
                 <Panel position="top-right" className="canvas-edge-actions">
                   <Button
                     danger

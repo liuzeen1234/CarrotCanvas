@@ -37,7 +37,7 @@
 以下是为落地明确的默认行为，区别于用户直接提出的规则：
 
 - 输出由用户明确发布，固定具体内容，不自动跟随节点最新结果。
-- 默认整组引入来源画布的当前输出；第一版不增加单项订阅和筛选同步规则。
+- 输入区的“引入画布”默认整组引入来源画布的当前输出；右键创建的空输入节点也可从来源画布导出区选择一个同类型资源，形成独立的单项输入快照并直接绑定该节点。
 - 每次更新生成新的输入快照版本，旧版保留并可回退。
 - 更新前展示整组差异；被移除或改变类型的工作区输入保留旧快照并标记，节点和连线不删除。
 - 第一版禁止引入自身；允许 A、B 相互引入已经存在的快照，因为没有自动递归执行。
@@ -122,6 +122,8 @@
 5. 全部复制与校验成功后，原子创建输入组、快照和本地 Asset 记录，增加目标画布 revision。
 6. 输入区展示来源画布名称、引入时间、输出版本、内容、用途备注和“打开来源”。
 
+工作区空输入节点内的“从画布导出区选择”走同一快照协议，但只复制用户选中的一个同类型输出项，并在同一原子命令中绑定原节点；不会新建重复节点或直接引用来源资产。该单项输入后续仍按来源 outputsVersion 主动检查和更新。
+
 同一来源可以多次引入，形成不同输入组，允许不同用途或固定不同版本。sourceCanvasId/sourceAssetId 仅用于溯源和更新，运行只使用目标画布的本地 Asset。
 
 ### 7.3 检查与更新
@@ -190,7 +192,7 @@
 | 来源更新差异 | GET `/api/canvas/:id/io/inputs/:groupId/update-preview` |
 | 画布输入/输出语义写入 | POST `/api/canvas/:id/io/command` |
 
-项目命令体包含 expectedRevision、idempotencyKey、command、payload，command 为 edit、canvas.add/remove/create、results.capture/restore。项目删除需要 expectedRevision。画布命令体包含 leaseToken、leaseEpoch、expectedRevision、idempotencyKey、actorType/actorId、command、payload；command 为 input.capture/update/restore/remove/edit/bind 或 output.publish/replace/edit/remove/reorder。本地文件导入最多 30 个，单文件最多 256 MB，UTF-8 文本最多 5 MB。实际字段与实时 schema 见 GET `/api/actions`；操作示例见仓库 Skill 的 references/projects-io.md。
+项目命令体包含 expectedRevision、idempotencyKey、command、payload，command 为 edit、canvas.add/remove/create、results.capture/restore。项目删除需要 expectedRevision。画布命令体包含 leaseToken、leaseEpoch、expectedRevision、idempotencyKey、actorType/actorId、command、payload；command 为 input.capture/update/restore/remove/edit/bind 或 output.publish/replace/edit/remove/reorder。`input.capture` 可选 `sourceItemKey + bindNodeId`，用于原子复制单个来源输出并绑定当前空输入节点。本地文件导入最多 30 个，单文件最多 256 MB，UTF-8 文本最多 5 MB。实际字段与实时 schema 见 GET `/api/actions`；操作示例见仓库 Skill 的 references/projects-io.md。
 
 读来源不要求取得来源画布写 lease。所有改变目标画布状态的命令要求目标 lease/epoch/expectedRevision、actor 与幂等键；输入复制与图操作共享应用服务，不在 Controller 或 React onClick 中各写一套业务规则。
 

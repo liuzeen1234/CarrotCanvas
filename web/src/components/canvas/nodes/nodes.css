@@ -19,6 +19,18 @@
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.25);
 }
 
+.canvas-node__tts-mode {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.canvas-node__tts-instruction {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 @property --canvas-highlight-angle {
   syntax: '<angle>';
   initial-value: 0deg;

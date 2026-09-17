@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+import { createHash } from 'crypto';
+import { createReadStream } from 'fs';
 import { Asset } from '../assets/asset.entity';
 import { AssetsService } from '../assets/assets.service';
 import { CanvasService, LeaseProof } from '../canvas/canvas.service';
@@ -10,6 +12,14 @@ export interface RecoverRunInput extends Partial<LeaseProof> {
   assetId: string;
   reason: string;
   evidence: string;
+}
+
+export interface MigrateRunInput extends Partial<LeaseProof> {
+  targetCanvasId: string;
+  targetNodeId: string;
+  targetAssetId: string;
+  sourceAssetId?: string;
+  reason: string;
 }
 
 @Injectable()
@@ -123,6 +133,91 @@ export class RunRecoveryService {
     this.recoveryQueue = result.then(() => undefined, () => undefined);
     return result;
   }
+
+  /** Copy a verified successful history item to a replacement canvas/node without invoking the provider. */
+  async migrate(sourceRunId: string, input: MigrateRunInput) {
+    const targetCanvasId = text(input?.targetCanvasId, 'targetCanvasId', 100);
+    const targetNodeId = text(input?.targetNodeId, 'targetNodeId', 200);
+    const targetAssetId = text(input?.targetAssetId, 'targetAssetId', 100);
+    const reason = text(input?.reason, 'reason', 2000);
+    const source = await this.runs.findOneBy({ id: sourceRunId });
+    if (!source || source.status !== 'succeeded' || !source.canvasId || !source.nodeId || source.recovery || !source.outputAssetIds.length) {
+      throw new ConflictException({ code: 'RUN_NOT_MIGRATABLE', message: '仅可迁移有画布节点与真实产物的原始成功 Run' });
+    }
+    const sourceAssetId = input.sourceAssetId?.trim() || source.outputAssetIds[0];
+    if (!source.outputAssetIds.includes(sourceAssetId)) {
+      throw new BadRequestException({ code: 'RUN_MIGRATION_ASSET_MISMATCH', message: '来源资产不属于原 Run 输出' });
+    }
+    const [{ asset: sourceAsset, absPath: sourcePath }, { asset: targetAsset, absPath: targetPath }] = await Promise.all([
+      this.assets.read(sourceAssetId), this.assets.read(targetAssetId),
+    ]);
+    if (sourceAsset.canvasId !== source.canvasId || (sourceAsset.nodeId && sourceAsset.nodeId !== source.nodeId)
+      || targetAsset.canvasId !== targetCanvasId || (targetAsset.nodeId && targetAsset.nodeId !== targetNodeId)
+      || sourceAsset.kind !== targetAsset.kind) {
+      throw new BadRequestException({ code: 'RUN_MIGRATION_ASSET_MISMATCH', message: '来源或目标资产的画布、节点或媒体类型不匹配' });
+    }
+    const [sourceHash, targetHash] = await Promise.all([fileHash(sourcePath), fileHash(targetPath)]);
+    if (sourceHash !== targetHash) {
+      throw new BadRequestException({ code: 'RUN_MIGRATION_CONTENT_MISMATCH', message: '目标资产内容与原 Run 产物不一致' });
+    }
+
+    const register = () => this.runs.manager.transaction(async (manager) => {
+      const runs = manager.getRepository(GenerationRun);
+      const freshSource = await runs.findOneBy({ id: sourceRunId });
+      if (!freshSource || freshSource.status !== 'succeeded' || freshSource.recovery) {
+        throw new ConflictException({ code: 'RUN_NOT_MIGRATABLE', message: '原 Run 状态已变化，不能迁移' });
+      }
+      const doc = await this.canvas.assertWriteAccess(targetCanvasId, input);
+      const control = await this.canvas.controlStatus(targetCanvasId);
+      const holder = control.lease!;
+      if (holder.status !== 'active') throw new ConflictException({ code: 'RECOVERY_HANDOFF_PENDING', message: '交接中不能迁移运行历史' });
+      const node = doc.graph.nodes.find((item: any) => item.id === targetNodeId) as any;
+      if (!node) throw new BadRequestException({ code: 'NODE_NOT_FOUND', message: '目标节点不存在' });
+      const freshTarget = await manager.getRepository(Asset).findOneBy({ id: targetAssetId });
+      if (!freshTarget || freshTarget.canvasId !== targetCanvasId || (freshTarget.nodeId && freshTarget.nodeId !== targetNodeId)) {
+        throw new BadRequestException({ code: 'RUN_MIGRATION_ASSET_MISMATCH', message: '目标资产归属已变化' });
+      }
+      const idempotencyKey = `migration:${sourceRunId}:${targetCanvasId}:${targetAssetId}`;
+      const existing = await runs.findOneBy({ idempotencyKey });
+      if (existing) return { run: existing, replay: true };
+      const recorded = await runs.findBy({ canvasId: targetCanvasId, status: 'succeeded' });
+      if (recorded.some((run) => run.outputAssetIds.includes(targetAssetId))) {
+        throw new ConflictException({ code: 'ASSET_ALREADY_RECORDED', message: '目标资产已存在于成功产物历史' });
+      }
+      const now = Date.now();
+      const evidence = `已核验来源 Run ${sourceRunId} 的资产 ${sourceAssetId} 与目标资产 ${targetAssetId} 内容 SHA-256 一致（${sourceHash}）。`;
+      const migrated = await runs.save(runs.create({
+        provider: freshSource.provider, status: 'succeeded', canvasId: targetCanvasId, nodeId: targetNodeId,
+        shotId: freshSource.shotId, parentRunId: freshSource.id, providerRunId: null,
+        capabilityId: freshSource.capabilityId, capabilityVersion: freshSource.capabilityVersion,
+        inputSnapshot: freshSource.inputSnapshot, requestSnapshot: freshSource.requestSnapshot,
+        inputLineage: null, inputAssetIds: [], outputAssetIds: [targetAssetId], outputText: freshSource.outputText, outputParts: freshSource.outputParts,
+        actorType: holder.holderType, actorId: holder.holderId, attemptCount: freshSource.attemptCount,
+        idempotencyKey, error: null, queuedAt: now, startedAt: null, finishedAt: now,
+        recovery: { kind: 'canvas_migration', sourceRunId: freshSource.id, sourceStatus: freshSource.status, sourceCanvasId: freshSource.canvasId!, sourceAssetId, reason, evidence, recoveredAt: now, leaseEpoch: holder.epoch },
+      }));
+      const groups = manager.getRepository(GenerationCandidateGroup);
+      let group = await groups.findOneBy({ canvasId: targetCanvasId, nodeId: targetNodeId, shotId: migrated.shotId ?? IsNull() });
+      if (!group) {
+        group = groups.create({ canvasId: targetCanvasId, nodeId: targetNodeId, shotId: migrated.shotId, candidateAssetIds: [], selectedAssetId: null, selectedRunId: null, approvedAssetId: null });
+        if (node.data?.lastAssets?.some((item: any) => item.assetId === targetAssetId)) {
+          group.selectedAssetId = targetAssetId; group.selectedRunId = migrated.id;
+        }
+      }
+      group.candidateAssetIds = [...new Set([...group.candidateAssetIds, targetAssetId])];
+      await groups.save(group);
+      return { run: migrated, replay: false };
+    });
+    const result = this.recoveryQueue.then(register);
+    this.recoveryQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+}
+
+async function fileHash(path: string) {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest('hex');
 }
 
 function text(value: unknown, field: string, limit: number) {

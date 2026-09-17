@@ -2,6 +2,12 @@
 
 > 2026-09-17 只读画布点击卡片时将该卡片临时置于其他卡片上方，并显示蓝色发光渐变边框以标明激活边界；点击空白处恢复原层级和边框。置顶及边框仅在当前页面的 React Flow 显示投影中生效，不写入节点图、操作日志或 canonical revision；取得编辑权或切换画布时清除。
 
+> 2026-09-16 项目级 `carrot-canvas` Skill 按需吸收 MiniMax 官方 `h3-prompt-writing`：AI 直接新写、改写或审查 H3 卡片提示词时加载独立参考，按实时工作流选择基础/关键帧或 Ref2VA 的三段/六段结构，并继续以稳定 `@` token 保存、提交时编译媒体序号。规则补充镜头时间、引用角色、声音分层、音量能力边界与保存后自检；普通画布操作不加载大段 H3 上下文。仅更新 Skill/文档，不修改运行引擎或阶段范围。
+
+> 2026-09-16 画布新增可选的 Chrome 输出任务完成通知：用户在顶栏显式开启并授权后，前端复用持久 Run 同步，仅对本次页面观察期间新建或从 queued/running 进入 succeeded 的真实生成任务通知；刷新不补发旧历史，补录/迁移记录不误报，Run ID 本地去重并支持点击通知打开生成历史。该能力是浏览器本地展示偏好，不修改 canonical revision、lease 或 Run；轻量版要求画布标签页仍打开，并仅支持 localhost/127.0.0.1 或 HTTPS 安全上下文。前端生产构建通过。
+
+> 2026-09-15 右键创建的图片、视频、音频和文本输入节点除本地填写/上传外，可直接从任意其他画布当前导出区选择同类型单项；后端在一次受 lease/revision 保护的 `input.capture` 中复制该资源、创建单项输入快照并绑定原节点，不跨画布直连资产，也不产生重复工作区节点。相关 IO 集成测试与前后端构建通过。
+
 > 2026-09-15 本机重型生成增加统一 GPU 温控闸门：持久 Run 建立后仍保持 queued，只有 `cuda:0` 温度不高于默认 50°C 才能取得计算租约并准备 Provider；超温每 60 秒复查，最多等待 10 轮。超时或温度遥测持续不可用会以结构化原因失败当前任务并中止当时的等待批次，避免批量视频逐项重复等待；ComfyUI 轻量服务预热不受此闸门影响。策略持久化且可查询/修改，调度状态公开当前温度、轮次与下次检查时间。22 suites / 194 tests 与后端构建通过，3100 重启后真实策略、状态、资源和 Action Registry 接口验收通过。
 
 > 2026-09-14 既有控制面扩展：项目多对多集合、画布输入/输出及项目最终成果快照第一版完成。IO 语义写入复用 lease/revision、事务日志/回执、Checkpoint/undo；编辑器先排空保存，交接排空在途 IO。项目关联仅修改项目 revision，不改变画布控制权；Run 增加不可变 inputLineage，快照更新不改旧输入。22 suites / 185 tests、前后端构建、页面与重启验收通过，旧数据对比不变。方案和限制见 [PROJECTS-AND-CANVAS-IO.md](./PROJECTS-AND-CANVAS-IO.md)；既有 Phase 0A–1B 状态不变，不启用 Phase 2/3。
@@ -538,6 +544,16 @@ Phase 0A 推荐的新会话指令：
 > 实现 Issue #1 的 Phase 0A。开始前完整阅读 AGENTS.md、docs/AI-NATIVE-CANVAS.md 及相关集成文档；只实现 Phase 0A，完成测试和行为级验收，并更新设计文档的阶段状态，不开始 Phase 0B。
 
 ## 11. 变更记录
+
+- 2026-09-16（MiniMax H3 项目级提示词 Skill）：在 `skills/carrot-canvas/references/minimax-h3-prompting.md` 增加按需参考，吸收官方 `h3-prompt-writing` 的 T2VA/I2VA/FL2VA/L2VA/Ref2VA 模式选择、三段/六段结构、镜头时间、引用角色、对白与声音分层规则，并适配平台稳定 `@` token → 提交时媒体编号的既有合同。主 Skill 仅在 AI 直接创作或审查 H3 卡片提示词时路由加载，普通参数、运行和历史操作不加载。明确生成提示词只能表达相对音量意图，不能冒充 dB/LUFS 后期处理。仅维护 Skill 与文档，不执行生成、不改运行引擎或 Phase 范围。
+
+- 2026-09-16（Chrome 完成通知轻量版）：画布顶栏增加本地“完成通知”开关，只在用户点击后请求浏览器权限。既有每 2 秒持久 Run 同步负责识别真实任务首次成功终态；初始历史不补发，页面打开后快速完成的任务与打开时仍在运行的任务均可通知，恢复补录/画布迁移记录排除，最近 200 个 Run ID 通过 localStorage 去重并使用 notification tag 合并。通知展示画布和卡片名称，点击聚焦页面并打开生成历史；权限被拒绝或当前不是安全上下文时给出明确说明。偏好与去重均为浏览器本地状态，不增加画布 revision，不改 lease、Run 或 Action Registry。轻量版不含 Service Worker/Web Push，关闭标签页后不通知；后台轮询仍可能受 Chrome 节流而延迟。`pnpm --filter @carrot-canvas/web build` 通过，8000 页面 HTTP 200，`git diff --check` 无新增格式错误。
+
+- 2026-09-15（H3 双媒体产物）：MiniMax H3 画布 Run 在同一 Provider 任务内同时保存视频与独立音频，两者作为同一 Run 的可追溯输出资产进入 `lastAssets` 与画布输出发布候选。工作流卡新增 `audio-source` 且保留 `video-source`，音频可作为 TTS 参考或连接任意音频目标；不另建 Provider Run、不改画布租约与 revision 规则，Phase 0A–1B 状态不变。专项 7 tests、后端完整 22 suites / 198 tests、前后端生产构建、3100 重启健康与 8000 可访问验证通过；未额外运行真实 H3 Provider 任务。
+
+- 2026-09-15（MiniMax H3 运行兼容修复）：旧 `MiniMaxH3ImageToVideo` 画布卡片升级为统一多媒体参考节点时，现会从已有音频解码链复用 VAE 连接补全 `audio_vae`；后端提交准备再做一次确定性补全，修复已建画布卡在 ComfyUI 新节点协议下于 `/prompt` 校验阶段失败。不改画布 graph、Run 身份、候选资产或控制权语义，Phase 0A–1B 状态不变。后端 22 suites / 198 tests、前后端构建、3100 重启健康与 8000 可访问验证通过；未重复提交真实 Provider 视频。
+
+- 2026-09-15（TTS 卡片辨识与跨画布历史迁移）：AI 配音卡的音色/表演描述改为完整自动增高的多行输入，长内容在卡片宽度内换行；卡片常驻展示“Provider + 音色模式 + 是否连接参考”，明确 IndexTTS2 自定义克隆与 Qwen3-TTS 无参考文字设计的实际运行方式。新增 `run.migrate`，仅在来源成功 Run 与目标画布上传资产的归属、节点、媒体类型及 SHA-256 内容完全一致时，登记带来源画布/Run/资产证据的“画布迁移”历史；不调用 Provider、不改原 Run、canonical revision 或当前/已批准候选。用于修复拆分 S01/S02 画布时文件已迁移但旧 Run 未进入新节点历史的问题。
 
 - 2026-09-14（项目与画布 IO 方案）：新增 [PROJECTS-AND-CANVAS-IO.md](./PROJECTS-AND-CANVAS-IO.md)，记录项目归属、三区域与任意跨画布输出快照、主动更新、来源保留，以及 P1–P4 实施与验收计划。仅编写方案，业务功能尚未实现；后续命令须复用 Action Registry、lease/revision、日志与 Checkpoint。Phase 0A–1B 完成状态不变，不恢复暂不实施的 Phase 2/3。
 

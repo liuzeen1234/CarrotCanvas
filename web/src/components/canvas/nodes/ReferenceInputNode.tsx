@@ -1,21 +1,56 @@
 import { ViewportImage, ViewportVideo, ViewportAudio } from '../ViewportMedia';
-import { useContext, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Button, Upload, message } from 'antd';
-import { UploadOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Button, Card, Empty, Modal, Radio, Select, Space, Tag, Typography, Upload, message } from 'antd';
+import { UploadOutlined, DeleteOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { request } from 'umi';
 import { CanvasNodeDataContext } from '../context';
+import { IoPreview, type CanvasIo, type IoItem } from '../CanvasIoPanel';
 import { ImeSafeTextArea } from '../ImeSafeInput';
 import { AssetIdLabel, NodeCardFields } from './NodeCardFields';
 import { CANVAS_NODE_WIDTH } from './types';
 
 /** Literal text or uploaded media sources use the existing typed result contract. */
 export default function ReferenceInputNode({ id, data }: NodeProps) {
-  const { canvasId, control, readOnly, updateNodeData, deleteNode, newlyAddedNodeIds } = useContext(CanvasNodeDataContext);
+  const { canvasId, control, readOnly, updateNodeData, deleteNode, newlyAddedNodeIds, bindCanvasOutput } = useContext(CanvasNodeDataContext);
   const [uploading, setUploading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [sources, setSources] = useState<any[]>([]);
+  const [sourceId, setSourceId] = useState<string>();
+  const [sourceIo, setSourceIo] = useState<CanvasIo>();
+  const [sourceItemKey, setSourceItemKey] = useState<string>();
   const kind = String(data.kind ?? 'image');
   const label = ({image:'图片',video:'视频',audio:'音频',text:'文本'} as Record<string,string>)[kind];
   const asset = (data.lastAssets as any[])?.[0];
+  const output = sourceIo?.outputs.at(-1);
+  const compatibleItems = (output?.items ?? []).filter(item => item.kind === kind);
+  useEffect(() => {
+    if (!sourceId) { setSourceIo(undefined); setSourceItemKey(undefined); return; }
+    let current = true;
+    setSourceIo(undefined); setSourceItemKey(undefined);
+    request<CanvasIo>(`/api/canvas/${sourceId}/io`)
+      .then(io => { if (current) setSourceIo(io); })
+      .catch(() => { if (current) message.error('读取来源画布导出区失败'); });
+    return () => { current = false; };
+  }, [sourceId]);
+  const openPicker = async () => {
+    setPickerBusy(true);
+    try {
+      setSources((await request<any[]>('/api/canvas')).filter(canvas => canvas.id !== canvasId));
+      setSourceId(undefined); setSourceIo(undefined); setSourceItemKey(undefined); setPickerOpen(true);
+    } catch { message.error('读取画布列表失败'); }
+    finally { setPickerBusy(false); }
+  };
+  const chooseOutput = async () => {
+    if (!sourceId || !output || !sourceItemKey || !bindCanvasOutput) return;
+    setPickerBusy(true);
+    try {
+      await bindCanvasOutput({ sourceCanvasId: sourceId, sourceOutputsVersion: output.version, sourceItemKey, bindNodeId: id });
+      message.success('已从画布导出区复制并绑定资源'); setPickerOpen(false);
+    } catch (error: any) { message.error(error?.response?.data?.message || error?.message || '选择资源失败'); }
+    finally { setPickerBusy(false); }
+  };
   return <div className={`canvas-node canvas-node--result${newlyAddedNodeIds?.includes(id) ? ' canvas-node--input-highlight' : ''}`} style={{ width: CANVAS_NODE_WIDTH, maxWidth: '100%', boxSizing: 'border-box' }}>
     <Handle type="source" position={Position.Right} id={`${kind}-source`} className={`canvas-handle--${kind}`} title={`${label}输出`} />
     <div className="canvas-node__header"><span className="canvas-node__bind" title={String(data.cardName || `${label}输入`)}>{String(data.cardName || `${label}输入`)}</span><Button type="text" size="small" disabled={readOnly} icon={<DeleteOutlined />} onClick={() => deleteNode(id)} aria-label="删除输入节点" /></div>
@@ -38,6 +73,18 @@ export default function ReferenceInputNode({ id, data }: NodeProps) {
           finally { setUploading(false); }
         }}><Button icon={<UploadOutlined />} loading={uploading} disabled={readOnly || !!data.inputGroupId}>上传{label}</Button></Upload>
       </>}
+      {!data.inputGroupId ? <Button style={{ marginTop: 8 }} icon={<FolderOpenOutlined />} loading={pickerBusy} disabled={readOnly || uploading || !bindCanvasOutput} onClick={() => void openPicker()}>从画布导出区选择</Button> : null}
     </div>
+    <Modal title={`从画布导出区选择${label}`} width={760} open={pickerOpen} confirmLoading={pickerBusy} okText="复制并使用" okButtonProps={{ disabled: !sourceId || !sourceItemKey || !compatibleItems.length }} onOk={() => void chooseOutput()} onCancel={() => setPickerOpen(false)}>
+      <Typography.Paragraph type="secondary">资源会复制到当前画布的输入快照；来源画布后续变化不会自动覆盖。</Typography.Paragraph>
+      <Select showSearch optionFilterProp="label" style={{ width: '100%', marginBottom: 12 }} placeholder="选择来源画布" value={sourceId} onChange={setSourceId} options={sources.map(canvas => ({ value: canvas.id, label: `${canvas.name}${canvas.projects?.length ? ` · ${canvas.projects.map((project: any) => project.name).join(' / ')}` : ''}` }))} />
+      {sourceIo && !output?.items.length ? <Empty description="这张画布的导出区暂无资源" /> : null}
+      {sourceIo && output?.items.length && !compatibleItems.length ? <Empty description={`导出区没有${label}资源`} /> : null}
+      {compatibleItems.length ? <Radio.Group value={sourceItemKey} onChange={event => setSourceItemKey(event.target.value)} style={{ width: '100%' }}>
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          {compatibleItems.map((item: IoItem) => <Card key={item.itemKey} size="small" style={{ width: '100%', borderColor: sourceItemKey === item.itemKey ? '#1677ff' : undefined }} title={<Radio value={item.itemKey}>{item.name}<Tag style={{ marginLeft: 8 }}>{item.kind}</Tag></Radio>}><IoPreview item={item} /></Card>)}
+        </Space>
+      </Radio.Group> : null}
+    </Modal>
   </div>;
 }

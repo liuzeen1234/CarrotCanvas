@@ -1,12 +1,13 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { RunsService } from './runs.service';
 import { CanvasService } from '../canvas/canvas.service';
-import { RecoverRunInput, RunRecoveryService } from './run-recovery.service';
+import { MigrateRunInput, RecoverRunInput, RunRecoveryService } from './run-recovery.service';
 
 @Controller('runs')
 export class RunsController {
   constructor(private readonly runs: RunsService, private readonly canvas: CanvasService, private readonly recovery: RunRecoveryService) {}
   @Post(':id/recover') recover(@Param('id') id: string, @Body() body: RecoverRunInput) { return this.recovery.recover(id, body); }
+  @Post(':id/migrate') migrate(@Param('id') id: string, @Body() body: MigrateRunInput) { return this.recovery.migrate(id, body); }
   @Get(':id/recovery-suggestion') suggestRecovery(@Param('id') id: string, @Query('assetId') assetId?: string) { return this.recovery.suggest(id, assetId); }
   @Get() list(@Query() query: Record<string, string>) { return this.runs.list(query); }
   @Get('candidates/group') group(@Query('canvasId') canvasId: string, @Query('nodeId') nodeId?: string, @Query('shotId') shotId?: string) { return this.runs.group(canvasId, nodeId, shotId); }

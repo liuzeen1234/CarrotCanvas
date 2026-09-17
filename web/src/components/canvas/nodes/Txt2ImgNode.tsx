@@ -292,6 +292,18 @@ export default function Txt2ImgNode(props: NodeProps) {
         h3Node.inputs['ref_images.ref_image_0'] = h3Node.inputs.first_frame;
         delete h3Node.inputs.first_frame;
         h3Node.inputs.ref_image_size ??= 'match';
+        const samplerIds = Object.entries(compiledApi)
+          .filter(([, node]: [string, any]) => Array.isArray(node?.inputs?.latent_image)
+            && node.inputs.latent_image[0] === refConfig.upgradeNodeId)
+          .map(([nodeId]) => nodeId);
+        const audioDecoders = Object.values(compiledApi).filter((node: any) =>
+          node?.class_type === 'VAEDecodeAudio' && Array.isArray(node?.inputs?.vae)) as any[];
+        const audioDecoder = audioDecoders.find((node: any) =>
+          Array.isArray(node?.inputs?.samples) && samplerIds.includes(node.inputs.samples[0]))
+          || (audioDecoders.length === 1 ? audioDecoders[0] : null);
+        if (!Array.isArray(h3Node.inputs.audio_vae) && audioDecoder) {
+          h3Node.inputs.audio_vae = audioDecoder.inputs.vae;
+        }
       }
       await run.submit(compiledApi, new Set((workflow.inputConfig?.fields ?? []).filter(f => f.kind === 'text' && upstreamTextFor(f).connected).map(fileKey)), [...inputAssetIds], refConfig ? {
         originalPrompt: referencePrompt,
@@ -325,6 +337,7 @@ export default function Txt2ImgNode(props: NodeProps) {
 
   const visibleRunState = run.runState ?? getNodeRunState(nodeId);
   const outputKind = workflowOutputKind(workflow?.category);
+  const hasH3AudioOutput = refConfig?.groups.length === 4;
   const visibleRunning = visibleRunState?.status === 'pending' || visibleRunState?.status === 'running';
   const progress = visibleRunState?.progress;
   const percent = progress?.max ? Math.round((progress.value / progress.max) * 100) : undefined;
@@ -378,10 +391,11 @@ export default function Txt2ImgNode(props: NodeProps) {
       </div>}
       {(data.lastAssets ?? []).length ? <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>{(data.lastAssets ?? []).map((asset, assetIndex) => <div key={asset.assetId}>{asset.kind === 'audio' ? <ViewportAudio controls preload="metadata" src={asset.url} style={{ width: '100%' }} /> : <button type="button" className="canvas-media-trigger" onClick={() => setPreviewIndex(assetIndex)} aria-label={`放大预览${asset.kind === 'video' ? '视频' : '图片'}`}>{asset.kind === 'video' ? <><ViewportVideo src={asset.url} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <ViewportImage loading="lazy" decoding="async" src={asset.url} alt={asset.filename || '生成图片'} />}</button>}<AssetIdLabel assetId={asset.assetId} /><Button size="small" block icon={<DownloadOutlined />} href={`/api/assets/${asset.assetId}/download`} download>下载</Button></div>)}</Space> : null}
       <CardOutputButton nodeId={nodeId} name={data.cardName || data.workflowName || "生成输出"} assets={data.lastAssets || []} disabled={run.running} />
-      <NodeOutputHistory cardName={data.cardName || data.workflowName} currentAssetId={data.lastAssets?.[0]?.assetId} canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset] })} onObserveAsset={(asset) => observeNodeData(nodeId, { lastAssets: [asset] })} onRestoreSeeds={(values) => run.setFormValues((previous) => ({ ...previous, ...values }))} />
+      <NodeOutputHistory cardName={data.cardName || data.workflowName} currentAssetId={data.lastAssets?.find((asset) => asset.kind === outputKind)?.assetId} canvasId={canvasId} nodeId={nodeId} kind={outputKind} readOnly={readOnly} control={control} refreshKey={`${historyVersion}:${generationHistoryVersion}`} onSelectAsset={(asset) => updateNodeData(nodeId, { lastAssets: [asset, ...(data.lastAssets ?? []).filter((item) => item.kind !== asset.kind)] })} onObserveAsset={(asset) => observeNodeData(nodeId, { lastAssets: [asset, ...(data.lastAssets ?? []).filter((item) => item.kind !== asset.kind)] })} onRestoreSeeds={(values) => run.setFormValues((previous) => ({ ...previous, ...values }))} />
     </div>
     <CanvasMediaPreview open={previewIndex !== null} items={(data.lastAssets ?? []).filter((asset): asset is CanvasMediaItem => asset.kind === 'image' || asset.kind === 'video')} index={previewIndex ?? 0} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
     <CanvasMediaPreview open={referencePreview !== null} items={(referenceGroups.find((group) => group.config.key === referencePreview?.group)?.references || []).map((item): CanvasMediaItem => ({ assetId: item.assetId, url: item.url, kind: item.kind, filename: item.filename }))} index={referencePreview?.index ?? 0} onIndexChange={(index) => setReferencePreview((current) => current ? { ...current, index } : null)} onClose={() => setReferencePreview(null)} />
-    <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={`${outputKind === 'audio' ? '音频' : outputKind === 'video' ? '视频' : '图片'}输出`} />
+    <Handle type="source" position={Position.Right} id={resultSourceHandle(outputKind)} className={`canvas-handle--${outputKind}`} title={`${outputKind === 'audio' ? '音频' : outputKind === 'video' ? '视频' : '图片'}输出`} style={hasH3AudioOutput ? { top: '76%' } : undefined} />
+    {hasH3AudioOutput ? <Handle type="source" position={Position.Right} id={resultSourceHandle('audio')} className="canvas-handle--audio" title="H3 独立音频输出（可作为音色参考）" style={{ top: '88%' }} /> : null}
   </div>;
 }

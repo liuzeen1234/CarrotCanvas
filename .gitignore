@@ -46,3 +46,33 @@ Thumbs.db
 **/__pycache__/
 *.pyc
 artifacts/carrot-skill-validation/python/
+
+# artifacts: local experiment scratch (media + ad-hoc run scripts/dumps)
+# curated deliverables (README.md, spec/test scripts, acceptance receipts) are
+# added explicitly; the patterns below drop throwaway run output.
+artifacts/dynamic-tests/
+artifacts/factory-continuity/
+artifacts/voice/
+artifacts/projects-io/cleanup-*.json
+artifacts/projects-io/fixture.json
+artifacts/projects-io/persistence-before.json
+artifacts/reference-contract/inspect-*.mjs
+artifacts/reference-contract/clean-*.mjs
+artifacts/reference-contract/*-cleanup-*.json
+artifacts/stable-audio-3/*.flac
+artifacts/stable-audio-3/*.initial
+artifacts/stable-audio-3/standalone-*.json
+artifacts/stable-audio-3/canvas-*.json
+artifacts/stable-audio-3/*-manifest.json
+artifacts/stable-audio-3/conversion.json
+artifacts/stable-audio-3/duration-fixed-conversion.json
+artifacts/stable-audio-3/environment-audit.json
+artifacts/stable-audio-3/hf-mirror-files.json
+artifacts/stable-audio-3/lossless-preview.json
+artifacts/stable-audio-3/modelscope-files.json
+artifacts/stable-audio-3/object-info.json
+artifacts/stable-audio-3/quality-retry-results.json
+artifacts/stable-audio-3/template-source.json
+artifacts/stable-audio-3/test-results.json
+artifacts/stable-audio-3/workflow.json
+artifacts/**/*.run.json
