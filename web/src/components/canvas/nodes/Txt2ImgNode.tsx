@@ -88,7 +88,14 @@ export default function Txt2ImgNode(props: NodeProps) {
   const onRunFinished = useCallback((state: RunStateData) => {
     setNodeRunState(nodeId, state);
     if (state.status !== 'success') return;
-    const assets = state.outputs.filter((o) => o.assetId && o.assetUrl).map((o) => ({ assetId: o.assetId!, url: o.assetUrl!, kind: o.kind, filename: o.filename }));
+    // 同一物理文件可能被 ComfyUI 报进多个输出数组（如 videos + audio），捕获后回填同一 assetId。
+    // 按 assetId 去重，避免当前输出区把同一资产渲染成多块（两个视频 + 一个音频却是同一 assetid）。
+    const seenAssetIds = new Set<string>();
+    const assets = state.outputs.filter((o) => o.assetId && o.assetUrl).flatMap((o) => {
+      if (seenAssetIds.has(o.assetId!)) return [];
+      seenAssetIds.add(o.assetId!);
+      return [{ assetId: o.assetId!, url: o.assetUrl!, kind: o.kind, filename: o.filename }];
+    });
     if (assets.length) updateNodeData(nodeId, { lastAssets: assets });
     setHistoryVersion((value) => value + 1);
   }, [nodeId, setNodeRunState, updateNodeData]);

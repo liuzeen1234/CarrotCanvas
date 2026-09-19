@@ -68,7 +68,7 @@ interface CanvasRunState extends RunStateData { canvasId?: string; nodeId?: stri
 interface OperationLogItem { id: string; resultRevision: number; baseRevision: number; actorType: 'human' | 'agent'; actorId: string; intent: string | null; operations: Array<{ type: string }>; undoneByLogId: string | null; createdAt: string; }
 interface CheckpointItem { id: string; name: string; description: string | null; revision: number; createdByType: 'human' | 'agent'; createdById: string; createdAt: string; }
 interface GenerationRunItem { inputLineage?: Array<{ snapshotId: string; itemKey: string; name?: string; sourceCanvasId?: string; sourceCanvasName?: string; sourceOutputsVersion?: number }>; }
-interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputAssets?: RunOutputAsset[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; recovery?: RecoveryMetadata | null; actorType?: string; actorId?: string; candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
+interface GenerationRunItem { id: string; provider: string; status: string; nodeId: string | null; capabilityId: string | null; inputSnapshot: unknown; outputAssetIds: string[]; outputAssets?: RunOutputAsset[]; outputText: string | null; error: { message?: string } | null; attemptCount: number; queuedAt: number; startedAt: number | null; finishedAt: number | null; createdAt: string; recovery?: RecoveryMetadata | null; actorType?: string; actorId?: string; candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null; selectedByKind?: Partial<Record<'image' | 'video' | 'audio', string>> | null } | null; latestHandoff?: { outcome: 'released' | 'adopted' | 'release_failed'; fromActorType: 'human' | 'agent'; toActorType: 'human' | 'agent' | null } | null; }
 
 const sourceHandleKind = (handle: string) => handle === 'text-positive-source' || handle === 'text-negative-source'
   ? 'text'
@@ -838,6 +838,7 @@ function CanvasEditorInner() {
         const historySignature = JSON.stringify((persistent.items ?? []).map((run) => [
           run.id, run.status, run.finishedAt, run.outputAssetIds, run.outputText,
           run.candidateGroup?.selectedAssetId, run.candidateGroup?.selectedRunId,
+          run.candidateGroup?.selectedByKind,
         ]));
         if (historySignature !== generationHistorySignatureRef.current) {
           generationHistorySignatureRef.current = historySignature;

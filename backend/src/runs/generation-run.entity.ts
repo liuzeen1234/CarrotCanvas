@@ -80,6 +80,9 @@ export class GenerationCandidateGroup {
   @Column({ type: 'text', name: 'node_id', nullable: true }) nodeId: string | null;
   @Column({ type: 'text', name: 'shot_id', nullable: true }) shotId: string | null;
   @Column({ type: 'simple-json', name: 'candidate_asset_ids' }) candidateAssetIds: string[];
+  /** 每个产物 kind 各自记住当前选中的资产；一次 run 可同时产出视频与音频等多 kind，需分别默认选中最新。 */
+  @Column({ type: 'simple-json', name: 'selected_by_kind', nullable: true }) selectedByKind: Partial<Record<'image' | 'video' | 'audio', string>> | null;
+  /** 主 kind 的选中（向后兼容旧字段），有视频取视频、否则图、否则音频。 */
   @Column({ type: 'text', name: 'selected_asset_id', nullable: true }) selectedAssetId: string | null;
   @Column({ type: 'text', name: 'selected_run_id', nullable: true }) selectedRunId: string | null;
   @Column({ type: 'text', name: 'approved_asset_id', nullable: true }) approvedAssetId: string | null;

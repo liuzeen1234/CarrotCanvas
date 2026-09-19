@@ -22,7 +22,7 @@ export interface NodeHistoryRun {
   queuedAt?: number | null;
   startedAt?: number | null;
   finishedAt?: number | null;
-  candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null } | null;
+  candidateGroup?: { selectedAssetId: string | null; selectedRunId: string | null; selectedByKind?: Partial<Record<'image' | 'video' | 'audio', string>> | null } | null;
 }
 
 export default function NodeOutputHistory({ canvasId, nodeId, cardName, kind, promptModeContext, readOnly, refreshKey, control, currentAssetId, onSelectAsset, onSelectText, onObserveAsset, onObserveText, onRestoreSeeds }: {
@@ -42,6 +42,16 @@ export default function NodeOutputHistory({ canvasId, nodeId, cardName, kind, pr
   const assetIdsForKind = useCallback((run: NodeHistoryRun) => run.outputAssets?.length
     ? run.outputAssets.filter((asset) => asset.kind === kind).map((asset) => asset.assetId)
     : run.outputAssetIds, [kind]);
+  // 本轨道（当前 kind）应选中的资产：优先 selectedByKind[kind]；
+  // 缺失时才回退到旧的单选字段，且仅当它确实属于本 kind（避免视频轨道错认音频的 selectedAssetId）。
+  const selectedAssetIdForKind = useCallback((run: NodeHistoryRun) => {
+    const group = run.candidateGroup;
+    if (!group) return null;
+    const byKind = group.selectedByKind?.[kind as 'image' | 'video' | 'audio'];
+    if (byKind) return byKind;
+    if (group.selectedAssetId && assetIdsForKind(run).includes(group.selectedAssetId)) return group.selectedAssetId;
+    return null;
+  }, [assetIdsForKind, kind]);
   const mediaItems = useMemo<CanvasMediaItem[]>(() => kind === 'text' || kind === 'audio' ? [] : runs.flatMap((run) => assetIdsForKind(run).map((assetId) => ({ assetId, url: `/api/assets/${assetId}`, kind }))), [assetIdsForKind, kind, runs]);
   const load = async () => {
     if (!canvasId) return;
@@ -55,7 +65,7 @@ export default function NodeOutputHistory({ canvasId, nodeId, cardName, kind, pr
           const selected = visibleRuns.find((run) => run.candidateGroup?.selectedRunId === run.id && run.outputText);
           if (selected?.outputText) onObserveText?.(selected.outputText, selected.outputParts);
         } else {
-          const selectedAssetId = visibleRuns.find((run) => run.candidateGroup?.selectedAssetId)?.candidateGroup?.selectedAssetId;
+          const selectedAssetId = visibleRuns.map((run) => selectedAssetIdForKind(run)).find((assetId) => !!assetId);
           if (selectedAssetId) onObserveAsset?.({ assetId: selectedAssetId, url: `/api/assets/${selectedAssetId}`, kind });
         }
       }
@@ -92,7 +102,7 @@ export default function NodeOutputHistory({ canvasId, nodeId, cardName, kind, pr
     <Space><Typography.Text type="secondary" style={{ fontSize: 12 }}>生成历史 · {runs.reduce((sum, run) => sum + Math.max(1, assetIdsForKind(run).length), 0)}</Typography.Text><RunRecovery runs={sourceRuns} currentAssetId={currentAssetId} readOnly={readOnly} control={control} onRecovered={load} /></Space>
     <div className="canvas-node-history__rail">
       {runs.flatMap((run) => kind === 'text' ? [<div key={run.id}><button type="button" key={run.id} disabled={readOnly} className={`canvas-node-history__text${run.candidateGroup?.selectedRunId === run.id ? ' is-current' : ''}`} onClick={() => void chooseText(run)}>{promptModeLabel(run, promptModeContext) ? <span className={`canvas-node-history__mode ${promptModeLabel(run, promptModeContext) === '视频提示词' ? 'is-video' : ''}`}>{promptModeLabel(run, promptModeContext)}</span> : null}<span className="canvas-node-history__text-summary">{textSummary(run.outputText || '')}</span><RunDuration timestamps={run} />{seedActions(run)}{run.candidateGroup?.selectedRunId === run.id ? <span className="canvas-node-history__current" title="当前版本" aria-label="当前版本"><CheckOutlined /></span> : null}</button></div>] : assetIdsForKind(run).map((assetId) => {
-        const current = run.candidateGroup?.selectedAssetId === assetId;
+        const current = selectedAssetIdForKind(run) === assetId;
         return <div key={assetId} className={`canvas-node-history__media${current ? ' is-current' : ''}`}>
           {kind === 'audio' ? <ViewportAudio controls src={`/api/assets/${assetId}`} style={{ width: '100%' }} /> : <button type="button" className="canvas-media-trigger canvas-media-trigger--history" onClick={() => setPreviewIndex(mediaItems.findIndex((item) => item.assetId === assetId))} aria-label={`放大预览${kind === 'video' ? '视频' : '图片'}`}>{kind === 'video' ? <><ViewportVideo src={`/api/assets/${assetId}`} muted playsInline preload="metadata" /><PlayCircleFilled className="canvas-media-trigger__play" /></> : <ViewportImage src={`/api/assets/${assetId}`} alt="历史图片产物" />}</button>}
           <AssetIdLabel assetId={assetId} />

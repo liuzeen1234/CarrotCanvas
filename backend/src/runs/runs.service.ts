@@ -165,10 +165,18 @@ export class RunsService implements OnModuleInit {
 
   private async appendCandidates(run: GenerationRun, ids: string[]) {
     let group = await this.group(run.canvasId!, run.nodeId, run.shotId);
-    if (!group) group = this.groups.create({ canvasId: run.canvasId!, nodeId: run.nodeId, shotId: run.shotId, candidateAssetIds: [], selectedAssetId: null, selectedRunId: null, approvedAssetId: null });
+    if (!group) group = this.groups.create({ canvasId: run.canvasId!, nodeId: run.nodeId, shotId: run.shotId, candidateAssetIds: [], selectedByKind: null, selectedAssetId: null, selectedRunId: null, approvedAssetId: null });
     group.candidateAssetIds = [...new Set([...group.candidateAssetIds, ...ids])];
     group.selectedRunId = run.id;
-    group.selectedAssetId = ids[0] ?? null;
+    // 一次 run 可能同时产出多个 kind（如 H3 视频卡的视频 + 独立音频）。
+    // 逐 kind 记住本次产出的最新资产，让视频轨道与音频轨道各自默认选中最新，互不覆盖。
+    const kinds = ids.length ? await this.assets.find({ where: { id: In(ids) }, select: { id: true, kind: true } }) : [];
+    const kindOf = new Map(kinds.map((asset) => [asset.id, asset.kind]));
+    const selectedByKind: Partial<Record<string, string>> = { ...(group.selectedByKind ?? {}) };
+    for (const id of ids) { const kind = kindOf.get(id); if (kind) selectedByKind[kind] = id; }
+    group.selectedByKind = selectedByKind as GenerationCandidateGroup['selectedByKind'];
+    // selectedAssetId 保留为“主产物”，视频优先、其次图片、再次音频，向后兼容旧字段与只认单选的读取方。
+    group.selectedAssetId = selectedByKind.video ?? selectedByKind.image ?? selectedByKind.audio ?? ids[0] ?? null;
     await this.groups.save(group);
   }
 
@@ -178,6 +186,9 @@ export class RunsService implements OnModuleInit {
     if (approve && actorType !== 'human') throw new ConflictException({ code: 'HUMAN_APPROVAL_REQUIRED', message: '批准候选需要人工确认' });
     if (group.approvedAssetId && group.approvedAssetId !== assetId) throw new ConflictException({ code: 'APPROVED_ASSET_PROTECTED', message: '已批准资产不可静默替换' });
     group.selectedAssetId = assetId;
+    // 手动选中只影响被选资产所属的那个 kind 轨道，其余 kind 的当前选中保持不变。
+    const chosen = await this.assets.findOne({ where: { id: assetId }, select: { id: true, kind: true } });
+    if (chosen?.kind) group.selectedByKind = { ...(group.selectedByKind ?? {}), [chosen.kind]: assetId } as GenerationCandidateGroup['selectedByKind'];
     const selectedRun = await this.runs.createQueryBuilder('run').where('run.canvas_id = :canvasId AND run.node_id = :nodeId', { canvasId, nodeId }).orderBy('run.created_at', 'DESC').getMany();
     group.selectedRunId = selectedRun.find((run) => run.outputAssetIds.includes(assetId))?.id ?? group.selectedRunId;
     if (approve) group.approvedAssetId = assetId;

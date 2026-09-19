@@ -1,0 +1,14 @@
+{
+  "name": "carrot-browser-automation",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "CDP-based browser automation for CarrotCanvas E2E testing (attaches to a real Chrome instance, reuses login state)",
+  "scripts": {
+    "launch": "node launch-chrome.mjs",
+    "smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.48.0"
+  }
+}

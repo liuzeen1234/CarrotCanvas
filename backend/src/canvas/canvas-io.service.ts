@@ -102,6 +102,7 @@ export class CanvasIoService {
           else if (command === 'output.replace') { const index = items.findIndex(i => i.itemKey === payload.itemKey); if (index < 0) invalid('输出不存在'); items[index] = { ...published!, itemKey: items[index].itemKey, outputSlot: published!.outputSlot ?? outputSlot(items[index]) }; }
           else if (command === 'output.edit') { const item = items.find(i => i.itemKey === payload.itemKey); if (!item) invalid('输出不存在'); item.name = bounded(payload.name, item.name); item.note = bounded(payload.note, item.note, 2000); }
           else if (command === 'output.remove') { const index = items.findIndex(i => i.itemKey === payload.itemKey); if (index < 0) invalid('输出不存在'); items.splice(index, 1); }
+          else if (command === 'output.clear') { if (!items.length) invalid('输出区已为空'); items.length = 0; }
           else if (command === 'output.reorder') { if (!Array.isArray(payload.order) || payload.order.length !== items.length || new Set(payload.order).size !== items.length || payload.order.some((key: string) => !items.some(i => i.itemKey === key))) invalid('排序必须包含每个输出一次'); items.sort((a,b) => payload.order.indexOf(a.itemKey) - payload.order.indexOf(b.itemKey)); }
           else invalid('不支持该输出命令');
           io.outputs.push(snapshot(items, (currentOutput(io)?.version ?? 0) + 1, proof.actorId ?? ''));

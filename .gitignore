@@ -76,3 +76,8 @@ artifacts/stable-audio-3/template-source.json
 artifacts/stable-audio-3/test-results.json
 artifacts/stable-audio-3/workflow.json
 artifacts/**/*.run.json
+
+# browser automation: 专用 Chrome profile 与运行时截图（保留脚本与 package.json）
+artifacts/browser-automation/.chrome-profile/
+artifacts/browser-automation/node_modules/
+artifacts/browser-automation/*.png

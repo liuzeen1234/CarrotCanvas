@@ -67,6 +67,22 @@ describe('RunsService persistence', () => {
     expect((await service.list({ canvasId: 'c1' })).items[0].outputAssets).toEqual([{ assetId: 'flac-id', kind: 'audio', filename: 'test.flac', mime: 'audio/flac' }]);
   });
 
+  it('selects the latest asset per kind when one run outputs both video and audio', async () => {
+    // H3 图生视频卡：一次运行同时产出音频与视频，音频排在输出数组第一位。
+    await (service as any).assets.save({ id: 'vid-1', canvasId: 'c1', nodeId: 'h3', kind: 'video', source: 'generated', relPath: 'c1/v1.mp4', mime: 'video/mp4' });
+    await (service as any).assets.save({ id: 'aud-1', canvasId: 'c1', nodeId: 'h3', kind: 'audio', source: 'generated', relPath: 'c1/a1.flac', mime: 'audio/flac' });
+    const run = await service.begin({ provider: 'comfyui', canvasId: 'c1', nodeId: 'h3', inputSnapshot: {} });
+    await service.finish(run.run.id, 'succeeded', ['aud-1', 'vid-1']);
+    const group = await service.group('c1', 'h3');
+    // 视频与音频各自默认选中本次的最新产物，互不覆盖。
+    expect(group?.selectedByKind).toEqual({ audio: 'aud-1', video: 'vid-1' });
+    // selectedAssetId 主 kind 取视频（video > image > audio），而非输出数组首位的音频。
+    expect(group?.selectedAssetId).toBe('vid-1');
+    // 手动改选音频只影响音频轨道，视频选中保持不变。
+    const chosen = await service.choose('c1', 'h3', null, 'aud-1', false, 'human');
+    expect(chosen.selectedByKind).toEqual({ audio: 'aud-1', video: 'vid-1' });
+  });
+
   it('marks unfinished runs needs_attention during restart reconciliation', async () => {
     const begun = await service.begin({ provider: 'comfyui', inputSnapshot: {} });
     await service.patch(begun.run.id, { status: 'running' });

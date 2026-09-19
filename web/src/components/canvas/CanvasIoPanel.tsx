@@ -78,7 +78,10 @@ export default function CanvasIoPanel({ side, canvasId, io, writable, busy, exec
             </Card>;
           })}
         </> : <>
-          <Button size="small" type="primary" icon={<PlusOutlined />} disabled={!writable || busy} onClick={() => void startPublish()}>设为输出</Button>
+          <Space wrap>
+            <Button size="small" type="primary" icon={<PlusOutlined />} disabled={!writable || busy} onClick={() => void startPublish()}>设为输出</Button>
+            <Popconfirm title="清空输出区？" description="一次性撤下当前全部输出项，新增一个空输出版本；已有下游快照不受影响。" okButtonProps={{ danger: true }} onConfirm={() => run('output.clear').catch(() => {})}><Button size="small" danger disabled={!writable || busy || !outputs?.items.length}>一键清空</Button></Popconfirm>
+          </Space>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>明确发布的成果 · v{outputs?.version ?? 0} · 不随重跑自动变化</Typography.Paragraph>
           {!outputs?.items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从当前或历史产物发布输出" />}
           {outputs?.items.map((item, index) => <Card key={item.itemKey} size="small" title={<span style={{ whiteSpace: 'normal' }}>{item.name}</span>} style={{ marginBottom: 12 }}><IoPreview item={item} /><Space wrap style={{ marginTop: 8 }}>
